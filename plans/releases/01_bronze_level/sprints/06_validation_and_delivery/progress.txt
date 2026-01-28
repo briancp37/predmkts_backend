@@ -28,6 +28,13 @@
 - [2026-01-28] backfill_testing: Confirms backfills create new run_ids with no overwrites (3 runs produce 3 unique IDs and 6 unique S3 keys)
 - [2026-01-28] backfill_testing: Marked backfill_testing category as passing in PRD
 
+- [2026-01-28] exit_criteria_verification: Created tests/test_exit_criteria.py with 22 tests verifying all 8 Release 1 exit criteria
+- [2026-01-28] exit_criteria_verification: Tests validate CloudFormation templates (S3 versioning, EventBridge schedules, ECS task defs)
+- [2026-01-28] exit_criteria_verification: Tests validate code contracts (part-000.jsonl.gz output, manifest.json, UUID4 run_ids, restart safety)
+- [2026-01-28] exit_criteria_verification: Tests confirm no Silver/Gold assumptions in Bronze source code (no transformation/aggregation logic)
+- [2026-01-28] exit_criteria_verification: Tests confirm CloudWatch observability (structured JSON logging, awslogs driver, monitoring template)
+- [2026-01-28] exit_criteria_verification: Marked exit_criteria_verification category as passing in PRD
+
 ## In Progress
 
 

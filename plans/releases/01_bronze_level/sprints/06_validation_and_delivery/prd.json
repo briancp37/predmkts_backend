@@ -64,7 +64,7 @@
             "Confirm CloudWatch logs show successful, observable runs",
             "Confirm no Silver/Gold assumptions exist in Bronze code"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "documentation",
