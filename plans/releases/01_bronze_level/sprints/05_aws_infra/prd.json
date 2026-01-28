@@ -61,7 +61,7 @@
             "Configure schedules with timezone America/Chicago",
             "Set up schedule target to run ECS task with correct overrides"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "monitoring",

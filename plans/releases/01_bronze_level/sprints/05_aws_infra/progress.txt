@@ -62,6 +62,35 @@
       BronzeBucketName=prediction-bronze-dev
   ```
 
+### 2026-01-28: EventBridge Schedules (eventbridge_schedules)
+- Created CloudFormation template: infrastructure/eventbridge-schedules.yaml
+- Uses AWS EventBridge Scheduler (modern approach vs EventBridge Rules)
+- Created Schedule Group: prediction-data-{env} for organization
+- Four schedules created:
+  - polymarket-trades: Every 5 minutes (configurable)
+  - kalshi-trades: Every 5 minutes (configurable)
+  - polymarket-markets: Every 1 hour (configurable)
+  - kalshi-markets: Every 1 hour (configurable)
+- Timezone set to America/Chicago (configurable)
+- IAM role for scheduler with least-privilege ECS RunTask permissions
+- Each schedule targets ECS Fargate tasks with command overrides
+- Retry policy: 2 retries with 5 min (trades) or 10 min (markets) max age
+- Schedules can be enabled/disabled via ScheduleState parameter
+- Template validated with AWS CLI
+- Deployment:
+  ```
+  aws cloudformation deploy \
+    --template-file infrastructure/eventbridge-schedules.yaml \
+    --stack-name prediction-data-schedules \
+    --parameter-overrides \
+      Environment=dev \
+      ECSClusterArn=<cluster-arn-from-ecs-stack> \
+      TaskDefinitionArn=<task-def-arn-from-ecs-stack> \
+      SubnetIds=subnet-xxx,subnet-yyy \
+      SecurityGroupIds=sg-xxx \
+    --capabilities CAPABILITY_NAMED_IAM
+  ```
+
 ## In Progress
 
 
@@ -86,6 +115,5 @@ Required environment variables for the container:
 
 ### Next Steps
 1. Create ECR repository and push image
-2. Configure EventBridge schedules (eventbridge_schedules)
-3. Set up CloudWatch monitoring (monitoring)
-4. Document infrastructure and complete IaC (infrastructure_as_code)
+2. Set up CloudWatch monitoring (monitoring)
+3. Document infrastructure and complete IaC (infrastructure_as_code)

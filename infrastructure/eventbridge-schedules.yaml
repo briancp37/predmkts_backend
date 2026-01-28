@@ -1,0 +1,306 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EventBridge Scheduler schedules for prediction-data ingestion tasks
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  ECSClusterArn:
+    Type: String
+    Description: ARN of the ECS cluster (from ecs-cluster stack)
+
+  TaskDefinitionArn:
+    Type: String
+    Description: ARN of the ECS task definition (from ecs-cluster stack)
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs for the ECS tasks (must have internet access)
+
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: List of security group IDs for the ECS tasks
+
+  ScheduleTimezone:
+    Type: String
+    Default: America/Chicago
+    Description: Timezone for schedule expressions
+
+  TradesScheduleExpression:
+    Type: String
+    Default: 'rate(5 minutes)'
+    Description: Schedule expression for trades ingestion (default every 5 minutes)
+
+  MarketsScheduleExpression:
+    Type: String
+    Default: 'rate(1 hour)'
+    Description: Schedule expression for markets ingestion (default every 1 hour)
+
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Description: Whether schedules are enabled or disabled
+
+Resources:
+  # IAM Role for EventBridge Scheduler to invoke ECS tasks
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'prediction-data-scheduler-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSRunTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource:
+                  - !Ref TaskDefinitionArn
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Ref ECSClusterArn
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Schedule Group for organizing schedules
+  ScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: !Sub 'prediction-data-${Environment}'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Polymarket Trades - every 5 minutes
+  PolymarketTradesSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'polymarket-trades-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Polymarket trades every 5 minutes
+      ScheduleExpression: !Ref TradesScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "polymarket-trades"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 2
+
+  # Kalshi Trades - every 5 minutes
+  KalshiTradesSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'kalshi-trades-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Kalshi trades every 5 minutes
+      ScheduleExpression: !Ref TradesScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "kalshi-trades"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 2
+
+  # Polymarket Markets - every 1 hour
+  PolymarketMarketsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'polymarket-markets-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Polymarket markets every hour
+      ScheduleExpression: !Ref MarketsScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "polymarket-markets"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 600
+          MaximumRetryAttempts: 2
+
+  # Kalshi Markets - every 1 hour
+  KalshiMarketsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'kalshi-markets-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Kalshi markets every hour
+      ScheduleExpression: !Ref MarketsScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "kalshi-markets"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 600
+          MaximumRetryAttempts: 2
+
+Outputs:
+  ScheduleGroupArn:
+    Description: ARN of the schedule group
+    Value: !GetAtt ScheduleGroup.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ScheduleGroupArn'
+
+  ScheduleGroupName:
+    Description: Name of the schedule group
+    Value: !Ref ScheduleGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ScheduleGroupName'
+
+  SchedulerRoleArn:
+    Description: ARN of the scheduler execution role
+    Value: !GetAtt SchedulerExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SchedulerRoleArn'
+
+  PolymarketTradesScheduleArn:
+    Description: ARN of the Polymarket trades schedule
+    Value: !GetAtt PolymarketTradesSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PolymarketTradesScheduleArn'
+
+  KalshiTradesScheduleArn:
+    Description: ARN of the Kalshi trades schedule
+    Value: !GetAtt KalshiTradesSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-KalshiTradesScheduleArn'
+
+  PolymarketMarketsScheduleArn:
+    Description: ARN of the Polymarket markets schedule
+    Value: !GetAtt PolymarketMarketsSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PolymarketMarketsScheduleArn'
+
+  KalshiMarketsScheduleArn:
+    Description: ARN of the Kalshi markets schedule
+    Value: !GetAtt KalshiMarketsSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-KalshiMarketsScheduleArn'
+
+  DeploymentCommand:
+    Description: Example AWS CLI command to deploy this stack
+    Value: !Sub |
+      aws cloudformation deploy \
+        --template-file infrastructure/eventbridge-schedules.yaml \
+        --stack-name prediction-data-schedules \
+        --parameter-overrides \
+          Environment=dev \
+          ECSClusterArn=<cluster-arn-from-ecs-stack> \
+          TaskDefinitionArn=<task-def-arn-from-ecs-stack> \
+          SubnetIds=subnet-xxx,subnet-yyy \
+          SecurityGroupIds=sg-xxx \
+        --capabilities CAPABILITY_NAMED_IAM
