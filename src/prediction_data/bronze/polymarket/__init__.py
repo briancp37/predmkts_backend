@@ -1,0 +1,1 @@
+"""Polymarket data ingestion submodule."""
