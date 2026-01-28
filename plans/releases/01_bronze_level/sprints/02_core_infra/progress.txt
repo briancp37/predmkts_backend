@@ -35,6 +35,20 @@
   Created tests/test_compression.py with 28 comprehensive tests covering all functionality.
   All type checks (mypy strict mode) and tests pass (75 total tests in suite).
 
+- [2026-01-27] manifest_schema: Implemented manifest.json contract with Pydantic models.
+  Created src/prediction_data/storage/manifest.py with:
+  - FileReference model with bucket and key fields for S3 file references
+  - Source model with api_base_url, pagination, and cursor fields
+  - Manifest model with all required fields: run_id, platform, entity, dt, generated_at,
+    files, row_count, source
+  - to_json() and to_dict() for serialization with ISO-8601 timestamps
+  - from_json() and from_dict() for loading and validation
+  - create_manifest() convenience function for single-file manifests
+  Features: immutable (frozen) Pydantic models, ISO-8601 datetime parsing (including Z suffix),
+  automatic UTC timezone assignment, comprehensive validation (date format, non-negative row_count).
+  Created tests/test_manifest.py with 31 comprehensive tests covering all functionality.
+  All type checks (mypy strict mode) and tests pass (106 total tests in suite).
+
 ## Blockers/Issues
 
 

@@ -48,7 +48,7 @@
             "Implement manifest serialization to JSON with ISO-8601 timestamps",
             "Add manifest validation on load"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "compression_utilities",
