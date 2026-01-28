@@ -59,7 +59,7 @@
             "Add standard fields: timestamp, level, logger name",
             "Create helper function to bind context (platform, entity, run_id, dt)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "validation",

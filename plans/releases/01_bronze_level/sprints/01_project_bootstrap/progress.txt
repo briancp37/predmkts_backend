@@ -51,6 +51,20 @@
   - Verified: ruff check passes
   - Verified: mypy passes (9 source files)
 
+- [x] logging_setup - Configure structured logging for CloudWatch compatibility
+  - Created src/prediction_data/core/logging.py with structlog configuration
+  - Configured JSON output format for production (CloudWatch compatible)
+  - Configured console output format for local development (colored, human-readable)
+  - Auto-detects output format based on TTY (JSON for non-TTY, console for TTY)
+  - Added standard fields: timestamp (ISO format), level, logger name, filename, lineno
+  - Created configure_logging() function with json_output parameter override
+  - Created get_logger() helper to obtain named logger instances
+  - Created bind_context() helper for adding context (platform, entity, run_id, dt)
+  - Created clear_context() helper to reset bound context variables
+  - Uses structlog.contextvars for async-safe context propagation
+  - Verified: ruff check passes
+  - Verified: mypy passes (10 source files)
+
 ## In Progress
 
 
@@ -61,4 +75,4 @@
 
 - Using Python 3.14.0 (local), but project requires 3.11+ for broader compatibility
 - All __init__.py files contain minimal docstrings describing module purpose
-- Next priority: logging_setup (structured logging for CloudWatch compatibility)
+- Next priority: validation (verify project bootstrap is complete and functional)
