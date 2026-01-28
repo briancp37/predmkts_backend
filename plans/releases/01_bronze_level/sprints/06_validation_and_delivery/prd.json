@@ -49,7 +49,7 @@
             "Test that retries create new run_ids (no data corruption)",
             "Document failure recovery procedures"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "exit_criteria_verification",
