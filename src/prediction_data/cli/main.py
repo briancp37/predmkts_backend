@@ -431,7 +431,7 @@ async def _ingest_one(
         from prediction_data.bronze.polymarket import ingest as pm_ingest
 
         if entity == "trades":
-            return await pm_ingest.ingest_trades(dt_str, bucket=bucket)
+            return await pm_ingest.ingest_trades_clob(dt_str, bucket=bucket)
         elif entity == "markets":
             return await pm_ingest.ingest_markets(dt_str, bucket=bucket)
         else:

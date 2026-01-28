@@ -118,6 +118,122 @@ async def ingest_trades(
     return run_ctx.run_id
 
 
+async def ingest_trades_clob(
+    dt: str,
+    *,
+    bucket: str | None = None,
+) -> str:
+    """Ingest Polymarket trades for a given date via CLOB API.
+
+    Uses the CLOB API with L2 auth and cursor-based pagination,
+    which has no offset limit unlike the Data API.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    from datetime import date as date_type
+    import calendar
+    from datetime import datetime
+
+    from prediction_data.bronze.polymarket.clob import (
+        CLOB_API_BASE_URL,
+        PolymarketClobClient,
+        load_clob_credentials,
+    )
+
+    settings = get_settings()
+    bucket = bucket or settings.bronze_bucket
+    logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    # Create run context for tracking
+    run_ctx = RunContext(platform="polymarket", entity="trades")
+    run_ctx.bind_to_logger(dt=dt)
+    run_ctx.log_start(logger)
+
+    # Compute day boundaries as Unix timestamps
+    dt_date = date_type.fromisoformat(dt)
+    start_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
+    )
+    end_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
+    )
+
+    logger.info(
+        "Starting Polymarket CLOB trades ingestion",
+        dt=dt,
+        bucket=bucket,
+        after=start_ts,
+        before=end_ts,
+    )
+
+    # Fetch trades from CLOB API
+    credentials = load_clob_credentials()
+    async with PolymarketClobClient(credentials) as client:
+        trades = await client.fetch_all_trades(after=start_ts, before=end_ts)
+
+    logger.info("Fetched CLOB trades from API", record_count=len(trades))
+
+    # Upload to S3
+    async with S3Client(bucket=bucket) as s3_client:
+        data_key, row_count = await s3_client.upload_jsonl(
+            records=trades,
+            platform="polymarket",
+            entity="trades",
+            dt=dt,
+            run_id=run_ctx.run_id,
+        )
+
+        logger.info(
+            "Uploaded CLOB trades data to S3",
+            key=data_key,
+            row_count=row_count,
+        )
+
+        manifest = create_manifest(
+            run_id=run_ctx.run_id,
+            platform="polymarket",
+            entity="trades",
+            dt=dt,
+            bucket=bucket,
+            key=data_key,
+            row_count=row_count,
+            api_base_url=CLOB_API_BASE_URL,
+            pagination="cursor",
+            cursor=None,
+        )
+
+        manifest_key = await s3_client.upload_manifest(manifest)
+        logger.info("Uploaded manifest to S3", key=manifest_key)
+
+    # Mark run complete
+    run_ctx.mark_complete()
+    run_ctx.log_end(logger)
+
+    return run_ctx.run_id
+
+
+def run_ingest_trades_clob(
+    dt: str,
+    *,
+    bucket: str | None = None,
+) -> str:
+    """Synchronous wrapper for ingest_trades_clob.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    return asyncio.run(ingest_trades_clob(dt, bucket=bucket))
+
+
 def run_ingest_trades(
     dt: str,
     *,

@@ -24,7 +24,7 @@
             "Generate manifest with api_base_url pointing to CLOB endpoint",
             "Add run_ingest_trades_clob() synchronous wrapper for CLI usage"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backfill_cli_command",

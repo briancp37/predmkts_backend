@@ -36,6 +36,17 @@
   - mypy clean, all 348 unit tests pass, no regressions
   - Note: PRD originally specified timestamp-based backward pagination, but actual CLOB API uses cursor-based pagination — implemented accordingly
 
+- [2026-01-28] polymarket_trades_ingestion_update: Added CLOB-based trades ingestion for backfill
+  - New async function ingest_trades_clob() in polymarket/ingest.py
+  - Computes day boundaries (start-of-day, end-of-day UTC) from dt param as Unix timestamps
+  - Uses PolymarketClobClient.fetch_all_trades(after=start_ts, before=end_ts) for cursor-based pagination
+  - Uploads to S3 with correct key structure: bronze/polymarket/trades/dt={date}/run_id={uuid}/
+  - Generates manifest with api_base_url pointing to CLOB endpoint, pagination="cursor"
+  - Added run_ingest_trades_clob() synchronous wrapper for CLI usage
+  - Backfill CLI _ingest_one() now routes polymarket/trades to ingest_trades_clob() instead of ingest_trades()
+  - mypy clean, all 348 unit tests pass, no regressions
+  - Pre-existing integration test failure in test_kalshi.py (Kalshi API field name 'taker_side' vs expected 'side') unrelated
+
 ## In Progress
 
 
@@ -43,6 +54,6 @@
 - Pre-existing: .env contains Polymarket CLOB fields (POLYGON_WALLET_PRIVATE_KEY, POLYMARKET_BUILDER_*) that Settings doesn't accept yet, causing 5 pre-existing test failures in test_failure_recovery.py and test_kalshi_validation.py
 
 ## Notes
-- The backfill CLI currently uses the existing Polymarket Data API trades client which has a 10k offset limit. The CLOB client (polymarket_clob_client feature) will remove this limitation when implemented.
+- The backfill CLI now uses the CLOB API for Polymarket trades, which has cursor-based pagination with no offset limit. The original ingest_trades() (Data API) is still available for non-backfill use.
 - Integration tests are skipped by default (require live API credentials).
 
