@@ -37,6 +37,24 @@
 - All tests passing (184 tests), typecheck clean
 - Note: Kalshi doesn't require token refresh - signatures are generated per-request
 
+### 2026-01-28: API Client Implementation (api_client)
+- Created src/prediction_data/bronze/kalshi/client.py with KalshiClient class
+- Implemented KalshiClient as async context manager following PolymarketClient patterns
+- Key features implemented:
+  - Cursor-based pagination for both trades and markets endpoints
+  - fetch_trades_page() and fetch_all_trades() methods with filtering support
+  - fetch_markets_page() and fetch_all_markets() methods with filtering support
+  - Authentication headers generated per-request via generate_auth_headers()
+  - Integration with shared HttpClient from core infrastructure
+  - Structured logging for pagination progress and record counts
+  - Configurable page size (default 100, max 1000)
+  - Optional base_url for switching between production and demo APIs
+- Updated src/prediction_data/bronze/kalshi/__init__.py with new exports:
+  - KalshiClient, KALSHI_API_BASE_URL, KALSHI_DEMO_API_BASE_URL
+  - DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE constants
+- Created comprehensive test suite in tests/test_kalshi_client.py (27 tests)
+- All tests passing (211 tests), typecheck clean
+
 ## In Progress
 
 

@@ -8,10 +8,22 @@ from prediction_data.bronze.kalshi.auth import (
     load_private_key,
     sign_request,
 )
+from prediction_data.bronze.kalshi.client import (
+    DEFAULT_PAGE_SIZE,
+    KALSHI_API_BASE_URL,
+    KALSHI_DEMO_API_BASE_URL,
+    MAX_PAGE_SIZE,
+    KalshiClient,
+)
 
 __all__ = [
+    "DEFAULT_PAGE_SIZE",
+    "KALSHI_API_BASE_URL",
+    "KALSHI_DEMO_API_BASE_URL",
     "KalshiAuthError",
+    "KalshiClient",
     "KalshiCredentials",
+    "MAX_PAGE_SIZE",
     "generate_auth_headers",
     "load_credentials_from_settings",
     "load_private_key",
