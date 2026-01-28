@@ -9,6 +9,11 @@
 - [2026-01-28] documentation: Updated README.md with project overview, quick start, architecture summary, and links to docs
 - [2026-01-28] documentation: Marked documentation category as passing in PRD
 
+- [2026-01-28] end_to_end_testing: Created tests/test_e2e_ingestion.py with 6 tests covering all 4 ingestion pipelines
+- [2026-01-28] end_to_end_testing: Tests validate full pipeline flow (fetch → compress → S3 upload) with mocked APIs and S3
+- [2026-01-28] end_to_end_testing: Validates S3 key structure, JSONL data, manifest accuracy, and unique run_ids
+- [2026-01-28] end_to_end_testing: Marked end_to_end_testing category as passing in PRD
+
 ## In Progress
 
 
@@ -17,5 +22,6 @@
 
 ## Notes
 - OPERATIONS.md covers: run status checking, manual backfills (local + ECS), troubleshooting (API timeouts, rate limits, permission errors, missing runs), and AWS resource inventory
-- All documentation steps in the PRD are complete. Remaining categories: end_to_end_testing, scheduled_run_validation, backfill_testing, failure_recovery, exit_criteria_verification, final_deployment
+- All documentation steps in the PRD are complete. Remaining categories: scheduled_run_validation, backfill_testing, failure_recovery, exit_criteria_verification, final_deployment
+- E2E tests use mocked API clients and FakeS3Client to validate the full ingestion flow without live AWS/API access. Tests cover: S3 key structure (Bronze pattern), JSONL decompression, manifest schema/accuracy, unique run_ids, and all 4 pipelines (polymarket trades/markets, kalshi trades/markets).
 

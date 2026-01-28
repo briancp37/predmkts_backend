@@ -10,7 +10,7 @@
             "Verify Kalshi markets ingestion produces valid Bronze output",
             "Validate all manifests contain accurate metadata"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "scheduled_run_validation",
