@@ -1,0 +1,91 @@
+[
+    {
+        "category": "api_research",
+        "description": "Research and document Kalshi API endpoints and authentication",
+        "steps": [
+            "Identify Kalshi API base URL and version",
+            "Document authentication requirements (API keys, OAuth, etc.)",
+            "Document trades endpoint: URL, parameters, response schema, pagination method",
+            "Document markets endpoint: URL, parameters, response schema, pagination method",
+            "Identify rate limits and recommended request patterns",
+            "Create API documentation notes in src/prediction_data/bronze/kalshi/README.md"
+        ],
+        "passes": true
+    },
+    {
+        "category": "authentication",
+        "description": "Implement Kalshi API authentication handling",
+        "steps": [
+            "Add Kalshi API credentials to configuration (KALSHI_API_KEY, etc.)",
+            "Create src/prediction_data/bronze/kalshi/auth.py for authentication logic",
+            "Implement credential loading from environment variables",
+            "Add authentication headers to API requests",
+            "Handle token refresh if required by Kalshi API"
+        ],
+        "passes": false
+    },
+    {
+        "category": "api_client",
+        "description": "Build Kalshi API client with pagination support",
+        "steps": [
+            "Create src/prediction_data/bronze/kalshi/client.py with KalshiClient class",
+            "Implement trades fetching with appropriate pagination",
+            "Implement markets fetching with appropriate pagination",
+            "Use shared HTTP client from core infrastructure",
+            "Handle Kalshi-specific error responses gracefully",
+            "Add logging for pagination progress and record counts"
+        ],
+        "passes": false
+    },
+    {
+        "category": "trades_ingestion",
+        "description": "Implement Kalshi trades ingestion command",
+        "steps": [
+            "Create src/prediction_data/bronze/kalshi/ingest.py with ingestion logic",
+            "Implement ingest_trades function that fetches all trades for a given date",
+            "Write raw API responses to JSONL format (minimal transformation)",
+            "Upload part-000.jsonl.gz to S3 with correct key structure",
+            "Generate and upload manifest.json with accurate row_count",
+            "Add CLI command: prediction-data ingest kalshi-trades --dt YYYY-MM-DD"
+        ],
+        "passes": false
+    },
+    {
+        "category": "markets_ingestion",
+        "description": "Implement Kalshi markets ingestion command",
+        "steps": [
+            "Implement ingest_markets function that fetches all markets snapshot",
+            "Write raw API responses to JSONL format (minimal transformation)",
+            "Upload part-000.jsonl.gz to S3 with correct key structure",
+            "Generate and upload manifest.json with accurate row_count",
+            "Add CLI command: prediction-data ingest kalshi-markets --dt YYYY-MM-DD"
+        ],
+        "passes": false
+    },
+    {
+        "category": "integration_testing",
+        "description": "Test Kalshi integration with actual API calls",
+        "steps": [
+            "Create tests/integration/test_kalshi.py for live API tests",
+            "Verify trades endpoint returns expected data structure",
+            "Verify markets endpoint returns expected data structure",
+            "Verify pagination works correctly for large result sets",
+            "Test with a real S3 bucket (can use localstack for CI)",
+            "Verify manifest.json is accurate after ingestion"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validation",
+        "description": "Validate Kalshi ingestion meets Bronze contract",
+        "steps": [
+            "Run trades ingestion for a specific date and verify S3 output",
+            "Run markets ingestion for a specific date and verify S3 output",
+            "Verify JSONL files are valid gzipped JSON Lines",
+            "Verify manifest row_count matches actual line count",
+            "Verify run_id is unique per invocation",
+            "Verify CLI prints run_id on success and exits with code 0"
+        ],
+        "passes": false
+    }
+]

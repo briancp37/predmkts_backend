@@ -1,0 +1,33 @@
+# Sprint Progress: Kalshi Integration
+# Release: 01_bronze_level
+# Created: 2026-01-27
+
+## Status: In Progress
+
+## Completed Tasks
+
+### 2026-01-28: API Research (api_research)
+- Researched Kalshi API documentation and endpoints
+- Created comprehensive README.md at src/prediction_data/bronze/kalshi/README.md
+- Documented:
+  - API base URLs: Production (api.elections.kalshi.com/trade-api/v2) and Demo (demo-api.kalshi.co/trade-api/v2)
+  - Authentication: RSA-PSS signature-based auth with KALSHI-ACCESS-KEY, KALSHI-ACCESS-SIGNATURE, KALSHI-ACCESS-TIMESTAMP headers
+  - Trades endpoint: GET /markets/trades with cursor pagination, filtering by ticker and timestamp
+  - Markets endpoint: GET /markets with cursor pagination, filtering by status, timestamps, tickers
+  - Rate limits by tier: Basic (20/10 r/w per sec), Advanced (30/30), Premier (100/100), Prime (400/400)
+  - Pagination pattern: cursor-based with limit up to 1000
+  - Response schemas for Trade and Market objects
+- All tests passing (139 tests), typecheck clean
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- Kalshi uses RSA-PSS signatures (not simple API keys) - requires private key PEM file
+- Signature = sign(timestamp_ms + HTTP_METHOD + path_without_query_params)
+- Environment variables needed: KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY_PATH
+- Maximum limit per request is 1000 records
+- Cursor-based pagination (empty cursor = end of results)
