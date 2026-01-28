@@ -1,0 +1,25 @@
+# Sprint Progress: Core Infrastructure
+# Release: 01_bronze_level
+# Created: 2026-01-27
+
+## Status: In Progress
+
+## Completed Tasks
+
+- [2026-01-27] run_id_management: Implemented RunContext dataclass with UUID4 generation,
+  S3 key prefix formatting, structlog binding, and start/end timestamp tracking.
+  Created src/prediction_data/core/run.py and tests/test_run.py (15 tests passing).
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+- RunContext provides format_s3_key_prefix() for Bronze layer path formatting
+- bind_to_logger() integrates with existing structlog context system
+- log_start() and log_end() provide structured run lifecycle logging
+- All type checks (mypy strict mode) and tests pass
+

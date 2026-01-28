@@ -1,0 +1,78 @@
+[
+    {
+        "category": "http_client",
+        "description": "Build a robust HTTP client layer with retry logic and error handling",
+        "steps": [
+            "Create src/prediction_data/core/http.py with httpx async client wrapper",
+            "Implement exponential backoff with jitter for retries",
+            "Configure retry on 429 (rate limit), 503, and transient 5xx errors",
+            "Configure retry on network/connection errors",
+            "Add configurable timeout settings (connect, read, total)",
+            "Add request/response logging with timing metrics"
+        ],
+        "passes": false
+    },
+    {
+        "category": "run_id_management",
+        "description": "Implement run_id generation and tracking for idempotent ingestion",
+        "steps": [
+            "Create src/prediction_data/core/run.py with RunContext dataclass",
+            "Implement UUID4 run_id generation",
+            "Include run_id in all log messages via structlog binding",
+            "Create helper to format run_id for S3 keys",
+            "Add run start/end timestamp tracking"
+        ],
+        "passes": true
+    },
+    {
+        "category": "s3_storage",
+        "description": "Build S3 storage layer following the Bronze storage contract",
+        "steps": [
+            "Create src/prediction_data/storage/s3.py with S3Client class",
+            "Implement method to build S3 key path: bronze/{platform}/{entity}/dt={dt}/run_id={run_id}/",
+            "Implement gzip compression for JSONL content",
+            "Implement upload_jsonl method that writes part-000.jsonl.gz",
+            "Implement upload_manifest method that writes manifest.json",
+            "Add validation that keys match expected Bronze layout pattern"
+        ],
+        "passes": false
+    },
+    {
+        "category": "manifest_schema",
+        "description": "Define and implement the manifest.json contract",
+        "steps": [
+            "Create src/prediction_data/storage/manifest.py with Manifest pydantic model",
+            "Define all required fields: run_id, platform, entity, dt, generated_at, files, row_count, source",
+            "Define nested Source model with api_base_url, pagination, cursor fields",
+            "Define nested FileReference model with bucket, key fields",
+            "Implement manifest serialization to JSON with ISO-8601 timestamps",
+            "Add manifest validation on load"
+        ],
+        "passes": false
+    },
+    {
+        "category": "compression_utilities",
+        "description": "Implement compression and file format utilities",
+        "steps": [
+            "Create src/prediction_data/core/compression.py with gzip utilities",
+            "Implement streaming gzip compression for large datasets",
+            "Implement JSONL serialization (one JSON object per line)",
+            "Add row counting during serialization",
+            "Ensure UTF-8 encoding throughout"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Add unit tests for core infrastructure components",
+        "steps": [
+            "Create tests/test_http.py with mock-based HTTP client tests",
+            "Create tests/test_run.py with run_id generation tests",
+            "Create tests/test_s3.py with moto-based S3 tests",
+            "Create tests/test_manifest.py with manifest serialization tests",
+            "Create tests/test_compression.py with gzip/JSONL tests",
+            "Verify all tests pass with pytest"
+        ],
+        "passes": false
+    }
+]
