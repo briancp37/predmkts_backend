@@ -1,0 +1,46 @@
+# Sprint Progress: AWS Infrastructure
+# Release: 01_bronze_level
+# Created: 2026-01-27
+
+## Status: In Progress
+
+## Completed Tasks
+
+### 2026-01-28: Container Setup (container_setup)
+- Created Dockerfile based on python:3.11-slim with multi-stage build
+- Installs prediction-data package via wheel built in builder stage
+- Configured non-root user (appuser:appgroup, uid/gid 1000)
+- Added health check using `prediction-data --version`
+- Created .dockerignore for optimized builds
+- Verified container builds and runs correctly
+- Note: ECR repository creation and image push are AWS operations to be done manually
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+### Container Usage
+The container is designed to be run with command overrides from ECS task definitions:
+```
+docker run prediction-data:latest ingest polymarket-trades --dt 2026-01-28
+docker run prediction-data:latest ingest kalshi-markets --dt 2026-01-28
+```
+
+Required environment variables for the container:
+- BRONZE_BUCKET: S3 bucket name for Bronze storage
+- AWS_REGION: AWS region (default: us-east-1)
+- LOG_LEVEL: Logging level (default: INFO)
+- KALSHI_API_KEY_ID: (optional) Kalshi API credentials
+- KALSHI_PRIVATE_KEY_PATH: (optional) Path to Kalshi private key
+
+### Next Steps
+1. Create S3 bucket (s3_bucket_setup)
+2. Create IAM roles (iam_setup)
+3. Create ECR repository and push image
+4. Set up ECS cluster and task definitions (ecs_cluster)
+5. Configure EventBridge schedules (eventbridge_schedules)
+6. Set up CloudWatch monitoring (monitoring)

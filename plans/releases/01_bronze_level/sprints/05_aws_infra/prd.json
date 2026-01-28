@@ -1,0 +1,92 @@
+[
+    {
+        "category": "s3_bucket_setup",
+        "description": "Create and configure the Bronze S3 bucket",
+        "steps": [
+            "Create S3 bucket with name following naming convention (e.g., prediction-bronze-{env})",
+            "Enable versioning on the bucket",
+            "Configure lifecycle rules for cost management (optional: transition to IA after 90 days)",
+            "Set up bucket policy restricting access to ECS task role",
+            "Enable server-side encryption (SSE-S3 or SSE-KMS)",
+            "Document bucket ARN and name in infrastructure notes"
+        ],
+        "passes": false
+    },
+    {
+        "category": "iam_setup",
+        "description": "Create IAM roles and policies for ECS tasks",
+        "steps": [
+            "Create ECS task execution role with ECR and CloudWatch Logs permissions",
+            "Create ECS task role with S3 write permissions to Bronze bucket",
+            "Add permissions for Secrets Manager if storing API credentials there",
+            "Follow least-privilege principle for all policies",
+            "Document role ARNs for use in task definitions"
+        ],
+        "passes": false
+    },
+    {
+        "category": "container_setup",
+        "description": "Create Docker container for ingestion tasks",
+        "steps": [
+            "Create Dockerfile based on python:3.11-slim",
+            "Install prediction-data package in container",
+            "Configure non-root user for security",
+            "Set up health check command",
+            "Create ECR repository for container images",
+            "Build and push container image to ECR"
+        ],
+        "passes": true
+    },
+    {
+        "category": "ecs_cluster",
+        "description": "Set up ECS cluster and task definitions",
+        "steps": [
+            "Create ECS cluster named 'prediction-data' (or use existing)",
+            "Create parameterized task definition that accepts PLATFORM and ENTITY",
+            "Configure Fargate launch type with appropriate CPU/memory (0.25 vCPU, 512MB)",
+            "Set up CloudWatch Logs log group: /ecs/prediction-data",
+            "Configure task to run prediction-data CLI command",
+            "Set appropriate task timeout (10-15 minutes max)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "eventbridge_schedules",
+        "description": "Create EventBridge schedules for automated ingestion",
+        "steps": [
+            "Create schedule for Polymarket trades: every 5 minutes",
+            "Create schedule for Kalshi trades: every 5 minutes",
+            "Create schedule for Polymarket markets: every 1 hour",
+            "Create schedule for Kalshi markets: every 1 hour",
+            "Configure schedules with timezone America/Chicago",
+            "Set up schedule target to run ECS task with correct overrides"
+        ],
+        "passes": false
+    },
+    {
+        "category": "monitoring",
+        "description": "Set up CloudWatch monitoring and alerting",
+        "steps": [
+            "Create CloudWatch log group with 30-day retention",
+            "Create metric filter for error log patterns",
+            "Create CloudWatch alarm for task failures",
+            "Create alarm for missing runs (no successful run in expected window)",
+            "Set up SNS topic for alert notifications",
+            "Document alarm ARNs and monitoring procedures"
+        ],
+        "passes": false
+    },
+    {
+        "category": "infrastructure_as_code",
+        "description": "Document or codify infrastructure setup",
+        "steps": [
+            "Create infrastructure/ directory for IaC templates",
+            "Document all created resources with ARNs and configurations",
+            "Create setup script or Terraform/CloudFormation templates (optional)",
+            "Document manual setup steps if not using IaC",
+            "Include rollback procedures",
+            "Create infrastructure diagram showing component relationships"
+        ],
+        "passes": false
+    }
+]
