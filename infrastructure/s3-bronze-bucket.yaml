@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 bucket for Bronze layer prediction market data storage
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in bucket naming)
+
+  ECSTaskRoleArn:
+    Type: String
+    Default: ''
+    Description: ARN of the ECS task role that will access this bucket (optional - add policy later if not provided)
+
+  EnableLifecycleRules:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable lifecycle rules to transition objects to IA storage after 90 days
+
+Conditions:
+  HasECSTaskRole: !Not [!Equals [!Ref ECSTaskRoleArn, '']]
+  EnableLifecycle: !Equals [!Ref EnableLifecycleRules, 'true']
+
+Resources:
+  BronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'prediction-bronze-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        !If
+          - EnableLifecycle
+          - Rules:
+              - Id: TransitionToIA
+                Status: Enabled
+                Transitions:
+                  - StorageClass: STANDARD_IA
+                    TransitionInDays: 90
+                NoncurrentVersionTransition:
+                  - StorageClass: STANDARD_IA
+                    TransitionInDays: 30
+                NoncurrentVersionExpiration:
+                  NoncurrentDays: 365
+          - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: bronze
+
+  BronzeBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: HasECSTaskRole
+    Properties:
+      Bucket: !Ref BronzeBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowECSTaskRoleAccess
+            Effect: Allow
+            Principal:
+              AWS: !Ref ECSTaskRoleArn
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !GetAtt BronzeBucket.Arn
+              - !Sub '${BronzeBucket.Arn}/*'
+
+Outputs:
+  BucketName:
+    Description: Name of the Bronze S3 bucket
+    Value: !Ref BronzeBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+
+  BucketArn:
+    Description: ARN of the Bronze S3 bucket
+    Value: !GetAtt BronzeBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketArn'
+
+  BucketDomainName:
+    Description: Domain name of the Bronze S3 bucket
+    Value: !GetAtt BronzeBucket.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketDomainName'

@@ -15,6 +15,17 @@
 - Verified container builds and runs correctly
 - Note: ECR repository creation and image push are AWS operations to be done manually
 
+### 2026-01-28: S3 Bucket Setup (s3_bucket_setup)
+- Created CloudFormation template: infrastructure/s3-bronze-bucket.yaml
+- Bucket naming convention: prediction-bronze-{env} (supports dev, staging, prod)
+- Versioning enabled by default
+- SSE-S3 encryption (AES256) with bucket key enabled
+- Public access fully blocked
+- Optional lifecycle rules: transition to IA after 90 days, noncurrent versions after 30 days
+- Bucket policy for ECS task role access (optional - can be added later)
+- Template validated with AWS CLI
+- Deployment: `aws cloudformation deploy --template-file infrastructure/s3-bronze-bucket.yaml --stack-name prediction-bronze-bucket --parameter-overrides Environment=dev`
+
 ## In Progress
 
 
@@ -38,9 +49,8 @@ Required environment variables for the container:
 - KALSHI_PRIVATE_KEY_PATH: (optional) Path to Kalshi private key
 
 ### Next Steps
-1. Create S3 bucket (s3_bucket_setup)
-2. Create IAM roles (iam_setup)
-3. Create ECR repository and push image
-4. Set up ECS cluster and task definitions (ecs_cluster)
-5. Configure EventBridge schedules (eventbridge_schedules)
-6. Set up CloudWatch monitoring (monitoring)
+1. Create IAM roles (iam_setup)
+2. Create ECR repository and push image
+3. Set up ECS cluster and task definitions (ecs_cluster)
+4. Configure EventBridge schedules (eventbridge_schedules)
+5. Set up CloudWatch monitoring (monitoring)
