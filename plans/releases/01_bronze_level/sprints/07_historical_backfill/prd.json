@@ -1,0 +1,72 @@
+[
+    {
+        "category": "polymarket_clob_client",
+        "description": "Add CLOB API trades client with L2 auth and timestamp-based pagination for unlimited historical trade fetching",
+        "steps": [
+            "Add CLOB API base URL constant (https://clob.polymarket.com) to client.py",
+            "Add Polymarket CLOB/L2 auth settings to config.py (POLYGON_WALLET_PRIVATE_KEY, POLYMARKET_BUILDER_API_KEY, POLYMARKET_BUILDER_SECRET, POLYMARKET_BUILDER_PASSPHRASE)",
+            "Implement PolymarketClobClient class with L2 auth header generation using py-clob-client or manual HMAC",
+            "Implement fetch_clob_trades() using GET /data/trades with before/after Unix timestamp params",
+            "Paginate by walking backwards: use oldest match_time from each batch as next 'before' param until 'after' boundary reached",
+            "Add configurable rate limiting (sleep between pages) to respect CLOB API limits",
+            "Add unit tests for CLOB client pagination logic with mocked responses"
+        ],
+        "passes": false
+    },
+    {
+        "category": "polymarket_trades_ingestion_update",
+        "description": "Add CLOB-based trades ingestion function for backfill use case",
+        "steps": [
+            "Add ingest_trades_clob() async function to polymarket/ingest.py",
+            "Compute day boundaries (start-of-day and end-of-day UTC) from --dt param as Unix timestamps",
+            "Use PolymarketClobClient.fetch_clob_trades(after=start_ts, before=end_ts) to fetch all trades for that day",
+            "Upload to S3 with correct key structure: bronze/polymarket/trades/dt={date}/run_id={uuid}/",
+            "Generate manifest with api_base_url pointing to CLOB endpoint",
+            "Add run_ingest_trades_clob() synchronous wrapper for CLI usage"
+        ],
+        "passes": false
+    },
+    {
+        "category": "backfill_cli_command",
+        "description": "Add backfill CLI command that iterates over date ranges for all platforms and entities",
+        "steps": [
+            "Add 'backfill' command group to CLI app in main.py",
+            "Implement backfill command with options: --platform (polymarket|kalshi|all), --entity (trades|markets|events|all), --start-date, --end-date, --bucket",
+            "Add --dry-run flag to preview planned ingestion runs without executing",
+            "Iterate day-by-day from start-date to end-date, running appropriate ingestion function per day",
+            "For Polymarket trades: use existing ingest_trades() (CLOB client deferred to separate feature)",
+            "For Kalshi trades: use existing ingest_trades() with min_ts/max_ts set to day boundaries",
+            "For markets/events on both platforms: run existing snapshot ingestion per day",
+            "Log progress per day and continue on failure, printing summary of failed days at end",
+            "Add --concurrency option to control parallel day processing (default: 1 sequential) [DEFERRED - sequential only for now]"
+        ],
+        "passes": true
+    },
+    {
+        "category": "documentation",
+        "description": "Document CLOB API details, rate limits, and backfill operational instructions",
+        "steps": [
+            "Create or update CLAUDE.md with Polymarket CLOB API endpoint details and L2 auth requirements",
+            "Document rate limits for Polymarket CLOB API and Kalshi API",
+            "Document required environment variables for backfill (POLYGON_WALLET_PRIVATE_KEY, POLYMARKET_BUILDER_* vars)",
+            "Document backfill CLI usage with examples for full historical backfill",
+            "Document expected data volumes and estimated run times per platform"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_validation",
+        "description": "Test backfill functionality end-to-end",
+        "steps": [
+            "Add unit tests for PolymarketClobClient pagination logic with mocked API responses",
+            "Add unit tests for backfill date range iteration logic",
+            "Add integration test for single-day CLOB trades backfill (Polymarket)",
+            "Add integration test for single-day Kalshi trades backfill with min_ts/max_ts",
+            "Add end-to-end test: backfill 3-day range for all entities on both platforms",
+            "Verify manifests contain correct metadata for backfilled data",
+            "Verify S3 paths follow expected key structure for backfilled data",
+            "Run existing test suite to verify no regressions"
+        ],
+        "passes": false
+    }
+]

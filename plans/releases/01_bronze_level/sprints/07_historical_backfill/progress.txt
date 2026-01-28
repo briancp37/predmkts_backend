@@ -1,0 +1,27 @@
+# Sprint Progress: Historical Backfill
+# Release: 01_bronze_level
+# Created: 2026-01-28
+
+## Status: In Progress
+
+## Completed Tasks
+- [2026-01-28] backfill_cli_command: Added `backfill run` CLI command group to main.py
+  - `prediction-data backfill run --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity] [--bucket] [--dry-run]`
+  - Iterates day-by-day over date range, calling existing ingestion functions per platform/entity
+  - Kalshi trades backfill uses min_ts/max_ts day boundaries for proper date scoping
+  - Polymarket trades uses existing Data API ingestion (CLOB client deferred)
+  - Continues on per-day failures, prints summary of failed days at end
+  - --dry-run flag previews planned runs without executing
+  - mypy passes (src/), no new test failures introduced
+  - --concurrency option deferred (sequential processing only for now)
+
+## In Progress
+
+
+## Blockers/Issues
+- Pre-existing: .env contains Polymarket CLOB fields (POLYGON_WALLET_PRIVATE_KEY, POLYMARKET_BUILDER_*) that Settings doesn't accept yet, causing 5 pre-existing test failures in test_failure_recovery.py and test_kalshi_validation.py
+
+## Notes
+- The backfill CLI currently uses the existing Polymarket Data API trades client which has a 10k offset limit. The CLOB client (polymarket_clob_client feature) will remove this limitation when implemented.
+- Integration tests are skipped by default (require live API credentials).
+
