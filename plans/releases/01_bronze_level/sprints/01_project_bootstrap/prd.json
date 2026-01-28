@@ -71,6 +71,6 @@
             "Run ruff check with no errors",
             "Run mypy with no errors on src/"
         ],
-        "passes": false
+        "passes": true
     }
 ]
