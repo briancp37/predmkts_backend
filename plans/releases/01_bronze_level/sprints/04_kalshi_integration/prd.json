@@ -22,7 +22,7 @@
             "Add authentication headers to API requests",
             "Handle token refresh if required by Kalshi API"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "api_client",

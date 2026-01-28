@@ -23,7 +23,7 @@
             "Handle API-specific error responses gracefully",
             "Add logging for pagination progress and record counts"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "trades_ingestion",

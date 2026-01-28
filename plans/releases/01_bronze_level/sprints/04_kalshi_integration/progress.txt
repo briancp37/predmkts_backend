@@ -19,6 +19,24 @@
   - Response schemas for Trade and Market objects
 - All tests passing (139 tests), typecheck clean
 
+### 2026-01-28: Authentication Implementation (authentication)
+- Added Kalshi API configuration to Settings class in src/prediction_data/core/config.py:
+  - kalshi_api_key_id: Kalshi API key ID (optional, loaded from KALSHI_API_KEY_ID env var)
+  - kalshi_private_key_path: Path to RSA private key PEM file (optional, loaded from KALSHI_PRIVATE_KEY_PATH)
+  - kalshi_api_base_url: Kalshi API base URL (defaults to production)
+- Created src/prediction_data/bronze/kalshi/auth.py with:
+  - KalshiAuthError: Custom exception for authentication failures
+  - KalshiCredentials: Frozen dataclass holding api_key_id and RSA private_key
+  - load_private_key(): Load RSA private key from PEM file
+  - load_credentials_from_settings(): Load credentials from environment variables
+  - sign_request(): Generate RSA-PSS signature for API requests
+  - generate_auth_headers(): Generate all three required auth headers
+- Added cryptography>=42.0.0 dependency to pyproject.toml
+- Created comprehensive test suite in tests/test_kalshi_auth.py (18 tests)
+- Updated src/prediction_data/bronze/kalshi/__init__.py with exports
+- All tests passing (184 tests), typecheck clean
+- Note: Kalshi doesn't require token refresh - signatures are generated per-request
+
 ## In Progress
 
 

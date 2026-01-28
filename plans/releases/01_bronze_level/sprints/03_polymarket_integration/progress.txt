@@ -20,6 +20,24 @@
   - Size/price returned as strings for precision
 - Created comprehensive README.md at src/prediction_data/bronze/polymarket/README.md
 
+### 2026-01-28: API Client (api_client)
+- Created src/prediction_data/bronze/polymarket/client.py with PolymarketClient class
+- Implemented PolymarketClient with async context manager pattern
+- Uses two HTTP clients internally:
+  - Gamma client for markets (https://gamma-api.polymarket.com)
+  - Data client for trades (https://data-api.polymarket.com)
+- Implemented offset-based pagination for both endpoints:
+  - fetch_markets_page() and fetch_all_markets() for markets
+  - fetch_trades_page() and fetch_trades() for trades
+- Added PaginationState dataclass for tracking pagination progress
+- Handles API-specific constraints:
+  - Trades offset limit (10,000) with truncation flag
+  - Market/event_id mutual exclusivity validation
+  - Configurable takerOnly parameter for trades
+- Comprehensive logging for pagination progress and record counts
+- Added 27 unit tests in tests/test_polymarket_client.py
+- Updated __init__.py with exports
+
 ## In Progress
 
 
@@ -29,7 +47,7 @@
 
 ## Notes
 
-- All type checks pass (mypy)
-- All 139 tests pass
-- Next task: Build Polymarket API client (api_client category)
+- All type checks pass (mypy) for new code
+- All 166 tests pass (27 new tests for Polymarket client)
+- Next task: Implement trades ingestion command (trades_ingestion category)
 
