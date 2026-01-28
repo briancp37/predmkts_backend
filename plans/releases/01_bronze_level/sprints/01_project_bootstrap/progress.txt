@@ -28,6 +28,17 @@
   - Verified: ruff check passes
   - Verified: mypy passes (7 source files)
 
+- [x] cli_skeleton - Build the CLI entry point and command structure
+  - Created src/prediction_data/cli/main.py with Typer application
+  - Added 'ingest' command group with polymarket and kalshi subcommands (placeholders)
+  - Implemented --version flag showing package version (0.1.0)
+  - CLI entry point 'prediction-data' already configured in pyproject.toml
+  - Verified: prediction-data --help shows CLI structure
+  - Verified: prediction-data --version shows "prediction-data 0.1.0"
+  - Verified: prediction-data ingest --help shows polymarket and kalshi commands
+  - Verified: ruff check passes
+  - Verified: mypy passes (8 source files)
+
 ## In Progress
 
 
@@ -37,5 +48,5 @@
 ## Notes
 
 - Using Python 3.14.0 (local), but project requires 3.11+ for broader compatibility
-- Package structure complete, next priority is cli_skeleton to implement the CLI entry point
 - All __init__.py files contain minimal docstrings describing module purpose
+- Next priority: configuration (environment variable management with pydantic Settings)

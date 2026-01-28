@@ -35,7 +35,7 @@
             "Configure CLI entry point 'prediction-data' in pyproject.toml",
             "Verify CLI installs and runs with 'prediction-data --help'"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "configuration",
