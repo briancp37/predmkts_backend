@@ -1,0 +1,444 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudWatch monitoring and alerting for prediction-data ingestion tasks
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  LogGroupName:
+    Type: String
+    Description: Name of the CloudWatch log group (from ecs-cluster stack, e.g., /ecs/prediction-data-dev)
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS cluster (e.g., prediction-data-dev)
+
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email address for alert notifications (leave empty to skip email subscription)
+
+  TradesExpectedIntervalSeconds:
+    Type: Number
+    Default: 600
+    Description: Expected interval for trades ingestion in seconds (default 600 = 10 minutes)
+
+  MarketsExpectedIntervalSeconds:
+    Type: Number
+    Default: 7200
+    Description: Expected interval for markets ingestion in seconds (default 7200 = 2 hours)
+
+  TaskFailureThreshold:
+    Type: Number
+    Default: 3
+    Description: Number of task failures in evaluation period before alarming
+
+  TaskFailureEvaluationPeriods:
+    Type: Number
+    Default: 1
+    Description: Number of evaluation periods for task failure alarm
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  # SNS Topic for alert notifications
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'prediction-data-alerts-${Environment}'
+      DisplayName: !Sub 'Prediction Data Alerts (${Environment})'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Email subscription (conditional)
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # Metric Filter for ERROR level logs
+  ErrorLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '?ERROR ?Error ?error ?CRITICAL ?Critical ?critical ?Exception ?exception ?Traceback'
+      MetricTransformations:
+        - MetricName: ErrorCount
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for successful ingestion completion
+  SuccessLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"Successfully ingested" OR "Ingestion complete" OR "completed successfully"'
+      MetricTransformations:
+        - MetricName: SuccessfulIngestions
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Polymarket trades runs
+  PolymarketTradesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"polymarket-trades" "ingest"'
+      MetricTransformations:
+        - MetricName: PolymarketTradesRuns
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Kalshi trades runs
+  KalshiTradesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"kalshi-trades" "ingest"'
+      MetricTransformations:
+        - MetricName: KalshiTradesRuns
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Polymarket markets runs
+  PolymarketMarketsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"polymarket-markets" "ingest"'
+      MetricTransformations:
+        - MetricName: PolymarketMarketsRuns
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Kalshi markets runs
+  KalshiMarketsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"kalshi-markets" "ingest"'
+      MetricTransformations:
+        - MetricName: KalshiMarketsRuns
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Alarm for error log patterns
+  ErrorLogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-errors-${Environment}'
+      AlarmDescription: Alerts when error patterns are detected in ingestion logs
+      MetricName: ErrorCount
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for ECS task failures (uses Container Insights metrics)
+  TaskFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-task-failures-${Environment}'
+      AlarmDescription: Alerts when ECS tasks fail to complete successfully
+      MetricName: TaskCount
+      Namespace: ECS/ContainerInsights
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: TaskDefinitionFamily
+          Value: !Sub 'prediction-data-ingest-${Environment}'
+      ExtendedStatistic: p0
+      Period: 300
+      EvaluationPeriods: !Ref TaskFailureEvaluationPeriods
+      Threshold: !Ref TaskFailureThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for missing Polymarket trades runs
+  MissingPolymarketTradesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-missing-polymarket-trades-${Environment}'
+      AlarmDescription: Alerts when no Polymarket trades ingestion runs in the expected interval
+      MetricName: PolymarketTradesRuns
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: !Ref TradesExpectedIntervalSeconds # Convert to seconds done via Fn::Sub
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for missing Kalshi trades runs
+  MissingKalshiTradesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-missing-kalshi-trades-${Environment}'
+      AlarmDescription: Alerts when no Kalshi trades ingestion runs in the expected interval
+      MetricName: KalshiTradesRuns
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: !Ref TradesExpectedIntervalSeconds
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for missing Polymarket markets runs
+  MissingPolymarketMarketsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-missing-polymarket-markets-${Environment}'
+      AlarmDescription: Alerts when no Polymarket markets ingestion runs in the expected interval
+      MetricName: PolymarketMarketsRuns
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: !Ref MarketsExpectedIntervalSeconds
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for missing Kalshi markets runs
+  MissingKalshiMarketsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-missing-kalshi-markets-${Environment}'
+      AlarmDescription: Alerts when no Kalshi markets ingestion runs in the expected interval
+      MetricName: KalshiMarketsRuns
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: !Ref MarketsExpectedIntervalSeconds
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Dashboard for monitoring overview
+  MonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'prediction-data-${Environment}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Ingestion Runs by Type",
+                "metrics": [
+                  ["PredictionData/${Environment}", "PolymarketTradesRuns", {"label": "Polymarket Trades"}],
+                  [".", "KalshiTradesRuns", {"label": "Kalshi Trades"}],
+                  [".", "PolymarketMarketsRuns", {"label": "Polymarket Markets"}],
+                  [".", "KalshiMarketsRuns", {"label": "Kalshi Markets"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Errors and Successes",
+                "metrics": [
+                  ["PredictionData/${Environment}", "ErrorCount", {"label": "Errors", "color": "#d62728"}],
+                  [".", "SuccessfulIngestions", {"label": "Successes", "color": "#2ca02c"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "alarm",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 3,
+              "properties": {
+                "title": "Alarm Status",
+                "alarms": [
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-errors-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-task-failures-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-trades-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-trades-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-markets-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-markets-${Environment}"
+                ]
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 9,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Recent Logs",
+                "query": "SOURCE '${LogGroupName}' | fields @timestamp, @message | sort @timestamp desc | limit 100",
+                "region": "${AWS::Region}",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  AlertTopicArn:
+    Description: ARN of the SNS alert topic
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertTopicArn'
+
+  AlertTopicName:
+    Description: Name of the SNS alert topic
+    Value: !GetAtt AlertTopic.TopicName
+    Export:
+      Name: !Sub '${AWS::StackName}-AlertTopicName'
+
+  ErrorLogAlarmArn:
+    Description: ARN of the error log alarm
+    Value: !GetAtt ErrorLogAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ErrorLogAlarmArn'
+
+  TaskFailureAlarmArn:
+    Description: ARN of the task failure alarm
+    Value: !GetAtt TaskFailureAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskFailureAlarmArn'
+
+  MissingPolymarketTradesAlarmArn:
+    Description: ARN of the missing Polymarket trades alarm
+    Value: !GetAtt MissingPolymarketTradesAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MissingPolymarketTradesAlarmArn'
+
+  MissingKalshiTradesAlarmArn:
+    Description: ARN of the missing Kalshi trades alarm
+    Value: !GetAtt MissingKalshiTradesAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MissingKalshiTradesAlarmArn'
+
+  MissingPolymarketMarketsAlarmArn:
+    Description: ARN of the missing Polymarket markets alarm
+    Value: !GetAtt MissingPolymarketMarketsAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MissingPolymarketMarketsAlarmArn'
+
+  MissingKalshiMarketsAlarmArn:
+    Description: ARN of the missing Kalshi markets alarm
+    Value: !GetAtt MissingKalshiMarketsAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MissingKalshiMarketsAlarmArn'
+
+  DashboardName:
+    Description: Name of the CloudWatch dashboard
+    Value: !Sub 'prediction-data-${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardName'
+
+  DeploymentCommand:
+    Description: Example AWS CLI command to deploy this stack
+    Value: !Sub |
+      aws cloudformation deploy \
+        --template-file infrastructure/cloudwatch-monitoring.yaml \
+        --stack-name prediction-data-monitoring \
+        --parameter-overrides \
+          Environment=dev \
+          LogGroupName=/ecs/prediction-data-dev \
+          ECSClusterName=prediction-data-dev \
+          AlertEmail=your-email@example.com

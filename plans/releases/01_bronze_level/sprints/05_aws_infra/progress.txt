@@ -91,6 +91,39 @@
     --capabilities CAPABILITY_NAMED_IAM
   ```
 
+### 2026-01-28: CloudWatch Monitoring (monitoring)
+- Created CloudFormation template: infrastructure/cloudwatch-monitoring.yaml
+- SNS Topic: prediction-data-alerts-{env} for alert notifications
+  - Optional email subscription via AlertEmail parameter
+- Metric Filters (on log group from ecs-cluster stack):
+  - ErrorCount: Detects ERROR, Error, CRITICAL, Exception, Traceback patterns
+  - SuccessfulIngestions: Detects successful completion log messages
+  - Per-ingestion run tracking: PolymarketTradesRuns, KalshiTradesRuns, PolymarketMarketsRuns, KalshiMarketsRuns
+- CloudWatch Alarms:
+  - prediction-data-errors-{env}: Alerts on error patterns in logs
+  - prediction-data-task-failures-{env}: Alerts on ECS task failures (via Container Insights)
+  - prediction-data-missing-polymarket-trades-{env}: Alerts if no trades run in 10 minutes
+  - prediction-data-missing-kalshi-trades-{env}: Alerts if no trades run in 10 minutes
+  - prediction-data-missing-polymarket-markets-{env}: Alerts if no markets run in 2 hours
+  - prediction-data-missing-kalshi-markets-{env}: Alerts if no markets run in 2 hours
+- CloudWatch Dashboard: prediction-data-{env}
+  - Ingestion runs by type chart
+  - Errors and successes chart
+  - Alarm status widget
+  - Recent logs viewer
+- Template validated with AWS CLI
+- Deployment:
+  ```
+  aws cloudformation deploy \
+    --template-file infrastructure/cloudwatch-monitoring.yaml \
+    --stack-name prediction-data-monitoring \
+    --parameter-overrides \
+      Environment=dev \
+      LogGroupName=/ecs/prediction-data-dev \
+      ECSClusterName=prediction-data-dev \
+      AlertEmail=your-email@example.com
+  ```
+
 ## In Progress
 
 
@@ -115,5 +148,4 @@ Required environment variables for the container:
 
 ### Next Steps
 1. Create ECR repository and push image
-2. Set up CloudWatch monitoring (monitoring)
-3. Document infrastructure and complete IaC (infrastructure_as_code)
+2. Document infrastructure and complete IaC (infrastructure_as_code)
