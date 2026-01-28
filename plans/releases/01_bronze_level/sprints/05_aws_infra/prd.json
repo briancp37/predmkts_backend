@@ -22,7 +22,7 @@
             "Follow least-privilege principle for all policies",
             "Document role ARNs for use in task definitions"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "container_setup",

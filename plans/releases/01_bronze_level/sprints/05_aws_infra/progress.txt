@@ -26,6 +26,19 @@
 - Template validated with AWS CLI
 - Deployment: `aws cloudformation deploy --template-file infrastructure/s3-bronze-bucket.yaml --stack-name prediction-bronze-bucket --parameter-overrides Environment=dev`
 
+### 2026-01-28: IAM Setup (iam_setup)
+- Created CloudFormation template: infrastructure/iam-ecs-roles.yaml
+- ECS Task Execution Role (prediction-data-execution-{env}):
+  - Attaches AmazonECSTaskExecutionRolePolicy (ECR pull, CloudWatch Logs)
+  - Optional Secrets Manager access for API credentials (prefix: prediction-data/*)
+- ECS Task Role (prediction-data-task-{env}):
+  - S3 access to Bronze bucket (ListBucket, GetObject, PutObject, DeleteObject)
+  - CloudWatch Logs access for application logging
+- Follows least-privilege principle throughout
+- Parameterized for dev/staging/prod environments
+- Exports role ARNs for use in ECS task definitions
+- Deployment: `aws cloudformation deploy --template-file infrastructure/iam-ecs-roles.yaml --stack-name prediction-data-iam-roles --parameter-overrides Environment=dev BronzeBucketArn=arn:aws:s3:::prediction-bronze-dev --capabilities CAPABILITY_NAMED_IAM`
+
 ## In Progress
 
 
@@ -49,8 +62,8 @@ Required environment variables for the container:
 - KALSHI_PRIVATE_KEY_PATH: (optional) Path to Kalshi private key
 
 ### Next Steps
-1. Create IAM roles (iam_setup)
-2. Create ECR repository and push image
-3. Set up ECS cluster and task definitions (ecs_cluster)
-4. Configure EventBridge schedules (eventbridge_schedules)
-5. Set up CloudWatch monitoring (monitoring)
+1. Create ECR repository and push image
+2. Set up ECS cluster and task definitions (ecs_cluster)
+3. Configure EventBridge schedules (eventbridge_schedules)
+4. Set up CloudWatch monitoring (monitoring)
+5. Document infrastructure and complete IaC (infrastructure_as_code)

@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM roles and policies for ECS tasks running prediction-data ingestion
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  BronzeBucketArn:
+    Type: String
+    Description: ARN of the Bronze S3 bucket (e.g., arn:aws:s3:::prediction-bronze-dev)
+
+  EnableSecretsManager:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable Secrets Manager permissions for API credentials
+
+  SecretsPrefix:
+    Type: String
+    Default: 'prediction-data/'
+    Description: Prefix for secrets in Secrets Manager (e.g., prediction-data/)
+
+Conditions:
+  HasSecretsManager: !Equals [!Ref EnableSecretsManager, 'true']
+
+Resources:
+  # ECS Task Execution Role - used by ECS agent to pull images and write logs
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'prediction-data-execution-${Environment}'
+      Description: ECS task execution role for prediction-data containers
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - !If
+          - HasSecretsManager
+          - PolicyName: SecretsManagerAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Sid: GetSecrets
+                  Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretsPrefix}*'
+          - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ECS Task Role - used by the application running in the container
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'prediction-data-task-${Environment}'
+      Description: ECS task role for prediction-data application
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3BronzeBucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: !Ref BronzeBucketArn
+              - Sid: ReadWriteObjects
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub '${BronzeBucketArn}/*'
+        - PolicyName: CloudWatchLogsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CreateLogStreams
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/prediction-data:*'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  TaskExecutionRoleArn:
+    Description: ARN of the ECS task execution role
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskExecutionRoleArn'
+
+  TaskExecutionRoleName:
+    Description: Name of the ECS task execution role
+    Value: !Ref ECSTaskExecutionRole
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskExecutionRoleName'
+
+  TaskRoleArn:
+    Description: ARN of the ECS task role
+    Value: !GetAtt ECSTaskRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskRoleArn'
+
+  TaskRoleName:
+    Description: Name of the ECS task role
+    Value: !Ref ECSTaskRole
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskRoleName'
