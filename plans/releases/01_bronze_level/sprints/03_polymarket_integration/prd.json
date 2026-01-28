@@ -48,7 +48,7 @@
             "Generate and upload manifest.json with accurate row_count",
             "Add CLI command: prediction-data ingest polymarket-markets --dt YYYY-MM-DD"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "integration_testing",

@@ -102,6 +102,49 @@ def polymarket_trades(
         raise typer.Exit(code=1)
 
 
+@ingest_app.command(name="polymarket-markets")
+def polymarket_markets(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    include_closed: Annotated[
+        bool,
+        typer.Option(
+            "--include-closed/--active-only",
+            help="Whether to include closed/resolved markets.",
+        ),
+    ] = True,
+) -> None:
+    """Ingest Polymarket markets snapshot for a given date."""
+    from prediction_data.bronze.polymarket.ingest import run_ingest_markets
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_markets(
+            dt,
+            bucket=bucket,
+            include_closed=include_closed,
+        )
+        typer.echo(run_id)
+        raise typer.Exit(code=0)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 @ingest_app.command()
 def kalshi() -> None:
     """Ingest data from Kalshi."""

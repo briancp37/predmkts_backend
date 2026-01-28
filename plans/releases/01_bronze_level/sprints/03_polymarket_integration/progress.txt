@@ -54,6 +54,24 @@
 - Updated src/prediction_data/bronze/polymarket/__init__.py with exports
 - Updated src/prediction_data/cli/main.py with new command
 
+### 2026-01-28: Markets Ingestion (markets_ingestion)
+- Implemented ingest_markets() async function in src/prediction_data/bronze/polymarket/ingest.py
+  - Fetches all markets using PolymarketClient.fetch_all_markets()
+  - Creates RunContext for tracking run_id and timestamps
+  - Uploads raw API responses as gzip-compressed JSONL to S3
+  - Creates and uploads manifest.json with row_count and source metadata
+  - Uses GAMMA_API_BASE_URL in manifest for correct API source attribution
+  - Logs progress throughout the ingestion process
+- Added run_ingest_markets() synchronous wrapper for CLI usage
+- Added CLI command: prediction-data ingest polymarket-markets --dt YYYY-MM-DD
+  - Supports optional --bucket and --include-closed/--active-only flags
+  - Prints run_id on success and exits with code 0
+  - Prints error and exits with code 1 on failure
+- Updated src/prediction_data/bronze/polymarket/__init__.py with new exports
+- Updated src/prediction_data/cli/main.py with new command
+- All type checks pass (mypy)
+- All 27 polymarket tests pass
+
 ## In Progress
 
 
@@ -64,6 +82,7 @@
 ## Notes
 
 - All type checks pass (mypy) for new code
-- All 184 tests pass
-- Next task: Implement markets ingestion command (markets_ingestion category)
+- All polymarket tests pass (27 tests)
+- Note: Kalshi client tests have pre-existing failures due to missing bronze_bucket config
+- Next task: Integration testing (integration_testing category)
 

@@ -7,7 +7,9 @@ from prediction_data.bronze.polymarket.client import (
     PolymarketClient,
 )
 from prediction_data.bronze.polymarket.ingest import (
+    ingest_markets,
     ingest_trades,
+    run_ingest_markets,
     run_ingest_trades,
 )
 
@@ -16,6 +18,8 @@ __all__ = [
     "GAMMA_API_BASE_URL",
     "PaginationState",
     "PolymarketClient",
+    "ingest_markets",
     "ingest_trades",
+    "run_ingest_markets",
     "run_ingest_trades",
 ]
