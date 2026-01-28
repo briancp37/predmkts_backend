@@ -48,7 +48,7 @@
             "Configure task to run prediction-data CLI command",
             "Set appropriate task timeout (10-15 minutes max)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "eventbridge_schedules",

@@ -39,6 +39,29 @@
 - Exports role ARNs for use in ECS task definitions
 - Deployment: `aws cloudformation deploy --template-file infrastructure/iam-ecs-roles.yaml --stack-name prediction-data-iam-roles --parameter-overrides Environment=dev BronzeBucketArn=arn:aws:s3:::prediction-bronze-dev --capabilities CAPABILITY_NAMED_IAM`
 
+### 2026-01-28: ECS Cluster Setup (ecs_cluster)
+- Created CloudFormation template: infrastructure/ecs-cluster.yaml
+- ECS cluster named prediction-data-{env} with Container Insights enabled
+- Task definition family: prediction-data-ingest-{env}
+- Fargate launch type with configurable CPU (default 256 = 0.25 vCPU) and memory (default 512MB)
+- CloudWatch log group: /ecs/prediction-data-{env} with configurable retention (default 30 days)
+- Container configured with environment variables: BRONZE_BUCKET, AWS_REGION, LOG_LEVEL
+- Parameterized for command overrides to run different ingestion commands
+- Template validated with AWS CLI
+- Example run command included in CloudFormation outputs
+- Deployment:
+  ```
+  aws cloudformation deploy \
+    --template-file infrastructure/ecs-cluster.yaml \
+    --stack-name prediction-data-ecs \
+    --parameter-overrides \
+      Environment=dev \
+      ECRImageUri=123456789012.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest \
+      TaskExecutionRoleArn=<from-iam-stack> \
+      TaskRoleArn=<from-iam-stack> \
+      BronzeBucketName=prediction-bronze-dev
+  ```
+
 ## In Progress
 
 
@@ -63,7 +86,6 @@ Required environment variables for the container:
 
 ### Next Steps
 1. Create ECR repository and push image
-2. Set up ECS cluster and task definitions (ecs_cluster)
-3. Configure EventBridge schedules (eventbridge_schedules)
-4. Set up CloudWatch monitoring (monitoring)
-5. Document infrastructure and complete IaC (infrastructure_as_code)
+2. Configure EventBridge schedules (eventbridge_schedules)
+3. Set up CloudWatch monitoring (monitoring)
+4. Document infrastructure and complete IaC (infrastructure_as_code)

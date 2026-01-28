@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS cluster and task definition for prediction-data ingestion
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  ECRImageUri:
+    Type: String
+    Description: Full URI of the container image in ECR (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest)
+
+  TaskExecutionRoleArn:
+    Type: String
+    Description: ARN of the ECS task execution role (from iam-ecs-roles stack)
+
+  TaskRoleArn:
+    Type: String
+    Description: ARN of the ECS task role (from iam-ecs-roles stack)
+
+  BronzeBucketName:
+    Type: String
+    Description: Name of the Bronze S3 bucket (e.g., prediction-bronze-dev)
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues:
+      - 7
+      - 14
+      - 30
+      - 60
+      - 90
+    Description: Number of days to retain CloudWatch logs
+
+  TaskCpu:
+    Type: String
+    Default: '256'
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+    Description: CPU units for the task (256 = 0.25 vCPU)
+
+  TaskMemory:
+    Type: String
+    Default: '512'
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+    Description: Memory in MB for the task
+
+Resources:
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub 'prediction-data-${Environment}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/prediction-data-${Environment}'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ECS Task Definition - parameterized for different ingestion commands
+  # Use container command overrides to specify: ingest <platform>-<entity> --dt <date>
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub 'prediction-data-ingest-${Environment}'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: prediction-data
+          Image: !Ref ECRImageUri
+          Essential: true
+          # Default command - override with ECS RunTask containerOverrides
+          Command:
+            - '--help'
+          Environment:
+            - Name: BRONZE_BUCKET
+              Value: !Ref BronzeBucketName
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: LOG_LEVEL
+              Value: INFO
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ingest
+          # Stop timeout - allow graceful shutdown
+          StopTimeout: 30
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  ClusterArn:
+    Description: ARN of the ECS cluster
+    Value: !GetAtt ECSCluster.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ClusterArn'
+
+  ClusterName:
+    Description: Name of the ECS cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-ClusterName'
+
+  TaskDefinitionArn:
+    Description: ARN of the task definition
+    Value: !Ref TaskDefinition
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskDefinitionArn'
+
+  TaskDefinitionFamily:
+    Description: Family name of the task definition
+    Value: !Sub 'prediction-data-ingest-${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-TaskDefinitionFamily'
+
+  LogGroupName:
+    Description: Name of the CloudWatch log group
+    Value: !Ref LogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroupName'
+
+  LogGroupArn:
+    Description: ARN of the CloudWatch log group
+    Value: !GetAtt LogGroup.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroupArn'
+
+  # Example command for running a task with overrides
+  ExampleRunCommand:
+    Description: Example AWS CLI command to run the task with command override
+    Value: !Sub |
+      aws ecs run-task \
+        --cluster ${ECSCluster} \
+        --task-definition ${TaskDefinition} \
+        --launch-type FARGATE \
+        --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
+        --overrides '{"containerOverrides":[{"name":"prediction-data","command":["ingest","polymarket-trades","--dt","2026-01-28"]}]}'
