@@ -145,7 +145,60 @@ def polymarket_markets(
         raise typer.Exit(code=1)
 
 
-@ingest_app.command()
-def kalshi() -> None:
-    """Ingest data from Kalshi."""
-    typer.echo("Kalshi ingestion not yet implemented.")
+@ingest_app.command(name="kalshi-trades")
+def kalshi_trades(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    ticker: Annotated[
+        str | None,
+        typer.Option(
+            "--ticker",
+            help="Market ticker to filter by.",
+        ),
+    ] = None,
+    min_ts: Annotated[
+        int | None,
+        typer.Option(
+            "--min-ts",
+            help="Minimum Unix timestamp to filter trades.",
+        ),
+    ] = None,
+    max_ts: Annotated[
+        int | None,
+        typer.Option(
+            "--max-ts",
+            help="Maximum Unix timestamp to filter trades.",
+        ),
+    ] = None,
+) -> None:
+    """Ingest Kalshi trades for a given date."""
+    from prediction_data.bronze.kalshi.ingest import run_ingest_trades
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_trades(
+            dt,
+            bucket=bucket,
+            ticker=ticker,
+            min_ts=min_ts,
+            max_ts=max_ts,
+        )
+        typer.echo(run_id)
+        raise typer.Exit(code=0)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)

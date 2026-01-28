@@ -15,6 +15,10 @@ from prediction_data.bronze.kalshi.client import (
     MAX_PAGE_SIZE,
     KalshiClient,
 )
+from prediction_data.bronze.kalshi.ingest import (
+    ingest_trades,
+    run_ingest_trades,
+)
 
 __all__ = [
     "DEFAULT_PAGE_SIZE",
@@ -25,7 +29,9 @@ __all__ = [
     "KalshiCredentials",
     "MAX_PAGE_SIZE",
     "generate_auth_headers",
+    "ingest_trades",
     "load_credentials_from_settings",
     "load_private_key",
+    "run_ingest_trades",
     "sign_request",
 ]
