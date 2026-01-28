@@ -23,6 +23,19 @@
   - All 34 backfill tests pass, mypy clean, no new regressions (5 pre-existing failures remain)
   - CLOB-specific tests (pagination, integration) deferred until polymarket_clob_client is implemented
 
+- [2026-01-28] polymarket_clob_client: Added PolymarketClobClient with L2 HMAC auth and cursor-based pagination
+  - New file: src/prediction_data/bronze/polymarket/clob.py
+  - CLOB_API_BASE_URL = https://clob.polymarket.com, endpoint GET /data/trades
+  - L2 auth: HMAC-SHA256 signature over timestamp+method+path (query params excluded from signature)
+  - 5 POLY_* headers: ADDRESS, SIGNATURE, TIMESTAMP, API_KEY, PASSPHRASE
+  - Cursor-based pagination (next_cursor), not offset-based — no 10k limit
+  - Configurable page_delay for rate limiting between paginated requests
+  - ClobCredentials dataclass + load_clob_credentials() from Settings
+  - Added CLOB settings to config.py: polygon_wallet_public_key, polygon_wallet_private_key, polymarket_builder_api_key, polymarket_builder_secret, polymarket_builder_passphrase
+  - 17 unit tests in tests/test_polymarket_clob.py (HMAC signing, L2 headers, context manager, fetch page, pagination)
+  - mypy clean, all 348 unit tests pass, no regressions
+  - Note: PRD originally specified timestamp-based backward pagination, but actual CLOB API uses cursor-based pagination — implemented accordingly
+
 ## In Progress
 
 

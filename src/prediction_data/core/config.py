@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     log_level: str = "INFO"
 
+    # Polymarket CLOB API settings (optional - only required for CLOB trades backfill)
+    polygon_wallet_public_key: str | None = None
+    polygon_wallet_private_key: str | None = None
+    polymarket_builder_api_key: str | None = None
+    polymarket_builder_secret: str | None = None
+    polymarket_builder_passphrase: str | None = None
+
     # Kalshi API settings (optional - only required for Kalshi ingestion)
     kalshi_api_key_id: str | None = None
     kalshi_private_key_path: str | None = None

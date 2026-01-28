@@ -11,7 +11,7 @@
             "Add configurable rate limiting (sleep between pages) to respect CLOB API limits",
             "Add unit tests for CLOB client pagination logic with mocked responses"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "polymarket_trades_ingestion_update",
