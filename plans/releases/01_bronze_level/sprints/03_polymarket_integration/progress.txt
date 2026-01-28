@@ -38,6 +38,22 @@
 - Added 27 unit tests in tests/test_polymarket_client.py
 - Updated __init__.py with exports
 
+### 2026-01-28: Trades Ingestion (trades_ingestion)
+- Created src/prediction_data/bronze/polymarket/ingest.py with ingestion logic
+- Implemented ingest_trades() async function:
+  - Fetches trades using PolymarketClient.fetch_trades()
+  - Creates RunContext for tracking run_id and timestamps
+  - Uploads raw API responses as gzip-compressed JSONL to S3
+  - Creates and uploads manifest.json with row_count and source metadata
+  - Logs progress throughout the ingestion process
+- Added run_ingest_trades() synchronous wrapper for CLI usage
+- Added CLI command: prediction-data ingest polymarket-trades --dt YYYY-MM-DD
+  - Supports optional --bucket, --market, --event-id, --taker-only flags
+  - Prints run_id on success and exits with code 0
+  - Prints error and exits with code 1 on failure
+- Updated src/prediction_data/bronze/polymarket/__init__.py with exports
+- Updated src/prediction_data/cli/main.py with new command
+
 ## In Progress
 
 
@@ -48,6 +64,6 @@
 ## Notes
 
 - All type checks pass (mypy) for new code
-- All 166 tests pass (27 new tests for Polymarket client)
-- Next task: Implement trades ingestion command (trades_ingestion category)
+- All 184 tests pass
+- Next task: Implement markets ingestion command (markets_ingestion category)
 

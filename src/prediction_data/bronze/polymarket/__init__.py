@@ -6,10 +6,16 @@ from prediction_data.bronze.polymarket.client import (
     PaginationState,
     PolymarketClient,
 )
+from prediction_data.bronze.polymarket.ingest import (
+    ingest_trades,
+    run_ingest_trades,
+)
 
 __all__ = [
     "DATA_API_BASE_URL",
     "GAMMA_API_BASE_URL",
     "PaginationState",
     "PolymarketClient",
+    "ingest_trades",
+    "run_ingest_trades",
 ]
