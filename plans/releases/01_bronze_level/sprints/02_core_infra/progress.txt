@@ -10,6 +10,14 @@
   S3 key prefix formatting, structlog binding, and start/end timestamp tracking.
   Created src/prediction_data/core/run.py and tests/test_run.py (15 tests passing).
 
+- [2026-01-27] http_client: Built robust async HTTP client with retry logic and error handling.
+  Created src/prediction_data/core/http.py with HttpClient class wrapping httpx.
+  Features: exponential backoff with jitter, retry on 429/5xx status codes,
+  retry on network/connection errors, configurable timeouts (connect/read/total),
+  request/response logging with timing metrics.
+  Created tests/test_http.py with 32 comprehensive tests covering all functionality.
+  All type checks (mypy strict mode) and tests pass (47 total tests in suite).
+
 ## In Progress
 
 
@@ -21,5 +29,8 @@
 - RunContext provides format_s3_key_prefix() for Bronze layer path formatting
 - bind_to_logger() integrates with existing structlog context system
 - log_start() and log_end() provide structured run lifecycle logging
+- HttpClient uses async context manager pattern for proper resource cleanup
+- RetryConfig allows customization of retry behavior (max_retries, delays, status codes)
+- TimeoutConfig provides fine-grained control over connect/read/total timeouts
 - All type checks (mypy strict mode) and tests pass
 
