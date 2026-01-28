@@ -1,0 +1,79 @@
+[
+    {
+        "category": "api_research",
+        "description": "Research and document Polymarket API endpoints and behavior",
+        "steps": [
+            "Identify Polymarket API base URL and authentication requirements",
+            "Document trades endpoint: URL, parameters, response schema, pagination method",
+            "Document markets endpoint: URL, parameters, response schema, pagination method",
+            "Identify rate limits and recommended request patterns",
+            "Document any API quirks or defensive assumptions needed",
+            "Create API documentation notes in src/prediction_data/bronze/polymarket/README.md"
+        ],
+        "passes": true
+    },
+    {
+        "category": "api_client",
+        "description": "Build Polymarket API client with pagination support",
+        "steps": [
+            "Create src/prediction_data/bronze/polymarket/client.py with PolymarketClient class",
+            "Implement trades fetching with cursor-based or offset pagination",
+            "Implement markets fetching with appropriate pagination",
+            "Use shared HTTP client from core infrastructure",
+            "Handle API-specific error responses gracefully",
+            "Add logging for pagination progress and record counts"
+        ],
+        "passes": false
+    },
+    {
+        "category": "trades_ingestion",
+        "description": "Implement Polymarket trades ingestion command",
+        "steps": [
+            "Create src/prediction_data/bronze/polymarket/ingest.py with ingestion logic",
+            "Implement ingest_trades function that fetches all trades for a given date",
+            "Write raw API responses to JSONL format (minimal transformation)",
+            "Upload part-000.jsonl.gz to S3 with correct key structure",
+            "Generate and upload manifest.json with accurate row_count",
+            "Add CLI command: prediction-data ingest polymarket-trades --dt YYYY-MM-DD"
+        ],
+        "passes": false
+    },
+    {
+        "category": "markets_ingestion",
+        "description": "Implement Polymarket markets ingestion command",
+        "steps": [
+            "Implement ingest_markets function that fetches all markets snapshot",
+            "Write raw API responses to JSONL format (minimal transformation)",
+            "Upload part-000.jsonl.gz to S3 with correct key structure",
+            "Generate and upload manifest.json with accurate row_count",
+            "Add CLI command: prediction-data ingest polymarket-markets --dt YYYY-MM-DD"
+        ],
+        "passes": false
+    },
+    {
+        "category": "integration_testing",
+        "description": "Test Polymarket integration with actual API calls",
+        "steps": [
+            "Create tests/integration/test_polymarket.py for live API tests",
+            "Verify trades endpoint returns expected data structure",
+            "Verify markets endpoint returns expected data structure",
+            "Verify pagination works correctly for large result sets",
+            "Test with a real S3 bucket (can use localstack for CI)",
+            "Verify manifest.json is accurate after ingestion"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validation",
+        "description": "Validate Polymarket ingestion meets Bronze contract",
+        "steps": [
+            "Run trades ingestion for a specific date and verify S3 output",
+            "Run markets ingestion for a specific date and verify S3 output",
+            "Verify JSONL files are valid gzipped JSON Lines",
+            "Verify manifest row_count matches actual line count",
+            "Verify run_id is unique per invocation",
+            "Verify CLI prints run_id on success and exits with code 0"
+        ],
+        "passes": false
+    }
+]
