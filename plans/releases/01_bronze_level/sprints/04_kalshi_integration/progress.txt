@@ -55,6 +55,42 @@
 - Created comprehensive test suite in tests/test_kalshi_client.py (27 tests)
 - All tests passing (211 tests), typecheck clean
 
+### 2026-01-28: Trades Ingestion Implementation (trades_ingestion)
+- Created src/prediction_data/bronze/kalshi/ingest.py with:
+  - ingest_trades(): Async function that fetches trades and uploads to S3
+  - run_ingest_trades(): Synchronous wrapper for CLI usage
+  - Integration with RunContext for tracking run_id and duration
+  - Support for filtering by ticker, min_ts, max_ts
+  - Manifest creation with correct platform, entity, and cursor pagination metadata
+- Added CLI command `prediction-data ingest kalshi-trades` with options:
+  - --dt (required): Data partition date in YYYY-MM-DD format
+  - --bucket: S3 bucket name (defaults to BRONZE_BUCKET env var)
+  - --ticker: Market ticker to filter by
+  - --min-ts: Minimum Unix timestamp filter
+  - --max-ts: Maximum Unix timestamp filter
+- Updated src/prediction_data/bronze/kalshi/__init__.py with new exports:
+  - ingest_trades, run_ingest_trades
+- Created comprehensive test suite in tests/test_kalshi_ingest.py (6 tests)
+- All tests passing (217 tests), typecheck clean
+
+### 2026-01-28: Markets Ingestion Implementation (markets_ingestion)
+- Extended src/prediction_data/bronze/kalshi/ingest.py with:
+  - ingest_markets(): Async function that fetches all markets snapshot and uploads to S3
+  - run_ingest_markets(): Synchronous wrapper for CLI usage
+  - Integration with RunContext for tracking run_id and duration
+  - Support for filtering by event_ticker, series_ticker, status
+  - Manifest creation with correct platform, entity, and cursor pagination metadata
+- Added CLI command `prediction-data ingest kalshi-markets` with options:
+  - --dt (required): Data partition date in YYYY-MM-DD format
+  - --bucket: S3 bucket name (defaults to BRONZE_BUCKET env var)
+  - --event-ticker: Event ticker to filter by
+  - --series-ticker: Series ticker to filter by
+  - --status: Market status filter (unopened, open, paused, closed, settled)
+- Updated src/prediction_data/bronze/kalshi/__init__.py with new exports:
+  - ingest_markets, run_ingest_markets
+- Added 6 new tests to tests/test_kalshi_ingest.py (now 12 tests total)
+- All tests passing (223 tests), typecheck clean
+
 ## In Progress
 
 

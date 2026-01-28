@@ -202,3 +202,62 @@ def kalshi_trades(
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
+
+
+@ingest_app.command(name="kalshi-markets")
+def kalshi_markets(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    event_ticker: Annotated[
+        str | None,
+        typer.Option(
+            "--event-ticker",
+            help="Event ticker to filter by.",
+        ),
+    ] = None,
+    series_ticker: Annotated[
+        str | None,
+        typer.Option(
+            "--series-ticker",
+            help="Series ticker to filter by.",
+        ),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Market status to filter by (unopened, open, paused, closed, settled).",
+        ),
+    ] = None,
+) -> None:
+    """Ingest Kalshi markets snapshot for a given date."""
+    from prediction_data.bronze.kalshi.ingest import run_ingest_markets
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_markets(
+            dt,
+            bucket=bucket,
+            event_ticker=event_ticker,
+            series_ticker=series_ticker,
+            status=status,
+        )
+        typer.echo(run_id)
+        raise typer.Exit(code=0)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)

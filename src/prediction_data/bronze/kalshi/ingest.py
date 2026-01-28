@@ -140,3 +140,129 @@ def run_ingest_trades(
             max_ts=max_ts,
         )
     )
+
+
+async def ingest_markets(
+    dt: str,
+    *,
+    bucket: str | None = None,
+    event_ticker: str | None = None,
+    series_ticker: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Ingest Kalshi markets snapshot for a given date.
+
+    Fetches all markets from the Kalshi API and stores them
+    in the Bronze layer as gzip-compressed JSONL files.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        event_ticker: Optional event ticker to filter by.
+        series_ticker: Optional series ticker to filter by.
+        status: Optional market status to filter by (unopened, open, paused, closed, settled).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    settings = get_settings()
+    bucket = bucket or settings.bronze_bucket
+    logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    # Create run context for tracking
+    run_ctx = RunContext(platform="kalshi", entity="markets")
+    run_ctx.bind_to_logger(dt=dt)
+    run_ctx.log_start(logger)
+
+    logger.info(
+        "Starting Kalshi markets ingestion",
+        dt=dt,
+        bucket=bucket,
+        event_ticker=event_ticker,
+        series_ticker=series_ticker,
+        status=status,
+    )
+
+    # Load credentials and fetch markets from API
+    credentials = load_credentials_from_settings()
+    async with KalshiClient(credentials) as client:
+        markets = await client.fetch_all_markets(
+            event_ticker=event_ticker,
+            series_ticker=series_ticker,
+            status=status,
+        )
+
+    logger.info("Fetched markets from API", record_count=len(markets))
+
+    # Upload to S3
+    async with S3Client(bucket=bucket) as s3_client:
+        # Upload JSONL data
+        data_key, row_count = await s3_client.upload_jsonl(
+            records=markets,
+            platform="kalshi",
+            entity="markets",
+            dt=dt,
+            run_id=run_ctx.run_id,
+        )
+
+        logger.info(
+            "Uploaded markets data to S3",
+            key=data_key,
+            row_count=row_count,
+        )
+
+        # Create and upload manifest
+        manifest = create_manifest(
+            run_id=run_ctx.run_id,
+            platform="kalshi",
+            entity="markets",
+            dt=dt,
+            bucket=bucket,
+            key=data_key,
+            row_count=row_count,
+            api_base_url=KALSHI_API_BASE_URL,
+            pagination="cursor",
+            cursor=None,  # Final cursor not tracked since we paginate to completion
+        )
+
+        manifest_key = await s3_client.upload_manifest(manifest)
+        logger.info("Uploaded manifest to S3", key=manifest_key)
+
+    # Mark run complete
+    run_ctx.mark_complete()
+    run_ctx.log_end(logger)
+
+    return run_ctx.run_id
+
+
+def run_ingest_markets(
+    dt: str,
+    *,
+    bucket: str | None = None,
+    event_ticker: str | None = None,
+    series_ticker: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Synchronous wrapper for ingest_markets.
+
+    This is a convenience function for CLI usage.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        event_ticker: Optional event ticker to filter by.
+        series_ticker: Optional series ticker to filter by.
+        status: Optional market status to filter by (unopened, open, paused, closed, settled).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    return asyncio.run(
+        ingest_markets(
+            dt,
+            bucket=bucket,
+            event_ticker=event_ticker,
+            series_ticker=series_ticker,
+            status=status,
+        )
+    )

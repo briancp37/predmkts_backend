@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from prediction_data.bronze.kalshi.ingest import ingest_trades, run_ingest_trades
+from prediction_data.bronze.kalshi.ingest import (
+    ingest_markets,
+    ingest_trades,
+    run_ingest_markets,
+    run_ingest_trades,
+)
 
 
 @pytest.fixture
@@ -306,4 +311,297 @@ class TestRunIngestTrades:
                 ticker="PRES-2024",
                 min_ts=1705320000,
                 max_ts=1705406400,
+            )
+
+
+@pytest.fixture
+def sample_markets() -> list[dict]:
+    """Sample market records for testing."""
+    return [
+        {
+            "ticker": "PRES-2024-R-DEM",
+            "event_ticker": "PRES-2024",
+            "title": "Will the Democratic candidate win?",
+            "status": "open",
+            "yes_bid": 55,
+            "yes_ask": 56,
+            "no_bid": 44,
+            "no_ask": 45,
+            "volume": 100000,
+        },
+        {
+            "ticker": "PRES-2024-R-REP",
+            "event_ticker": "PRES-2024",
+            "title": "Will the Republican candidate win?",
+            "status": "open",
+            "yes_bid": 42,
+            "yes_ask": 43,
+            "no_bid": 57,
+            "no_ask": 58,
+            "volume": 150000,
+        },
+    ]
+
+
+class TestIngestMarkets:
+    """Tests for the ingest_markets function."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_markets_fetches_and_uploads(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that ingest_markets fetches markets and uploads to S3."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            # Configure mock settings
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            # Configure mock Kalshi client
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            # Configure mock S3 client
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = (
+                "bronze/kalshi/markets/dt=2024-01-15/run_id=abc123/part-000.jsonl.gz",
+                2,
+            )
+            mock_s3.upload_manifest.return_value = (
+                "bronze/kalshi/markets/dt=2024-01-15/run_id=abc123/manifest.json"
+            )
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            # Run ingestion
+            run_id = await ingest_markets(dt="2024-01-15")
+
+            # Verify markets were fetched
+            mock_client.fetch_all_markets.assert_called_once_with(
+                event_ticker=None,
+                series_ticker=None,
+                status=None,
+            )
+
+            # Verify data was uploaded to S3
+            mock_s3.upload_jsonl.assert_called_once()
+            call_kwargs = mock_s3.upload_jsonl.call_args.kwargs
+            assert call_kwargs["records"] == sample_markets
+            assert call_kwargs["platform"] == "kalshi"
+            assert call_kwargs["entity"] == "markets"
+            assert call_kwargs["dt"] == "2024-01-15"
+
+            # Verify manifest was uploaded
+            mock_s3.upload_manifest.assert_called_once()
+
+            # Verify run_id is returned
+            assert isinstance(run_id, str)
+            assert len(run_id) > 0
+
+    @pytest.mark.asyncio
+    async def test_ingest_markets_with_event_ticker_filter(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that ingest_markets passes event_ticker filter to client."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest_key"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_markets(dt="2024-01-15", event_ticker="PRES-2024")
+
+            mock_client.fetch_all_markets.assert_called_once_with(
+                event_ticker="PRES-2024",
+                series_ticker=None,
+                status=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_ingest_markets_with_status_filter(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that ingest_markets passes status filter to client."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest_key"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_markets(dt="2024-01-15", status="open")
+
+            mock_client.fetch_all_markets.assert_called_once_with(
+                event_ticker=None,
+                series_ticker=None,
+                status="open",
+            )
+
+    @pytest.mark.asyncio
+    async def test_ingest_markets_with_custom_bucket(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that ingest_markets uses custom bucket when provided."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "default-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest_key"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_markets(dt="2024-01-15", bucket="custom-bucket")
+
+            # Verify S3 client was created with custom bucket
+            mock_s3_class.assert_called_once_with(bucket="custom-bucket")
+
+    @pytest.mark.asyncio
+    async def test_ingest_markets_manifest_has_correct_metadata(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that the manifest contains correct metadata."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = (
+                "bronze/kalshi/markets/dt=2024-01-15/run_id=abc123/part-000.jsonl.gz",
+                2,
+            )
+            mock_s3.upload_manifest.return_value = "manifest_key"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_markets(dt="2024-01-15")
+
+            # Get the manifest that was uploaded
+            manifest = mock_s3.upload_manifest.call_args.args[0]
+
+            assert manifest.platform == "kalshi"
+            assert manifest.entity == "markets"
+            assert manifest.dt == "2024-01-15"
+            assert manifest.row_count == 2
+            assert manifest.source.pagination == "cursor"
+            assert "kalshi" in manifest.source.api_base_url.lower()
+
+
+class TestRunIngestMarkets:
+    """Tests for the synchronous wrapper function."""
+
+    def test_run_ingest_markets_calls_async_version(
+        self,
+        mock_credentials: MagicMock,
+        sample_markets: list[dict],
+    ) -> None:
+        """Test that run_ingest_markets wraps the async function correctly."""
+        with (
+            patch(
+                "prediction_data.bronze.kalshi.ingest.load_credentials_from_settings",
+                return_value=mock_credentials,
+            ),
+            patch(
+                "prediction_data.bronze.kalshi.ingest.KalshiClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_markets.return_value = sample_markets
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest_key"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            run_id = run_ingest_markets(
+                dt="2024-01-15",
+                bucket="test-bucket",
+                event_ticker="PRES-2024",
+                status="open",
+            )
+
+            assert isinstance(run_id, str)
+            mock_client.fetch_all_markets.assert_called_once_with(
+                event_ticker="PRES-2024",
+                series_ticker=None,
+                status="open",
             )
