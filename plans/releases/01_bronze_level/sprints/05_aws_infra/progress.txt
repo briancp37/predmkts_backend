@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-01-27
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -124,6 +124,15 @@
       AlertEmail=your-email@example.com
   ```
 
+### 2026-01-28: Infrastructure as Code (infrastructure_as_code)
+- infrastructure/ directory already contains all 5 CloudFormation templates
+- README.md documents all resources with naming conventions and configurations
+- Deployment order documented with full CLI commands and cross-stack dependency resolution
+- Rollback procedures documented (reverse-order stack deletion + single-stack rollback)
+- ASCII architecture diagram included showing EventBridge → ECS → S3/CloudWatch flow
+- Resource summary table with naming patterns for all environments
+- All 6 PRD steps were already satisfied by prior work; marked category as passing
+
 ## In Progress
 
 
@@ -147,5 +156,6 @@ Required environment variables for the container:
 - KALSHI_PRIVATE_KEY_PATH: (optional) Path to Kalshi private key
 
 ### Next Steps
-1. Create ECR repository and push image
-2. Document infrastructure and complete IaC (infrastructure_as_code)
+1. Create ECR repository and push image (AWS manual operation)
+2. Deploy stacks to AWS following deployment order in infrastructure/README.md
+3. Sprint complete - all PRD categories passing

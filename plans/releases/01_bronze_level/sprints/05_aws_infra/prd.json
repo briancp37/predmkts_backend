@@ -87,6 +87,6 @@
             "Include rollback procedures",
             "Create infrastructure diagram showing component relationships"
         ],
-        "passes": false
+        "passes": true
     }
 ]
