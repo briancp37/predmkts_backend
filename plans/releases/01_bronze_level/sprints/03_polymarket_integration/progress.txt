@@ -72,6 +72,42 @@
 - All type checks pass (mypy)
 - All 27 polymarket tests pass
 
+### 2026-01-28: Integration Testing (integration_testing)
+- Created tests/integration/ directory for integration tests
+- Created tests/integration/__init__.py
+- Created tests/integration/test_polymarket.py with 16 integration tests:
+  - TestPolymarketMarketsAPI: Tests for Gamma API markets endpoint
+    - test_fetch_markets_page_returns_valid_structure
+    - test_fetch_markets_pagination_works
+    - test_fetch_all_markets_returns_multiple_pages
+    - test_fetch_markets_active_only
+  - TestPolymarketTradesAPI: Tests for Data API trades endpoint
+    - test_fetch_trades_page_returns_valid_structure
+    - test_fetch_trades_pagination_works
+    - test_fetch_trades_with_max_records
+    - test_fetch_trades_returns_truncation_flag_correctly
+  - TestPolymarketIngestion: Ingestion tests with mock S3
+    - test_ingest_markets_with_mock_s3
+    - test_ingest_trades_with_mock_s3
+  - TestApiBaseUrls: API accessibility tests
+    - test_gamma_api_is_accessible
+    - test_data_api_is_accessible
+  - TestMarketDataStructure: Detailed market data validation
+    - test_market_has_required_fields
+  - TestTradeDataStructure: Detailed trade data validation
+    - test_trade_has_required_fields
+  - TestPaginationBehavior: Pagination edge cases
+    - test_empty_page_detection
+    - test_partial_page_detection
+- Added pytest marker configuration for integration tests in pyproject.toml
+  - Run with: pytest -m integration
+  - Skip with: pytest -m "not integration"
+- All tests make real API calls to verify actual behavior
+- MockS3Client class for testing ingestion without S3 access
+- All type checks pass (mypy)
+- All 211 unit tests pass
+- Integration tests verified working against live API
+
 ## In Progress
 
 
@@ -82,7 +118,7 @@
 ## Notes
 
 - All type checks pass (mypy) for new code
-- All polymarket tests pass (27 tests)
-- Note: Kalshi client tests have pre-existing failures due to missing bronze_bucket config
-- Next task: Integration testing (integration_testing category)
+- All 211 unit tests pass (27 polymarket-specific)
+- Integration tests use pytest marker system for selective execution
+- Next task: Validation (validation category)
 

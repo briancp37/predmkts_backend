@@ -61,7 +61,7 @@
             "Test with a real S3 bucket (can use localstack for CI)",
             "Verify manifest.json is accurate after ingestion"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "validation",
