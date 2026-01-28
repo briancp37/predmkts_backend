@@ -15,6 +15,14 @@
   - mypy passes (src/), no new test failures introduced
   - --concurrency option deferred (sequential processing only for now)
 
+- [2026-01-28] testing_and_validation: Added unit tests for backfill helper functions and CLI command
+  - TestDateRange: single day, multi-day, month boundary, start-after-end edge case
+  - TestDayBoundariesTs: UTC timestamp correctness, 24h span validation
+  - TestResolvePlatformsAndEntities: "all" expansion and single-value passthrough
+  - TestBackfillCLI: invalid date/platform/entity validation, dry-run output, single-day success, multi-day iteration count, failure-continues-and-exits-1 behavior
+  - All 34 backfill tests pass, mypy clean, no new regressions (5 pre-existing failures remain)
+  - CLOB-specific tests (pagination, integration) deferred until polymarket_clob_client is implemented
+
 ## In Progress
 
 

@@ -5,12 +5,17 @@ Validates that backfill capability works correctly:
 - Multiple backfill runs for the same date create unique run_ids (no overwrites)
 - Backfill data lands in the correct S3 path with the specified date
 - Manifests are created for each backfill run
+- Date range iteration logic produces correct date lists
+- Day boundary timestamp calculations are correct
+- CLI backfill command validates inputs and orchestrates correctly
 """
 
+from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from typer.testing import CliRunner
 
 from prediction_data.bronze.kalshi.ingest import (
     ingest_events as kalshi_ingest_events,
@@ -399,3 +404,224 @@ class TestKalshiEventsBackfill:
 
         assert len(set(run_ids)) == 3, f"Run IDs not unique: {run_ids}"
         assert len(set(all_keys)) == 6, f"S3 keys not unique: {all_keys}"
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for backfill helper functions
+# ---------------------------------------------------------------------------
+
+
+class TestDateRange:
+    """Tests for _date_range helper."""
+
+    def test_single_day(self) -> None:
+        from prediction_data.cli.main import _date_range
+
+        result = _date_range(date(2025, 6, 15), date(2025, 6, 15))
+        assert result == [date(2025, 6, 15)]
+
+    def test_multi_day(self) -> None:
+        from prediction_data.cli.main import _date_range
+
+        result = _date_range(date(2025, 6, 13), date(2025, 6, 16))
+        assert result == [
+            date(2025, 6, 13),
+            date(2025, 6, 14),
+            date(2025, 6, 15),
+            date(2025, 6, 16),
+        ]
+
+    def test_month_boundary(self) -> None:
+        from prediction_data.cli.main import _date_range
+
+        result = _date_range(date(2025, 1, 30), date(2025, 2, 2))
+        assert result == [
+            date(2025, 1, 30),
+            date(2025, 1, 31),
+            date(2025, 2, 1),
+            date(2025, 2, 2),
+        ]
+
+    def test_start_after_end_returns_empty(self) -> None:
+        from prediction_data.cli.main import _date_range
+
+        result = _date_range(date(2025, 6, 20), date(2025, 6, 15))
+        assert result == []
+
+
+class TestDayBoundariesTs:
+    """Tests for _day_boundaries_ts helper."""
+
+    def test_returns_utc_boundaries(self) -> None:
+        from prediction_data.cli.main import _day_boundaries_ts
+
+        start_ts, end_ts = _day_boundaries_ts(date(2025, 6, 15))
+        # 2025-06-15 00:00:00 UTC
+        assert start_ts == 1749945600
+        # 2025-06-15 23:59:59 UTC
+        assert end_ts == 1750031999
+
+    def test_boundaries_span_one_day(self) -> None:
+        from prediction_data.cli.main import _day_boundaries_ts
+
+        start_ts, end_ts = _day_boundaries_ts(date(2025, 1, 1))
+        assert end_ts - start_ts == 86399  # 24h - 1s
+
+
+class TestResolvePlatformsAndEntities:
+    """Tests for _resolve_platforms and _resolve_entities."""
+
+    def test_resolve_platforms_all(self) -> None:
+        from prediction_data.cli.main import _resolve_platforms
+
+        assert _resolve_platforms("all") == ["polymarket", "kalshi"]
+
+    def test_resolve_platforms_single(self) -> None:
+        from prediction_data.cli.main import _resolve_platforms
+
+        assert _resolve_platforms("kalshi") == ["kalshi"]
+
+    def test_resolve_entities_all(self) -> None:
+        from prediction_data.cli.main import _resolve_entities
+
+        assert _resolve_entities("all") == ["trades", "markets", "events"]
+
+    def test_resolve_entities_single(self) -> None:
+        from prediction_data.cli.main import _resolve_entities
+
+        assert _resolve_entities("trades") == ["trades"]
+
+
+# ---------------------------------------------------------------------------
+# CLI command tests
+# ---------------------------------------------------------------------------
+
+runner = CliRunner()
+
+
+class TestBackfillCLI:
+    """Tests for the backfill run CLI command."""
+
+    def _invoke(self, args: list[str], **extra_patches: Any) -> Any:
+        """Invoke the CLI with configure_logging patched out."""
+        from prediction_data.cli.main import app
+
+        with patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")):
+            return runner.invoke(app, ["backfill", "run"] + args)
+
+    def test_invalid_date_format_exits_1(self) -> None:
+        result = self._invoke(["--start-date", "not-a-date", "--end-date", "2025-06-15"])
+        assert result.exit_code == 1
+
+    def test_start_after_end_exits_1(self) -> None:
+        result = self._invoke(["--start-date", "2025-06-20", "--end-date", "2025-06-15"])
+        assert result.exit_code == 1
+
+    def test_invalid_platform_exits_1(self) -> None:
+        result = self._invoke([
+            "--start-date", "2025-06-15",
+            "--end-date", "2025-06-15",
+            "--platform", "binance",
+        ])
+        assert result.exit_code == 1
+
+    def test_invalid_entity_exits_1(self) -> None:
+        result = self._invoke([
+            "--start-date", "2025-06-15",
+            "--end-date", "2025-06-15",
+            "--entity", "orders",
+        ])
+        assert result.exit_code == 1
+
+    def test_dry_run_prints_plan_without_executing(self) -> None:
+        from prediction_data.cli.main import app
+
+        with patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")):
+            result = runner.invoke(
+                app,
+                [
+                    "backfill", "run",
+                    "--start-date", "2025-06-15",
+                    "--end-date", "2025-06-16",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--dry-run",
+                ],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "2025-06-15" in result.output
+        assert "2025-06-16" in result.output
+
+    def test_successful_single_day_backfill(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.cli.main._ingest_one", new_callable=AsyncMock) as mock_ingest,
+        ):
+            mock_ingest.return_value = "test-run-id-123"
+            result = runner.invoke(
+                app,
+                [
+                    "backfill", "run",
+                    "--start-date", "2025-06-15",
+                    "--end-date", "2025-06-15",
+                    "--platform", "kalshi",
+                    "--entity", "trades",
+                ],
+            )
+        assert result.exit_code == 0
+        assert "test-run-id-123" in result.output
+        mock_ingest.assert_called_once()
+
+    def test_multi_day_calls_ingest_per_day(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.cli.main._ingest_one", new_callable=AsyncMock) as mock_ingest,
+        ):
+            mock_ingest.return_value = "run-id"
+            result = runner.invoke(
+                app,
+                [
+                    "backfill", "run",
+                    "--start-date", "2025-06-13",
+                    "--end-date", "2025-06-16",
+                    "--platform", "polymarket",
+                    "--entity", "events",
+                ],
+            )
+        assert result.exit_code == 0
+        assert mock_ingest.call_count == 4
+
+    def test_failure_on_one_day_continues_and_exits_1(self) -> None:
+        from prediction_data.cli.main import app
+
+        call_count = 0
+
+        async def _side_effect(**kwargs: Any) -> str:
+            nonlocal call_count
+            call_count += 1
+            if kwargs.get("dt_str") == "2025-06-14":
+                raise RuntimeError("API down")
+            return "ok-run-id"
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.cli.main._ingest_one", side_effect=_side_effect),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "backfill", "run",
+                    "--start-date", "2025-06-13",
+                    "--end-date", "2025-06-15",
+                    "--platform", "kalshi",
+                    "--entity", "trades",
+                ],
+            )
+        assert call_count == 3
+        assert result.exit_code == 1
+        assert "1 failure" in result.output

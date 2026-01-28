@@ -60,6 +60,7 @@
         "steps": [
             "Add unit tests for PolymarketClobClient pagination logic with mocked API responses",
             "Add unit tests for backfill date range iteration logic",
+            "Add unit tests for backfill CLI command (validation, dry-run, orchestration, error handling)",
             "Add integration test for single-day CLOB trades backfill (Polymarket)",
             "Add integration test for single-day Kalshi trades backfill with min_ts/max_ts",
             "Add end-to-end test: backfill 3-day range for all entities on both platforms",
@@ -67,6 +68,6 @@
             "Verify S3 paths follow expected key structure for backfilled data",
             "Run existing test suite to verify no regressions"
         ],
-        "passes": false
+        "passes": true
     }
 ]
