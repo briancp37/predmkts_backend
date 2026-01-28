@@ -96,7 +96,6 @@ def polymarket_trades(
             taker_only=taker_only,
         )
         typer.echo(run_id)
-        raise typer.Exit(code=0)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
@@ -139,7 +138,6 @@ def polymarket_markets(
             include_closed=include_closed,
         )
         typer.echo(run_id)
-        raise typer.Exit(code=0)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
@@ -198,7 +196,6 @@ def kalshi_trades(
             max_ts=max_ts,
         )
         typer.echo(run_id)
-        raise typer.Exit(code=0)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
@@ -257,7 +254,6 @@ def kalshi_markets(
             status=status,
         )
         typer.echo(run_id)
-        raise typer.Exit(code=0)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)

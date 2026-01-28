@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-01-27
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -107,6 +107,19 @@
 - All unit tests passing (223 tests), typecheck clean
 - Run integration tests with: pytest -m integration
 - Skip integration tests with: pytest -m "not integration"
+
+### 2026-01-28: Validation Implementation (validation)
+- Created tests/test_kalshi_validation.py with comprehensive validation tests (13 tests)
+- Test coverage includes:
+  - TestJsonlGzipValidation: Verifies JSONL files are valid gzip-compressed JSON Lines
+  - TestManifestRowCount: Verifies manifest row_count matches actual line count
+  - TestRunIdUniqueness: Verifies run_id is UUID4 and unique per invocation
+  - TestCliOutput: Verifies CLI prints run_id on success and exits with code 0
+  - TestS3OutputStructure: Verifies S3 keys follow Bronze layout pattern
+- Fixed CLI bug where `raise typer.Exit(code=0)` was caught by exception handler
+  - Removed redundant `raise typer.Exit(code=0)` from all CLI commands
+  - Affected commands: polymarket-trades, polymarket-markets, kalshi-trades, kalshi-markets
+- All tests passing (236 tests), typecheck clean
 
 ## In Progress
 

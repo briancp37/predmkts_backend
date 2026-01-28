@@ -86,6 +86,6 @@
             "Verify run_id is unique per invocation",
             "Verify CLI prints run_id on success and exits with code 0"
         ],
-        "passes": false
+        "passes": true
     }
 ]
