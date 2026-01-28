@@ -47,7 +47,7 @@
             "Define LOG_LEVEL environment variable (default: INFO)",
             "Create .env.example file documenting all environment variables"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "logging_setup",

@@ -39,6 +39,18 @@
   - Verified: ruff check passes
   - Verified: mypy passes (8 source files)
 
+- [x] configuration - Set up configuration management via environment variables
+  - Created src/prediction_data/core/config.py with pydantic Settings class
+  - Defined BRONZE_BUCKET environment variable (required)
+  - Defined AWS_REGION environment variable (default: us-east-1)
+  - Defined LOG_LEVEL environment variable (default: INFO)
+  - Created .env.example file documenting all environment variables
+  - Settings supports loading from .env file via pydantic-settings
+  - Added lru_cache wrapper for get_settings() to ensure singleton pattern
+  - Verified: Configuration loads correctly from environment variables
+  - Verified: ruff check passes
+  - Verified: mypy passes (9 source files)
+
 ## In Progress
 
 
@@ -49,4 +61,4 @@
 
 - Using Python 3.14.0 (local), but project requires 3.11+ for broader compatibility
 - All __init__.py files contain minimal docstrings describing module purpose
-- Next priority: configuration (environment variable management with pydantic Settings)
+- Next priority: logging_setup (structured logging for CloudWatch compatibility)
