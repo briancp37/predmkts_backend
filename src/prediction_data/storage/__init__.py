@@ -6,10 +6,24 @@ from prediction_data.storage.manifest import (
     Source,
     create_manifest,
 )
+from prediction_data.storage.s3 import (
+    BRONZE_KEY_PATTERN,
+    BRONZE_KEY_PREFIX_PATTERN,
+    S3Client,
+    build_s3_key_prefix,
+    validate_bronze_key,
+    validate_bronze_key_prefix,
+)
 
 __all__ = [
+    "BRONZE_KEY_PATTERN",
+    "BRONZE_KEY_PREFIX_PATTERN",
     "FileReference",
     "Manifest",
+    "S3Client",
     "Source",
+    "build_s3_key_prefix",
     "create_manifest",
+    "validate_bronze_key",
+    "validate_bronze_key_prefix",
 ]

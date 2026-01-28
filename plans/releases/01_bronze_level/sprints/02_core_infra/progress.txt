@@ -49,6 +49,31 @@
   Created tests/test_manifest.py with 31 comprehensive tests covering all functionality.
   All type checks (mypy strict mode) and tests pass (106 total tests in suite).
 
+- [2026-01-27] s3_storage: Built S3 storage layer for Bronze layer data.
+  Created src/prediction_data/storage/s3.py with:
+  - S3Client class with async context manager pattern
+  - build_s3_key_prefix() for generating Bronze layout paths
+  - validate_bronze_key_prefix() and validate_bronze_key() for path validation
+  - upload_jsonl() method that compresses and uploads JSONL as part-NNN.jsonl.gz
+  - upload_manifest() method that uploads manifest.json
+  - download_manifest() and download_jsonl() for retrieval
+  - list_keys() and key_exists() for S3 operations
+  Features: gzip compression via existing compression utilities, regex-based path validation,
+  structured logging with upload metrics (bucket, key, row_count, size_bytes),
+  support for multiple part files via part_number parameter.
+  Created tests/test_s3.py with 33 comprehensive mock-based tests covering all functionality.
+  All type checks (mypy strict mode) and tests pass (139 total tests in suite).
+
+## Status: COMPLETE
+
+All categories in this sprint are now complete:
+- http_client: PASS
+- run_id_management: PASS
+- compression_utilities: PASS
+- manifest_schema: PASS
+- s3_storage: PASS
+- testing: PASS (all test files created, 139 tests passing)
+
 ## Blockers/Issues
 
 
@@ -64,4 +89,6 @@
 - RetryConfig allows customization of retry behavior (max_retries, delays, status codes)
 - TimeoutConfig provides fine-grained control over connect/read/total timeouts
 - All type checks (mypy strict mode) and tests pass
-
+- S3Client validates keys against Bronze layout pattern before upload
+- S3Client uses boto3 synchronously under async wrapper (compatible with AWS SDK patterns)
+- Key patterns allow alphanumeric run_ids with hyphens and underscores

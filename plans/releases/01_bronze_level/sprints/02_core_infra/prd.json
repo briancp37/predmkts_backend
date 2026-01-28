@@ -35,7 +35,7 @@
             "Implement upload_manifest method that writes manifest.json",
             "Add validation that keys match expected Bronze layout pattern"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "manifest_schema",
@@ -73,6 +73,6 @@
             "Create tests/test_compression.py with gzip/JSONL tests",
             "Verify all tests pass with pytest"
         ],
-        "passes": false
+        "passes": true
     }
 ]
