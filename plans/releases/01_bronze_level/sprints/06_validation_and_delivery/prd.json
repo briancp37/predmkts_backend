@@ -36,7 +36,7 @@
             "Verify manifest is created for backfill run",
             "Document backfill procedure for operators"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "failure_recovery",

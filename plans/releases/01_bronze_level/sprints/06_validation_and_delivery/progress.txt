@@ -22,6 +22,12 @@
 - [2026-01-28] failure_recovery: Tests validate retries create new run_ids (no data corruption/overwrites)
 - [2026-01-28] failure_recovery: Marked failure_recovery category as passing in PRD
 
+- [2026-01-28] backfill_testing: Created tests/test_backfill.py with 8 tests covering backfill scenarios
+- [2026-01-28] backfill_testing: Tests validate Polymarket trades backfill with past date (valid output, correct S3 path, manifest, unique run_ids)
+- [2026-01-28] backfill_testing: Tests validate Kalshi trades backfill with past date (valid output, correct S3 path, manifest, unique run_ids)
+- [2026-01-28] backfill_testing: Confirms backfills create new run_ids with no overwrites (3 runs produce 3 unique IDs and 6 unique S3 keys)
+- [2026-01-28] backfill_testing: Marked backfill_testing category as passing in PRD
+
 ## In Progress
 
 
@@ -30,6 +36,6 @@
 
 ## Notes
 - OPERATIONS.md covers: run status checking, manual backfills (local + ECS), troubleshooting (API timeouts, rate limits, permission errors, missing runs), and AWS resource inventory
-- All documentation steps in the PRD are complete. Remaining categories: scheduled_run_validation, backfill_testing, exit_criteria_verification, final_deployment
+- All documentation steps in the PRD are complete. Remaining categories: scheduled_run_validation, exit_criteria_verification, final_deployment (all require live AWS infrastructure)
 - E2E tests use mocked API clients and FakeS3Client to validate the full ingestion flow without live AWS/API access. Tests cover: S3 key structure (Bronze pattern), JSONL decompression, manifest schema/accuracy, unique run_ids, and all 4 pipelines (polymarket trades/markets, kalshi trades/markets).
 
