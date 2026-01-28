@@ -1,0 +1,95 @@
+[
+    {
+        "category": "end_to_end_testing",
+        "description": "Validate complete ingestion pipeline works correctly",
+        "steps": [
+            "Run all 4 ingestion commands manually and verify S3 output",
+            "Verify Polymarket trades ingestion produces valid Bronze output",
+            "Verify Polymarket markets ingestion produces valid Bronze output",
+            "Verify Kalshi trades ingestion produces valid Bronze output",
+            "Verify Kalshi markets ingestion produces valid Bronze output",
+            "Validate all manifests contain accurate metadata"
+        ],
+        "passes": false
+    },
+    {
+        "category": "scheduled_run_validation",
+        "description": "Verify EventBridge scheduled runs work correctly",
+        "steps": [
+            "Wait for at least one scheduled run of each job type",
+            "Verify ECS tasks complete successfully (exit code 0)",
+            "Verify CloudWatch logs show expected output",
+            "Verify S3 data is written with correct key structure",
+            "Verify manifests are generated for each run",
+            "Confirm run_ids are unique across runs"
+        ],
+        "passes": false
+    },
+    {
+        "category": "backfill_testing",
+        "description": "Verify backfill capability works correctly",
+        "steps": [
+            "Execute manual backfill for Polymarket trades for a past date",
+            "Execute manual backfill for Kalshi trades for a past date",
+            "Verify backfill creates new run_id (no overwrite)",
+            "Verify backfill data lands in correct S3 path",
+            "Verify manifest is created for backfill run",
+            "Document backfill procedure for operators"
+        ],
+        "passes": false
+    },
+    {
+        "category": "failure_recovery",
+        "description": "Test failure scenarios and recovery procedures",
+        "steps": [
+            "Simulate API failure and verify retry behavior",
+            "Simulate network timeout and verify graceful handling",
+            "Verify failed runs produce non-zero exit codes",
+            "Verify failed runs are visible in CloudWatch logs",
+            "Test that retries create new run_ids (no data corruption)",
+            "Document failure recovery procedures"
+        ],
+        "passes": false
+    },
+    {
+        "category": "exit_criteria_verification",
+        "description": "Verify all Release 1 exit criteria are met",
+        "steps": [
+            "Confirm S3 Bronze bucket exists with versioning enabled",
+            "Confirm Polymarket trades/markets ingestion runs on schedule",
+            "Confirm Kalshi trades/markets ingestion runs on schedule",
+            "Confirm each run writes part-000.jsonl.gz and manifest.json",
+            "Confirm ingestion is restart-safe (no overwrites, no mutable state)",
+            "Confirm backfills work via same ECS task definitions",
+            "Confirm CloudWatch logs show successful, observable runs",
+            "Confirm no Silver/Gold assumptions exist in Bronze code"
+        ],
+        "passes": false
+    },
+    {
+        "category": "documentation",
+        "description": "Create operational documentation for MVP handoff",
+        "steps": [
+            "Create OPERATIONS.md runbook with common procedures",
+            "Document how to trigger manual backfills",
+            "Document how to check run status and logs",
+            "Document how to troubleshoot common failures",
+            "Document AWS resource inventory (buckets, roles, schedules)",
+            "Update README with project overview and quick start"
+        ],
+        "passes": true
+    },
+    {
+        "category": "final_deployment",
+        "description": "Complete final deployment and handoff",
+        "steps": [
+            "Ensure all schedules are enabled in production",
+            "Verify alerting is configured and tested",
+            "Confirm at least 24 hours of successful scheduled runs",
+            "Get stakeholder sign-off on Release 1 completion",
+            "Archive any temporary test data",
+            "Tag release in version control as v1.0.0-bronze"
+        ],
+        "passes": false
+    }
+]

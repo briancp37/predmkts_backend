@@ -1,0 +1,21 @@
+# Sprint Progress: Validation and Delivery
+# Release: 01_bronze_level
+# Created: 2026-01-27
+
+## Status: In Progress
+
+## Completed Tasks
+- [2026-01-28] documentation: Created OPERATIONS.md runbook covering backfills, log checking, troubleshooting, and AWS resource inventory
+- [2026-01-28] documentation: Updated README.md with project overview, quick start, architecture summary, and links to docs
+- [2026-01-28] documentation: Marked documentation category as passing in PRD
+
+## In Progress
+
+
+## Blockers/Issues
+- Pre-existing integration test failure: tests/integration/test_kalshi.py - Kalshi API returns `taker_side` field instead of expected `side`. Unit tests (236) all pass.
+
+## Notes
+- OPERATIONS.md covers: run status checking, manual backfills (local + ECS), troubleshooting (API timeouts, rate limits, permission errors, missing runs), and AWS resource inventory
+- All documentation steps in the PRD are complete. Remaining categories: end_to_end_testing, scheduled_run_validation, backfill_testing, failure_recovery, exit_criteria_verification, final_deployment
+
