@@ -60,7 +60,7 @@
             "Add row counting during serialization",
             "Ensure UTF-8 encoding throughout"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

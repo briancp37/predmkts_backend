@@ -21,11 +21,28 @@
 ## In Progress
 
 
+## Completed Tasks (continued)
+
+- [2026-01-27] compression_utilities: Implemented compression and file format utilities.
+  Created src/prediction_data/core/compression.py with:
+  - serialize_jsonl() and serialize_jsonl_bytes() for JSONL serialization
+  - compress_gzip() and decompress_gzip() for gzip compression/decompression
+  - JsonlGzipWriter class for streaming gzip compression of large datasets
+  - compress_jsonl() convenience function returning (bytes, row_count)
+  - decompress_jsonl() and iter_jsonl() for reading compressed JSONL
+  Features: streaming compression via JsonlGzipWriter, row counting during serialization,
+  UTF-8 encoding throughout, compact JSON format (no extra whitespace).
+  Created tests/test_compression.py with 28 comprehensive tests covering all functionality.
+  All type checks (mypy strict mode) and tests pass (75 total tests in suite).
+
 ## Blockers/Issues
 
 
 ## Notes
 
+- JsonlGzipWriter enables streaming compression without loading all data into memory
+- compress_jsonl() returns tuple of (bytes, row_count) for convenience
+- All compression uses UTF-8 encoding and compact JSON (no spaces after separators)
 - RunContext provides format_s3_key_prefix() for Bronze layer path formatting
 - bind_to_logger() integrates with existing structlog context system
 - log_start() and log_end() provide structured run lifecycle logging
