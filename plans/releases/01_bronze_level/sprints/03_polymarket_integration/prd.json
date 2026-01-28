@@ -6,6 +6,7 @@
             "Identify Polymarket API base URL and authentication requirements",
             "Document trades endpoint: URL, parameters, response schema, pagination method",
             "Document markets endpoint: URL, parameters, response schema, pagination method",
+            "Document events endpoint: URL, parameters, response schema, pagination method",
             "Identify rate limits and recommended request patterns",
             "Document any API quirks or defensive assumptions needed",
             "Create API documentation notes in src/prediction_data/bronze/polymarket/README.md"
@@ -19,6 +20,7 @@
             "Create src/prediction_data/bronze/polymarket/client.py with PolymarketClient class",
             "Implement trades fetching with cursor-based or offset pagination",
             "Implement markets fetching with appropriate pagination",
+            "Implement events fetching with appropriate pagination",
             "Use shared HTTP client from core infrastructure",
             "Handle API-specific error responses gracefully",
             "Add logging for pagination progress and record counts"
@@ -51,12 +53,25 @@
         "passes": true
     },
     {
+        "category": "events_ingestion",
+        "description": "Implement Polymarket events ingestion command",
+        "steps": [
+            "Implement ingest_events function that fetches all events snapshot",
+            "Write raw API responses to JSONL format (minimal transformation)",
+            "Upload part-000.jsonl.gz to S3 with correct key structure",
+            "Generate and upload manifest.json with accurate row_count",
+            "Add CLI command: prediction-data ingest polymarket-events --dt YYYY-MM-DD"
+        ],
+        "passes": true
+    },
+    {
         "category": "integration_testing",
         "description": "Test Polymarket integration with actual API calls",
         "steps": [
             "Create tests/integration/test_polymarket.py for live API tests",
             "Verify trades endpoint returns expected data structure",
             "Verify markets endpoint returns expected data structure",
+            "Verify events endpoint returns expected data structure",
             "Verify pagination works correctly for large result sets",
             "Test with a real S3 bucket (can use localstack for CI)",
             "Verify manifest.json is accurate after ingestion"
@@ -69,6 +84,7 @@
         "steps": [
             "Run trades ingestion for a specific date and verify S3 output",
             "Run markets ingestion for a specific date and verify S3 output",
+            "Run events ingestion for a specific date and verify S3 output",
             "Verify JSONL files are valid gzipped JSON Lines",
             "Verify manifest row_count matches actual line count",
             "Verify run_id is unique per invocation",

@@ -244,6 +244,142 @@ class TestFetchAllMarkets:
             assert mock_gamma.get.call_count == 2
 
 
+class TestFetchEventsPage:
+    """Tests for fetch_events_page method."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_events_page_basic(self) -> None:
+        """Should fetch a page of events."""
+        events = [{"id": 1, "title": "Event 1"}, {"id": 2, "title": "Event 2"}]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response(events))
+
+            async with PolymarketClient() as client:
+                result = await client.fetch_events_page()
+
+            assert result == events
+            mock_gamma.get.assert_called_once()
+            call_args = mock_gamma.get.call_args
+            assert call_args[0][0] == "/events"
+            assert call_args[1]["params"]["limit"] == DEFAULT_PAGE_SIZE
+            assert call_args[1]["params"]["offset"] == 0
+            assert call_args[1]["params"]["closed"] == "true"
+
+    @pytest.mark.asyncio
+    async def test_fetch_events_page_with_offset(self) -> None:
+        """Should fetch events with specified offset."""
+        events = [{"id": 3, "title": "Event 3"}]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response(events))
+
+            async with PolymarketClient() as client:
+                result = await client.fetch_events_page(offset=100, limit=50)
+
+            assert result == events
+            call_args = mock_gamma.get.call_args
+            assert call_args[1]["params"]["offset"] == 100
+            assert call_args[1]["params"]["limit"] == 50
+
+    @pytest.mark.asyncio
+    async def test_fetch_events_page_exclude_closed(self) -> None:
+        """Should exclude closed events when specified."""
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response([]))
+
+            async with PolymarketClient() as client:
+                await client.fetch_events_page(include_closed=False)
+
+            call_args = mock_gamma.get.call_args
+            assert "closed" not in call_args[1]["params"]
+
+
+class TestFetchAllEvents:
+    """Tests for fetch_all_events method."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_events_single_page(self) -> None:
+        """Should fetch all events when they fit in one page."""
+        events = [{"id": i, "title": f"Event {i}"} for i in range(50)]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(
+                side_effect=[
+                    _create_mock_response(events),
+                ]
+            )
+
+            async with PolymarketClient(page_size=100) as client:
+                result = await client.fetch_all_events()
+
+            assert len(result) == 50
+            assert mock_gamma.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_events_multiple_pages(self) -> None:
+        """Should paginate through all events."""
+        page1 = [{"id": i, "title": f"Event {i}"} for i in range(100)]
+        page2 = [{"id": i, "title": f"Event {i}"} for i in range(100, 150)]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(
+                side_effect=[
+                    _create_mock_response(page1),
+                    _create_mock_response(page2),
+                ]
+            )
+
+            async with PolymarketClient(page_size=100) as client:
+                result = await client.fetch_all_events()
+
+            assert len(result) == 150
+            assert mock_gamma.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_fetch_all_events_empty_page_terminates(self) -> None:
+        """Should stop when an empty page is returned."""
+        page1 = [{"id": i} for i in range(100)]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+
+            mock_gamma.get = AsyncMock(
+                side_effect=[
+                    _create_mock_response(page1),
+                    _create_mock_response([]),
+                ]
+            )
+
+            async with PolymarketClient(page_size=100) as client:
+                result = await client.fetch_all_events()
+
+            assert len(result) == 100
+            assert mock_gamma.get.call_count == 2
+
+
 class TestFetchTradesPage:
     """Tests for fetch_trades_page method."""
 

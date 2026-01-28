@@ -57,6 +57,8 @@
             "Create schedule for Polymarket trades: every 5 minutes",
             "Create schedule for Kalshi trades: every 5 minutes",
             "Create schedule for Polymarket markets: every 1 hour",
+            "Create schedule for Polymarket events: every 1 hour",
+            "Create schedule for Kalshi events: every 1 hour",
             "Create schedule for Kalshi markets: every 1 hour",
             "Configure schedules with timezone America/Chicago",
             "Set up schedule target to run ECS task with correct overrides"

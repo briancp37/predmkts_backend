@@ -346,42 +346,6 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-SchedulerRoleArn'
 
-  PolymarketTradesScheduleArn:
-    Description: ARN of the Polymarket trades schedule
-    Value: !GetAtt PolymarketTradesSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-PolymarketTradesScheduleArn'
-
-  KalshiTradesScheduleArn:
-    Description: ARN of the Kalshi trades schedule
-    Value: !GetAtt KalshiTradesSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-KalshiTradesScheduleArn'
-
-  PolymarketMarketsScheduleArn:
-    Description: ARN of the Polymarket markets schedule
-    Value: !GetAtt PolymarketMarketsSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-PolymarketMarketsScheduleArn'
-
-  KalshiMarketsScheduleArn:
-    Description: ARN of the Kalshi markets schedule
-    Value: !GetAtt KalshiMarketsSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-KalshiMarketsScheduleArn'
-
-  PolymarketEventsScheduleArn:
-    Description: ARN of the Polymarket events schedule
-    Value: !GetAtt PolymarketEventsSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-PolymarketEventsScheduleArn'
-
-  KalshiEventsScheduleArn:
-    Description: ARN of the Kalshi events schedule
-    Value: !GetAtt KalshiEventsSchedule.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-KalshiEventsScheduleArn'
-
   DeploymentCommand:
     Description: Example AWS CLI command to deploy this stack
     Value: !Sub |

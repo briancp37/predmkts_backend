@@ -3,11 +3,13 @@
         "category": "end_to_end_testing",
         "description": "Validate complete ingestion pipeline works correctly",
         "steps": [
-            "Run all 4 ingestion commands manually and verify S3 output",
+            "Run all 6 ingestion commands manually and verify S3 output",
             "Verify Polymarket trades ingestion produces valid Bronze output",
             "Verify Polymarket markets ingestion produces valid Bronze output",
+            "Verify Polymarket events ingestion produces valid Bronze output",
             "Verify Kalshi trades ingestion produces valid Bronze output",
             "Verify Kalshi markets ingestion produces valid Bronze output",
+            "Verify Kalshi events ingestion produces valid Bronze output",
             "Validate all manifests contain accurate metadata"
         ],
         "passes": true
@@ -30,6 +32,8 @@
         "description": "Verify backfill capability works correctly",
         "steps": [
             "Execute manual backfill for Polymarket trades for a past date",
+            "Execute manual backfill for Polymarket events for a past date",
+            "Execute manual backfill for Kalshi events for a past date",
             "Execute manual backfill for Kalshi trades for a past date",
             "Verify backfill creates new run_id (no overwrite)",
             "Verify backfill data lands in correct S3 path",
@@ -56,8 +60,8 @@
         "description": "Verify all Release 1 exit criteria are met",
         "steps": [
             "Confirm S3 Bronze bucket exists with versioning enabled",
-            "Confirm Polymarket trades/markets ingestion runs on schedule",
-            "Confirm Kalshi trades/markets ingestion runs on schedule",
+            "Confirm Polymarket trades/markets/events ingestion runs on schedule",
+            "Confirm Kalshi trades/markets/events ingestion runs on schedule",
             "Confirm each run writes part-000.jsonl.gz and manifest.json",
             "Confirm ingestion is restart-safe (no overwrites, no mutable state)",
             "Confirm backfills work via same ECS task definitions",

@@ -219,6 +219,108 @@ class PolymarketClient:
 
         return all_markets
 
+    async def fetch_events_page(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+        include_closed: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Fetch a single page of events from the Gamma API.
+
+        Args:
+            offset: Starting position for pagination.
+            limit: Number of records to fetch (defaults to page_size).
+            include_closed: Whether to include closed/resolved events.
+
+        Returns:
+            List of event records from the API.
+        """
+        gamma_client, _ = self._ensure_clients()
+        limit = limit or self._page_size
+
+        params: dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+        }
+        if include_closed:
+            params["closed"] = "true"
+
+        self._logger.debug(
+            "Fetching events page",
+            offset=offset,
+            limit=limit,
+        )
+
+        response = await gamma_client.get("/events", params=params)
+        events: list[dict[str, Any]] = response.json()
+
+        self._logger.debug(
+            "Fetched events page",
+            offset=offset,
+            count=len(events),
+        )
+
+        return events
+
+    async def fetch_all_events(
+        self,
+        *,
+        include_closed: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Fetch all events with automatic pagination.
+
+        Paginates through all available events until no more results
+        are returned.
+
+        Args:
+            include_closed: Whether to include closed/resolved events.
+
+        Returns:
+            List of all event records.
+        """
+        gamma_client, _ = self._ensure_clients()
+        all_events: list[dict[str, Any]] = []
+        state = PaginationState(limit=self._page_size)
+
+        self._logger.info("Starting events fetch", include_closed=include_closed)
+
+        while not state.is_complete:
+            events = await self.fetch_events_page(
+                offset=state.offset,
+                limit=state.limit,
+                include_closed=include_closed,
+            )
+
+            if not events:
+                state.is_complete = True
+                self._logger.info(
+                    "Events fetch complete (empty page)",
+                    total_fetched=state.total_fetched,
+                )
+                break
+
+            all_events.extend(events)
+            state.total_fetched += len(events)
+            state.offset += state.limit
+
+            self._logger.info(
+                "Events pagination progress",
+                offset=state.offset,
+                page_count=len(events),
+                total_fetched=state.total_fetched,
+            )
+
+            # If we received fewer records than the limit, we've reached the end
+            if len(events) < state.limit:
+                state.is_complete = True
+                self._logger.info(
+                    "Events fetch complete (partial page)",
+                    total_fetched=state.total_fetched,
+                )
+
+        return all_events
+
     async def fetch_trades_page(
         self,
         *,

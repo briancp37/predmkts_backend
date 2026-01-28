@@ -140,6 +140,30 @@
 - All 211 unit tests pass (unchanged)
 - All type checks pass (mypy)
 
+### 2026-01-28: Events Ingestion (events_ingestion)
+- Implemented events fetching in PolymarketClient (client.py):
+  - fetch_events_page() for single page from Gamma API /events endpoint
+  - fetch_all_events() with automatic offset-based pagination
+  - Same pattern as markets (slowly-changing, Gamma API, include_closed param)
+- Implemented ingest_events() async function in ingest.py:
+  - Fetches all events using PolymarketClient.fetch_all_events()
+  - Creates RunContext for tracking run_id and timestamps
+  - Uploads raw API responses as gzip-compressed JSONL to S3
+  - Creates and uploads manifest.json with row_count and source metadata
+  - Uses GAMMA_API_BASE_URL in manifest for correct API source attribution
+- Added run_ingest_events() synchronous wrapper for CLI usage
+- Added CLI command: prediction-data ingest polymarket-events --dt YYYY-MM-DD
+  - Supports optional --bucket and --include-closed/--active-only flags
+  - Prints run_id on success and exits with code 0
+  - Prints error and exits with code 1 on failure
+- Updated src/prediction_data/bronze/polymarket/__init__.py with new exports
+- Updated src/prediction_data/cli/main.py with new command
+- Added 6 unit tests in tests/test_polymarket_client.py:
+  - TestFetchEventsPage: 3 tests (basic, offset, exclude_closed)
+  - TestFetchAllEvents: 3 tests (single_page, multiple_pages, empty_page_terminates)
+- All type checks pass (mypy)
+- All 303 unit tests pass
+
 ## In Progress
 
 None
@@ -150,10 +174,10 @@ None
 
 ## Notes
 
-- Sprint complete with all 6 categories passing
+- Sprint complete with all 7 categories passing (6 original + events_ingestion)
 - All type checks pass (mypy) for all code
-- All 211 unit tests pass
+- All 303 unit tests pass
 - All 31 integration tests pass (16 original + 15 validation)
 - Integration tests use pytest marker system: pytest -m integration
-- Polymarket integration ready for production use
+- Polymarket integration ready for production use (trades, markets, and events)
 
