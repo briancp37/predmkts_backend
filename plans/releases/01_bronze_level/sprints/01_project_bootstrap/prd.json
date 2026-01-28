@@ -1,0 +1,76 @@
+[
+    {
+        "category": "project_setup",
+        "description": "Initialize Python project with modern tooling and dependency management",
+        "steps": [
+            "Create pyproject.toml with project metadata, Python 3.11+ requirement",
+            "Add core dependencies: httpx, boto3, typer (CLI), pydantic (validation), structlog (logging)",
+            "Add dev dependencies: pytest, pytest-asyncio, ruff (linting), mypy (type checking)",
+            "Create src/prediction_data/ package structure with __init__.py",
+            "Create tests/ directory with conftest.py",
+            "Set up .gitignore for Python projects"
+        ],
+        "passes": true
+    },
+    {
+        "category": "package_structure",
+        "description": "Establish the core package layout following domain-driven organization",
+        "steps": [
+            "Create src/prediction_data/cli/ module for CLI commands",
+            "Create src/prediction_data/bronze/ module for bronze layer logic",
+            "Create src/prediction_data/bronze/polymarket/ submodule (empty placeholder)",
+            "Create src/prediction_data/bronze/kalshi/ submodule (empty placeholder)",
+            "Create src/prediction_data/core/ module for shared utilities",
+            "Create src/prediction_data/storage/ module for S3 operations"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_skeleton",
+        "description": "Build the CLI entry point and command structure",
+        "steps": [
+            "Create main CLI application using Typer in src/prediction_data/cli/main.py",
+            "Add 'ingest' command group as placeholder",
+            "Implement --version flag showing package version",
+            "Configure CLI entry point 'prediction-data' in pyproject.toml",
+            "Verify CLI installs and runs with 'prediction-data --help'"
+        ],
+        "passes": false
+    },
+    {
+        "category": "configuration",
+        "description": "Set up configuration management via environment variables",
+        "steps": [
+            "Create src/prediction_data/core/config.py with pydantic Settings class",
+            "Define BRONZE_BUCKET environment variable (required)",
+            "Define AWS_REGION environment variable (default: us-east-1)",
+            "Define LOG_LEVEL environment variable (default: INFO)",
+            "Create .env.example file documenting all environment variables"
+        ],
+        "passes": false
+    },
+    {
+        "category": "logging_setup",
+        "description": "Configure structured logging for CloudWatch compatibility",
+        "steps": [
+            "Create src/prediction_data/core/logging.py with structlog configuration",
+            "Configure JSON output format for production (CloudWatch compatible)",
+            "Configure console output format for local development",
+            "Add standard fields: timestamp, level, logger name",
+            "Create helper function to bind context (platform, entity, run_id, dt)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validation",
+        "description": "Verify the project bootstrap is complete and functional",
+        "steps": [
+            "Run 'pip install -e .' successfully in a virtual environment",
+            "Verify 'prediction-data --help' shows CLI structure",
+            "Verify 'prediction-data --version' shows version",
+            "Run ruff check with no errors",
+            "Run mypy with no errors on src/"
+        ],
+        "passes": false
+    }
+]
