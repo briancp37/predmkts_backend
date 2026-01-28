@@ -266,3 +266,115 @@ def run_ingest_markets(
             status=status,
         )
     )
+
+
+async def ingest_events(
+    dt: str,
+    *,
+    bucket: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Ingest Kalshi events snapshot for a given date.
+
+    Fetches all events from the Kalshi API and stores them
+    in the Bronze layer as gzip-compressed JSONL files.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        status: Optional event status to filter by (open, closed, settled).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    settings = get_settings()
+    bucket = bucket or settings.bronze_bucket
+    logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    # Create run context for tracking
+    run_ctx = RunContext(platform="kalshi", entity="events")
+    run_ctx.bind_to_logger(dt=dt)
+    run_ctx.log_start(logger)
+
+    logger.info(
+        "Starting Kalshi events ingestion",
+        dt=dt,
+        bucket=bucket,
+        status=status,
+    )
+
+    # Load credentials and fetch events from API
+    credentials = load_credentials_from_settings()
+    async with KalshiClient(credentials) as client:
+        events = await client.fetch_all_events(
+            status=status,
+        )
+
+    logger.info("Fetched events from API", record_count=len(events))
+
+    # Upload to S3
+    async with S3Client(bucket=bucket) as s3_client:
+        # Upload JSONL data
+        data_key, row_count = await s3_client.upload_jsonl(
+            records=events,
+            platform="kalshi",
+            entity="events",
+            dt=dt,
+            run_id=run_ctx.run_id,
+        )
+
+        logger.info(
+            "Uploaded events data to S3",
+            key=data_key,
+            row_count=row_count,
+        )
+
+        # Create and upload manifest
+        manifest = create_manifest(
+            run_id=run_ctx.run_id,
+            platform="kalshi",
+            entity="events",
+            dt=dt,
+            bucket=bucket,
+            key=data_key,
+            row_count=row_count,
+            api_base_url=KALSHI_API_BASE_URL,
+            pagination="cursor",
+            cursor=None,  # Final cursor not tracked since we paginate to completion
+        )
+
+        manifest_key = await s3_client.upload_manifest(manifest)
+        logger.info("Uploaded manifest to S3", key=manifest_key)
+
+    # Mark run complete
+    run_ctx.mark_complete()
+    run_ctx.log_end(logger)
+
+    return run_ctx.run_id
+
+
+def run_ingest_events(
+    dt: str,
+    *,
+    bucket: str | None = None,
+    status: str | None = None,
+) -> str:
+    """Synchronous wrapper for ingest_events.
+
+    This is a convenience function for CLI usage.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        status: Optional event status to filter by (open, closed, settled).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    return asyncio.run(
+        ingest_events(
+            dt,
+            bucket=bucket,
+            status=status,
+        )
+    )

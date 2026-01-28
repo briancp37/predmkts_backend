@@ -143,6 +143,48 @@ def polymarket_markets(
         raise typer.Exit(code=1)
 
 
+@ingest_app.command(name="polymarket-events")
+def polymarket_events(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    include_closed: Annotated[
+        bool,
+        typer.Option(
+            "--include-closed/--active-only",
+            help="Whether to include closed/resolved events.",
+        ),
+    ] = True,
+) -> None:
+    """Ingest Polymarket events snapshot for a given date."""
+    from prediction_data.bronze.polymarket.ingest import run_ingest_events
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_events(
+            dt,
+            bucket=bucket,
+            include_closed=include_closed,
+        )
+        typer.echo(run_id)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 @ingest_app.command(name="kalshi-trades")
 def kalshi_trades(
     dt: Annotated[
@@ -251,6 +293,48 @@ def kalshi_markets(
             bucket=bucket,
             event_ticker=event_ticker,
             series_ticker=series_ticker,
+            status=status,
+        )
+        typer.echo(run_id)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+@ingest_app.command(name="kalshi-events")
+def kalshi_events(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option(
+            "--status",
+            help="Event status to filter by (open, closed, settled).",
+        ),
+    ] = None,
+) -> None:
+    """Ingest Kalshi events snapshot for a given date."""
+    from prediction_data.bronze.kalshi.ingest import run_ingest_events
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_events(
+            dt,
+            bucket=bucket,
             status=status,
         )
         typer.echo(run_id)

@@ -320,6 +320,127 @@ class KalshiClient:
 
         return markets, next_cursor
 
+    async def fetch_events_page(
+        self,
+        *,
+        cursor: str | None = None,
+        limit: int | None = None,
+        status: str | None = None,
+        with_nested_markets: bool = False,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Fetch a single page of events from the API.
+
+        Args:
+            cursor: Pagination cursor from previous response.
+            limit: Number of records to fetch (defaults to page_size, max 200).
+            status: Filter by event status (open, closed, settled).
+            with_nested_markets: Whether to include nested market objects.
+
+        Returns:
+            Tuple of (list of events, cursor for next page or None if done).
+        """
+        limit = min(limit or self._page_size, 200)
+
+        params: dict[str, Any] = {"limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        if status:
+            params["status"] = status
+        if with_nested_markets:
+            params["with_nested_markets"] = "true"
+
+        self._logger.debug(
+            "Fetching events page",
+            cursor=cursor,
+            limit=limit,
+            status=status,
+        )
+
+        data = await self._request_with_auth("GET", "/events", params=params)
+        events: list[dict[str, Any]] = data.get("events", [])
+        next_cursor: str | None = data.get("cursor") or None
+
+        self._logger.debug(
+            "Fetched events page",
+            count=len(events),
+            has_more=next_cursor is not None,
+        )
+
+        return events, next_cursor
+
+    async def fetch_all_events(
+        self,
+        *,
+        status: str | None = None,
+        with_nested_markets: bool = False,
+        max_records: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all events with automatic pagination.
+
+        Paginates through all available events using cursor-based pagination
+        until no more results are returned.
+
+        Args:
+            status: Filter by event status (open, closed, settled).
+            with_nested_markets: Whether to include nested market objects.
+            max_records: Maximum number of records to fetch (optional).
+
+        Returns:
+            List of all event records.
+        """
+        all_events: list[dict[str, Any]] = []
+        cursor: str | None = None
+
+        self._logger.info(
+            "Starting events fetch",
+            status=status,
+        )
+
+        while True:
+            # Check if we've reached max_records
+            if max_records is not None and len(all_events) >= max_records:
+                self._logger.info(
+                    "Events fetch complete (max_records reached)",
+                    max_records=max_records,
+                    total_fetched=len(all_events),
+                )
+                break
+
+            events, cursor = await self.fetch_events_page(
+                cursor=cursor,
+                limit=min(self._page_size, 200),
+                status=status,
+                with_nested_markets=with_nested_markets,
+            )
+
+            if not events:
+                self._logger.info(
+                    "Events fetch complete (empty page)",
+                    total_fetched=len(all_events),
+                )
+                break
+
+            all_events.extend(events)
+
+            self._logger.info(
+                "Events pagination progress",
+                page_count=len(events),
+                total_fetched=len(all_events),
+            )
+
+            if not cursor:
+                self._logger.info(
+                    "Events fetch complete (no more pages)",
+                    total_fetched=len(all_events),
+                )
+                break
+
+        # Trim to max_records if specified
+        if max_records is not None and len(all_events) > max_records:
+            all_events = all_events[:max_records]
+
+        return all_events
+
     async def fetch_all_markets(
         self,
         *,
