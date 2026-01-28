@@ -1,10 +1,12 @@
 """End-to-end tests for the complete ingestion pipeline.
 
-These tests validate that all 4 ingestion commands produce correct Bronze output:
+These tests validate that all 6 ingestion commands produce correct Bronze output:
 - Polymarket trades: fetch → compress → upload JSONL + manifest to S3
 - Polymarket markets: fetch → compress → upload JSONL + manifest to S3
+- Polymarket events: fetch → compress → upload JSONL + manifest to S3
 - Kalshi trades: fetch → compress → upload JSONL + manifest to S3
 - Kalshi markets: fetch → compress → upload JSONL + manifest to S3
+- Kalshi events: fetch → compress → upload JSONL + manifest to S3
 
 Each test mocks the API client and S3 to validate the full pipeline flow
 without requiring live API access or AWS credentials.
@@ -18,10 +20,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from prediction_data.bronze.kalshi.ingest import (
+    ingest_events as kalshi_ingest_events,
+)
+from prediction_data.bronze.kalshi.ingest import (
     ingest_markets as kalshi_ingest_markets,
 )
 from prediction_data.bronze.kalshi.ingest import (
     ingest_trades as kalshi_ingest_trades,
+)
+from prediction_data.bronze.polymarket.ingest import (
+    ingest_events as poly_ingest_events,
 )
 from prediction_data.bronze.polymarket.ingest import (
     ingest_markets as poly_ingest_markets,
@@ -57,6 +65,16 @@ SAMPLE_KALSHI_MARKETS = [
     {"ticker": "KXBTC-24", "title": "Bitcoin above 50k?", "status": "open"},
     {"ticker": "KXETH-24", "title": "Ethereum above 3k?", "status": "open"},
     {"ticker": "KXSOL-24", "title": "Solana above 100?", "status": "closed"},
+]
+
+SAMPLE_POLY_EVENTS = [
+    {"id": "e1", "slug": "us-election-2024", "title": "US Election 2024"},
+    {"id": "e2", "slug": "fed-rate-decision", "title": "Fed Rate Decision"},
+]
+
+SAMPLE_KALSHI_EVENTS = [
+    {"event_ticker": "KXELECTION", "title": "2024 Presidential Election", "category": "Politics"},
+    {"event_ticker": "KXGDP", "title": "GDP Q4 2024", "category": "Economics"},
 ]
 
 
@@ -196,6 +214,37 @@ class TestPolymarketMarketsE2E:
         _validate_s3_output(fake_s3, "polymarket", "markets", "2026-01-28", len(SAMPLE_POLY_MARKETS))
 
 
+class TestPolymarketEventsE2E:
+    """End-to-end test for Polymarket events ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_full_pipeline_produces_valid_bronze_output(self) -> None:
+        fake_s3 = FakeS3Client()
+
+        with (
+            patch(
+                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+            ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.ingest.S3Client"
+            ) as MockS3,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+
+            client_instance = AsyncMock()
+            client_instance.fetch_all_events.return_value = SAMPLE_POLY_EVENTS
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
+
+            run_id = await poly_ingest_events(dt="2026-01-28")
+
+        assert run_id
+        _validate_s3_output(fake_s3, "polymarket", "events", "2026-01-28", len(SAMPLE_POLY_EVENTS))
+
+
 # --- Kalshi E2E Tests ---
 
 
@@ -255,6 +304,35 @@ class TestKalshiMarketsE2E:
 
         assert run_id
         _validate_s3_output(fake_s3, "kalshi", "markets", "2026-01-28", len(SAMPLE_KALSHI_MARKETS))
+
+
+class TestKalshiEventsE2E:
+    """End-to-end test for Kalshi events ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_full_pipeline_produces_valid_bronze_output(self) -> None:
+        fake_s3 = FakeS3Client()
+
+        with (
+            patch("prediction_data.bronze.kalshi.ingest.KalshiClient") as MockClient,
+            patch("prediction_data.bronze.kalshi.ingest.S3Client") as MockS3,
+            patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+            patch("prediction_data.bronze.kalshi.ingest.load_credentials_from_settings") as mock_creds,
+        ):
+            mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
+
+            client_instance = AsyncMock()
+            client_instance.fetch_all_events.return_value = SAMPLE_KALSHI_EVENTS
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
+
+            run_id = await kalshi_ingest_events(dt="2026-01-28")
+
+        assert run_id
+        _validate_s3_output(fake_s3, "kalshi", "events", "2026-01-28", len(SAMPLE_KALSHI_EVENTS))
 
 
 # --- Cross-cutting validation tests ---

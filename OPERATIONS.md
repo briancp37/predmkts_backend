@@ -8,8 +8,10 @@ Operational procedures for the Bronze-level prediction data ingestion pipeline.
 |-----|---------|----------|-----------|
 | Polymarket Trades | `prediction-data ingest polymarket-trades --dt {date}` | Every 5 min | `/ecs/prediction-data-{env}` |
 | Polymarket Markets | `prediction-data ingest polymarket-markets --dt {date}` | Every 1 hr | `/ecs/prediction-data-{env}` |
+| Polymarket Events | `prediction-data ingest polymarket-events --dt {date}` | Every 1 hr | `/ecs/prediction-data-{env}` |
 | Kalshi Trades | `prediction-data ingest kalshi-trades --dt {date}` | Every 5 min | `/ecs/prediction-data-{env}` |
 | Kalshi Markets | `prediction-data ingest kalshi-markets --dt {date}` | Every 1 hr | `/ecs/prediction-data-{env}` |
+| Kalshi Events | `prediction-data ingest kalshi-events --dt {date}` | Every 1 hr | `/ecs/prediction-data-{env}` |
 
 ## Checking Run Status
 
@@ -91,8 +93,10 @@ Each backfill run generates a unique `run_id`, so re-running the same date creat
 # Single date
 prediction-data ingest polymarket-trades --dt 2024-01-15
 prediction-data ingest polymarket-markets --dt 2024-01-15
+prediction-data ingest polymarket-events --dt 2024-01-15
 prediction-data ingest kalshi-trades --dt 2024-01-15
 prediction-data ingest kalshi-markets --dt 2024-01-15
+prediction-data ingest kalshi-events --dt 2024-01-15
 
 # Date range (parallel)
 for dt in 2024-01-{01..31}; do
@@ -212,7 +216,7 @@ All resources are parameterized by environment (`dev`, `staging`, `prod`).
 s3://prediction-bronze-{env}/
   bronze/
     {platform}/          # polymarket | kalshi
-      {entity}/          # trades | markets
+      {entity}/          # trades | markets | events
         dt={YYYY-MM-DD}/
           run_id={uuid}/
             part-000.jsonl.gz

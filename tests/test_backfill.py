@@ -13,7 +13,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from prediction_data.bronze.kalshi.ingest import (
+    ingest_events as kalshi_ingest_events,
+)
+from prediction_data.bronze.kalshi.ingest import (
     ingest_trades as kalshi_ingest_trades,
+)
+from prediction_data.bronze.polymarket.ingest import (
+    ingest_events as poly_ingest_events,
 )
 from prediction_data.bronze.polymarket.ingest import (
     ingest_trades as poly_ingest_trades,
@@ -33,6 +39,16 @@ SAMPLE_POLY_TRADES = [
 SAMPLE_KALSHI_TRADES = [
     {"ticker": "KXBTC-24", "side": "yes", "count": 5, "yes_price": 60, "no_price": 40},
     {"ticker": "KXBTC-24", "side": "no", "count": 3, "yes_price": 55, "no_price": 45},
+]
+
+SAMPLE_POLY_EVENTS = [
+    {"id": "e1", "slug": "us-election-2024", "title": "US Election 2024"},
+    {"id": "e2", "slug": "fed-rate-decision", "title": "Fed Rate Decision"},
+]
+
+SAMPLE_KALSHI_EVENTS = [
+    {"event_ticker": "KXELECTION", "title": "2024 Presidential Election", "category": "Politics"},
+    {"event_ticker": "KXGDP", "title": "GDP Q4 2024", "category": "Economics"},
 ]
 
 
@@ -222,6 +238,162 @@ class TestKalshiTradesBackfill:
         for _ in range(3):
             fake_s3 = FakeS3Client()
             run_id = await _run_kalshi_backfill(fake_s3)
+            run_ids.append(run_id)
+            all_keys.extend(fake_s3.objects.keys())
+
+        assert len(set(run_ids)) == 3, f"Run IDs not unique: {run_ids}"
+        assert len(set(all_keys)) == 6, f"S3 keys not unique: {all_keys}"
+
+
+async def _run_poly_events_backfill(fake_s3: FakeS3Client, dt: str = PAST_DATE) -> str:
+    """Run a Polymarket events backfill and return the run_id."""
+    with (
+        patch("prediction_data.bronze.polymarket.ingest.PolymarketClient") as MockClient,
+        patch("prediction_data.bronze.polymarket.ingest.S3Client") as MockS3,
+        patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+        client_instance = AsyncMock()
+        client_instance.fetch_all_events.return_value = SAMPLE_POLY_EVENTS
+        MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
+        return await poly_ingest_events(dt=dt)
+
+
+async def _run_kalshi_events_backfill(fake_s3: FakeS3Client, dt: str = PAST_DATE) -> str:
+    """Run a Kalshi events backfill and return the run_id."""
+    with (
+        patch("prediction_data.bronze.kalshi.ingest.KalshiClient") as MockClient,
+        patch("prediction_data.bronze.kalshi.ingest.S3Client") as MockS3,
+        patch("prediction_data.bronze.kalshi.ingest.get_settings") as mock_settings,
+        patch("prediction_data.bronze.kalshi.ingest.load_credentials_from_settings") as mock_creds,
+    ):
+        mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+        mock_creds.return_value = MagicMock()
+        client_instance = AsyncMock()
+        client_instance.fetch_all_events.return_value = SAMPLE_KALSHI_EVENTS
+        MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
+        return await kalshi_ingest_events(dt=dt)
+
+
+class TestPolymarketEventsBackfill:
+    """Backfill tests for Polymarket events ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_backfill_past_date_produces_valid_output(self) -> None:
+        """Backfill with a past date produces valid Bronze S3 output."""
+        fake_s3 = FakeS3Client()
+        run_id = await _run_poly_events_backfill(fake_s3)
+
+        assert run_id
+        keys = list(fake_s3.objects.keys())
+        assert len(keys) == 2
+
+        data_key = [k for k in keys if k.endswith(".jsonl.gz")][0]
+        manifest_key = [k for k in keys if k.endswith("manifest.json")][0]
+
+        assert validate_bronze_key(data_key)
+        assert validate_bronze_key(manifest_key)
+
+    @pytest.mark.asyncio
+    async def test_backfill_lands_in_correct_s3_path(self) -> None:
+        """Backfill data uses the specified past date in the S3 path."""
+        fake_s3 = FakeS3Client()
+        await _run_poly_events_backfill(fake_s3)
+
+        data_key = [k for k in fake_s3.objects if k.endswith(".jsonl.gz")][0]
+        assert "bronze/polymarket/events/" in data_key
+        assert f"dt={PAST_DATE}/" in data_key
+        assert "run_id=" in data_key
+
+    @pytest.mark.asyncio
+    async def test_backfill_manifest_created(self) -> None:
+        """Backfill run produces a manifest with correct metadata."""
+        fake_s3 = FakeS3Client()
+        run_id = await _run_poly_events_backfill(fake_s3)
+
+        manifest_key = [k for k in fake_s3.objects if k.endswith("manifest.json")][0]
+        manifest = Manifest.from_json(fake_s3.objects[manifest_key].decode("utf-8"))
+
+        assert manifest.run_id == run_id
+        assert manifest.platform == "polymarket"
+        assert manifest.entity == "events"
+        assert manifest.dt == PAST_DATE
+        assert manifest.row_count == len(SAMPLE_POLY_EVENTS)
+
+    @pytest.mark.asyncio
+    async def test_backfill_creates_new_run_id_no_overwrite(self) -> None:
+        """Multiple backfills for the same date create separate run_ids."""
+        run_ids = []
+        all_keys: list[str] = []
+
+        for _ in range(3):
+            fake_s3 = FakeS3Client()
+            run_id = await _run_poly_events_backfill(fake_s3)
+            run_ids.append(run_id)
+            all_keys.extend(fake_s3.objects.keys())
+
+        assert len(set(run_ids)) == 3, f"Run IDs not unique: {run_ids}"
+        assert len(set(all_keys)) == 6, f"S3 keys not unique: {all_keys}"
+
+
+class TestKalshiEventsBackfill:
+    """Backfill tests for Kalshi events ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_backfill_past_date_produces_valid_output(self) -> None:
+        """Backfill with a past date produces valid Bronze S3 output."""
+        fake_s3 = FakeS3Client()
+        run_id = await _run_kalshi_events_backfill(fake_s3)
+
+        assert run_id
+        keys = list(fake_s3.objects.keys())
+        assert len(keys) == 2
+
+        data_key = [k for k in keys if k.endswith(".jsonl.gz")][0]
+        manifest_key = [k for k in keys if k.endswith("manifest.json")][0]
+
+        assert validate_bronze_key(data_key)
+        assert validate_bronze_key(manifest_key)
+
+    @pytest.mark.asyncio
+    async def test_backfill_lands_in_correct_s3_path(self) -> None:
+        """Backfill data uses the specified past date in the S3 path."""
+        fake_s3 = FakeS3Client()
+        await _run_kalshi_events_backfill(fake_s3)
+
+        data_key = [k for k in fake_s3.objects if k.endswith(".jsonl.gz")][0]
+        assert "bronze/kalshi/events/" in data_key
+        assert f"dt={PAST_DATE}/" in data_key
+        assert "run_id=" in data_key
+
+    @pytest.mark.asyncio
+    async def test_backfill_manifest_created(self) -> None:
+        """Backfill run produces a manifest with correct metadata."""
+        fake_s3 = FakeS3Client()
+        run_id = await _run_kalshi_events_backfill(fake_s3)
+
+        manifest_key = [k for k in fake_s3.objects if k.endswith("manifest.json")][0]
+        manifest = Manifest.from_json(fake_s3.objects[manifest_key].decode("utf-8"))
+
+        assert manifest.run_id == run_id
+        assert manifest.platform == "kalshi"
+        assert manifest.entity == "events"
+        assert manifest.dt == PAST_DATE
+        assert manifest.row_count == len(SAMPLE_KALSHI_EVENTS)
+
+    @pytest.mark.asyncio
+    async def test_backfill_creates_new_run_id_no_overwrite(self) -> None:
+        """Multiple backfills for the same date create separate run_ids."""
+        run_ids = []
+        all_keys: list[str] = []
+
+        for _ in range(3):
+            fake_s3 = FakeS3Client()
+            run_id = await _run_kalshi_events_backfill(fake_s3)
             run_ids.append(run_id)
             all_keys.extend(fake_s3.objects.keys())
 

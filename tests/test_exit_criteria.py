@@ -5,8 +5,8 @@ infrastructure template validation, and local test execution without live AWS.
 
 Exit criteria:
 1. S3 Bronze bucket exists with versioning enabled
-2. Polymarket trades/markets ingestion runs on schedule
-3. Kalshi trades/markets ingestion runs on schedule
+2. Polymarket trades/markets/events ingestion runs on schedule
+3. Kalshi trades/markets/events ingestion runs on schedule
 4. Each run writes part-000.jsonl.gz and manifest.json
 5. Ingestion is restart-safe (no overwrites, no mutable state)
 6. Backfills work via same ECS task definitions
@@ -72,18 +72,20 @@ class TestS3BucketWithVersioning:
 
 
 class TestScheduledIngestion:
-    """Criteria 2 & 3: All 4 ingestion jobs have EventBridge schedules."""
+    """Criteria 2 & 3: All 6 ingestion jobs have EventBridge schedules."""
 
     def test_eventbridge_template_exists(self) -> None:
         assert (INFRA_DIR / "eventbridge-schedules.yaml").exists()
 
-    def test_all_four_schedules_defined(self) -> None:
+    def test_all_six_schedules_defined(self) -> None:
         content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
         for name in [
             "PolymarketTradesSchedule",
             "KalshiTradesSchedule",
             "PolymarketMarketsSchedule",
             "KalshiMarketsSchedule",
+            "PolymarketEventsSchedule",
+            "KalshiEventsSchedule",
         ]:
             assert name in content, f"Missing schedule: {name}"
 
@@ -94,6 +96,8 @@ class TestScheduledIngestion:
             "kalshi-trades",
             "polymarket-markets",
             "kalshi-markets",
+            "polymarket-events",
+            "kalshi-events",
         ]
         for cmd in expected_commands:
             assert f'"ingest", "{cmd}"' in content, f"Missing CLI command: ingest {cmd}"

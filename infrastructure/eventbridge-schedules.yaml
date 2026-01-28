@@ -42,6 +42,11 @@ Parameters:
     Default: 'rate(1 hour)'
     Description: Schedule expression for markets ingestion (default every 1 hour)
 
+  EventsScheduleExpression:
+    Type: String
+    Default: 'rate(1 hour)'
+    Description: Schedule expression for events ingestion (default every 1 hour)
+
   ScheduleState:
     Type: String
     Default: ENABLED
@@ -248,6 +253,80 @@ Resources:
           MaximumEventAgeInSeconds: 600
           MaximumRetryAttempts: 2
 
+  # Polymarket Events - every 1 hour
+  PolymarketEventsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'polymarket-events-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Polymarket events every hour
+      ScheduleExpression: !Ref EventsScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "polymarket-events"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 600
+          MaximumRetryAttempts: 2
+
+  # Kalshi Events - every 1 hour
+  KalshiEventsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'kalshi-events-${Environment}'
+      GroupName: !Ref ScheduleGroup
+      Description: Ingest Kalshi events every hour
+      ScheduleExpression: !Ref EventsScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["ingest", "kalshi-events"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 600
+          MaximumRetryAttempts: 2
+
 Outputs:
   ScheduleGroupArn:
     Description: ARN of the schedule group
@@ -290,6 +369,18 @@ Outputs:
     Value: !GetAtt KalshiMarketsSchedule.Arn
     Export:
       Name: !Sub '${AWS::StackName}-KalshiMarketsScheduleArn'
+
+  PolymarketEventsScheduleArn:
+    Description: ARN of the Polymarket events schedule
+    Value: !GetAtt PolymarketEventsSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PolymarketEventsScheduleArn'
+
+  KalshiEventsScheduleArn:
+    Description: ARN of the Kalshi events schedule
+    Value: !GetAtt KalshiEventsSchedule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-KalshiEventsScheduleArn'
 
   DeploymentCommand:
     Description: Example AWS CLI command to deploy this stack

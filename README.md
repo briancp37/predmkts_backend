@@ -1,6 +1,6 @@
 # Prediction Data
 
-Data pipeline for prediction market data ingestion and processing. Ingests trades and markets from Polymarket and Kalshi into an S3 Bronze layer using scheduled ECS Fargate tasks.
+Data pipeline for prediction market data ingestion and processing. Ingests trades, markets, and events from Polymarket and Kalshi into an S3 Bronze layer using scheduled ECS Fargate tasks.
 
 ## Quick Start
 
@@ -27,8 +27,10 @@ prediction-data ingest kalshi-markets --dt 2024-01-28
 |---------|-------------|
 | `prediction-data ingest polymarket-trades --dt DATE` | Ingest Polymarket trades |
 | `prediction-data ingest polymarket-markets --dt DATE` | Ingest Polymarket markets |
+| `prediction-data ingest polymarket-events --dt DATE` | Ingest Polymarket events |
 | `prediction-data ingest kalshi-trades --dt DATE` | Ingest Kalshi trades |
 | `prediction-data ingest kalshi-markets --dt DATE` | Ingest Kalshi markets |
+| `prediction-data ingest kalshi-events --dt DATE` | Ingest Kalshi events |
 
 ## Documentation
 
