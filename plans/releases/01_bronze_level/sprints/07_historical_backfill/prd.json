@@ -52,7 +52,7 @@
             "Document backfill CLI usage with examples for full historical backfill",
             "Document expected data volumes and estimated run times per platform"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing_and_validation",

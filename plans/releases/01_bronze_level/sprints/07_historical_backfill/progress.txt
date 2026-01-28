@@ -47,6 +47,16 @@
   - mypy clean, all 348 unit tests pass, no regressions
   - Pre-existing integration test failure in test_kalshi.py (Kalshi API field name 'taker_side' vs expected 'side') unrelated
 
+- [2026-01-28] documentation: Created CLAUDE.md with full backfill and API documentation
+  - Polymarket CLOB API: base URL, trades endpoint, L2 HMAC auth details, cursor-based pagination, rate limiting
+  - Polymarket Data API: base URL, offset-based pagination, 10k limit
+  - Kalshi API: base URL, RSA auth, rate limits, min_ts/max_ts filtering
+  - Required environment variables table with descriptions
+  - Backfill CLI usage examples (all platforms, single platform, dry-run)
+  - S3 key structure documentation
+  - Estimated data volumes per platform
+  - mypy clean, all 348 tests pass
+
 ## In Progress
 
 
