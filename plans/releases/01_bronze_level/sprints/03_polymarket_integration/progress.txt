@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-01-27
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -108,8 +108,41 @@
 - All 211 unit tests pass
 - Integration tests verified working against live API
 
+### 2026-01-28: Validation (validation)
+- Created tests/integration/test_polymarket_validation.py with 15 validation tests:
+  - TestTradesIngestionValidation: Validates trades ingestion meets Bronze contract
+    - test_trades_ingestion_creates_valid_gzipped_jsonl
+    - test_trades_ingestion_manifest_row_count_matches
+    - test_trades_ingestion_run_id_unique
+  - TestMarketsIngestionValidation: Validates markets ingestion meets Bronze contract
+    - test_markets_ingestion_creates_valid_gzipped_jsonl
+    - test_markets_ingestion_manifest_row_count_matches
+  - TestFullIngestionWithMockS3: End-to-end validation with mock S3
+    - test_trades_full_ingestion_flow
+    - test_markets_full_ingestion_flow
+  - TestCLIValidation: CLI behavior validation
+    - test_cli_polymarket_trades_help_available
+    - test_cli_polymarket_markets_help_available
+    - test_cli_exits_with_error_on_missing_dt
+  - TestS3KeyStructure: S3 key structure validation
+    - test_s3_key_prefix_format
+    - test_s3_key_prefix_for_markets
+    - test_uploaded_keys_match_bronze_pattern
+  - TestManifestContract: Manifest contract validation
+    - test_manifest_contains_required_fields
+    - test_manifest_run_id_is_valid_uuid
+- All validation tests verify Bronze contract compliance:
+  - JSONL files are valid gzip-compressed JSON Lines
+  - Manifest row_count matches actual file line count
+  - run_id is unique per invocation (UUID4)
+  - CLI prints run_id on success and exits with code 0
+- All 15 validation tests pass
+- All 211 unit tests pass (unchanged)
+- All type checks pass (mypy)
+
 ## In Progress
 
+None
 
 ## Blockers/Issues
 
@@ -117,8 +150,10 @@
 
 ## Notes
 
-- All type checks pass (mypy) for new code
-- All 211 unit tests pass (27 polymarket-specific)
-- Integration tests use pytest marker system for selective execution
-- Next task: Validation (validation category)
+- Sprint complete with all 6 categories passing
+- All type checks pass (mypy) for all code
+- All 211 unit tests pass
+- All 31 integration tests pass (16 original + 15 validation)
+- Integration tests use pytest marker system: pytest -m integration
+- Polymarket integration ready for production use
 
