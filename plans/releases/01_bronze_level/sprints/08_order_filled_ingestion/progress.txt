@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-01-29
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 - [x] goldsky_subgraph_client: Created GoldskyClient in src/prediction_data/bronze/polymarket/goldsky.py
@@ -52,6 +52,15 @@
   - 6 unit tests for parquet _convert_record() (camelCase rename, amount scaling, datetime conversion, int passthrough, null missing fields, None preservation)
   - 2 schema alignment tests (Goldsky vs parquet key parity, missing fields documented)
   - Full suite: 378 passed, mypy clean, ruff clean on new file
+
+- [x] documentation: Updated CLAUDE.md with Goldsky subgraph integration docs
+  - Added Goldsky subgraph endpoint, auth (none), pagination (id_gt cursor), and filtering details
+  - Added OrderFilledEvent schema table (11 fields with types and notes)
+  - Documented schema differences for parquet-backfilled records (missing orderHash, fee, id)
+  - Added Goldsky to rate limits table
+  - Added order_filled CLI usage examples (ingest and backfill)
+  - Added parquet backfill script usage with --dry-run and --start-date/--end-date examples
+  - All 378 tests pass, mypy clean
 
 ## In Progress
 

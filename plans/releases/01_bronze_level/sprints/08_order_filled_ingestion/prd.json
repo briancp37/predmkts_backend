@@ -77,6 +77,6 @@
             "Document parquet backfill script usage with examples",
             "Note schema differences between Goldsky-sourced and parquet-backfilled records (missing orderHash, fee, id)"
         ],
-        "passes": false
+        "passes": true
     }
 ]

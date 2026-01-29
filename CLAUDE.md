@@ -35,6 +35,7 @@ Full reference: https://docs.polymarket.com/quickstart/introduction/rate-limits
 | Gamma | `GET /markets` | 300 req/10s |
 | Gamma | `GET /events` | 500 req/10s |
 | Data | `GET /trades` | 200 req/10s |
+| Goldsky | `POST /subgraphs/.../gn` | No hard limit (use page_delay) |
 
 ### Full Rate Limits by API
 
@@ -53,6 +54,31 @@ Full reference: https://docs.polymarket.com/quickstart/introduction/rate-limits
 - **Pagination:** Cursor-based (`next_cursor` field). End sentinel: `LTE=`. No offset limit.
 - **Page size:** Default 500 trades per page.
 
+### CLOB Authentication Details
+
+Two-tier auth system (L1 = wallet key, L2 = API credentials):
+
+- **L1 (Private Key):** Signs EIP-712 messages. Used to create/derive API credentials.
+- **L2 (API Credentials):** HMAC-SHA256 signing with `apiKey`, `secret`, `passphrase`.
+
+**Generating/Deriving API Credentials:**
+
+- **Create new:** `POST https://clob.polymarket.com/auth/api-key` (L1-authenticated)
+- **Derive existing:** `GET https://clob.polymarket.com/auth/derive-api-key` (L1-authenticated)
+- Response: `{ "apiKey": "...", "secret": "base64...", "passphrase": "..." }`
+
+**Wallet/Signature Types (set during L2 init):**
+
+| Type | Value | Description |
+|---|---|---|
+| EOA | 0 | Standard Ethereum wallet |
+| POLY_PROXY | 1 | Magic Link / Google login proxy |
+| GNOSIS_SAFE | 2 | Multisig proxy (most common for new users) |
+
+The **funder address** (shown on polymarket.com profile) holds trading funds and must match the configured wallet type.
+
+**To regenerate credentials:** Use the `py-clob-client` Python SDK or call the auth endpoints directly with L1 headers (`POLY_ADDRESS`, `POLY_SIGNATURE`, `POLY_TIMESTAMP`, `POLY_NONCE=0`).
+
 ### Polymarket Gamma API
 
 - **Base URL:** `https://gamma-api.polymarket.com`
@@ -65,6 +91,34 @@ Full reference: https://docs.polymarket.com/quickstart/introduction/rate-limits
 - **Base URL:** `https://data-api.polymarket.com`
 - **Used for:** Non-backfill trades ingestion.
 - **Pagination:** Offset-based with 10,000 record limit.
+
+### Goldsky Subgraph API (OrderFilledEvents)
+
+- **Endpoint:** `https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn`
+- **Used for:** OrderFilledEvent ingestion (on-chain order fill data).
+- **Auth:** None (public subgraph).
+- **Pagination:** Cursor-based using `id_gt` (standard subgraph pattern: `first:1000, orderBy:id, where:{id_gt:$cursor}`).
+- **Filtering:** `timestamp_gte` / `timestamp_lte` for day boundaries (Unix epoch seconds).
+- **Rate limits:** No documented hard limit; use configurable `page_delay` between requests.
+- **Client:** `GoldskyClient` in `src/prediction_data/bronze/polymarket/goldsky.py`.
+
+**OrderFilledEvent Schema (11 fields):**
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Subgraph entity ID |
+| `transactionHash` | string | On-chain tx hash |
+| `orderHash` | string | Order identifier |
+| `timestamp` | int | Unix epoch seconds |
+| `maker` | string | Maker address |
+| `taker` | string | Taker address |
+| `makerAssetId` | string | Maker asset token ID |
+| `takerAssetId` | string | Taker asset token ID |
+| `makerAmountFilled` | int | Base units (divide by 1e6 for USDC) |
+| `takerAmountFilled` | int | Base units (divide by 1e6 for USDC) |
+| `fee` | int | Fee in base units |
+
+**Schema note:** Historical parquet-backfilled records are missing `orderHash`, `fee`, and `id` (set to null). Amounts in parquet source are scaled floats (e.g., 4.45 USDC) multiplied by 1e6 to match subgraph base units.
 
 ## Kalshi API
 
@@ -104,6 +158,29 @@ prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-07 --dry
 # Kalshi trades backfill (uses min_ts/max_ts day boundaries)
 prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-31 \
     --platform kalshi --entity trades
+
+# Ingest Polymarket order_filled events for a single day
+prediction-data ingest polymarket-order-filled --dt 2024-06-15
+
+# Backfill order_filled via Goldsky subgraph
+prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
+    --platform polymarket --entity order_filled
+```
+
+### Parquet-to-Bronze Backfill (order_filled)
+
+Convert historical parquet data to bronze JSONL.gz format:
+
+```bash
+# Convert all days from parquet source
+python scripts/backfill_order_filled_from_parquet.py
+
+# Preview without writing to S3
+python scripts/backfill_order_filled_from_parquet.py --dry-run
+
+# Scope to date range
+python scripts/backfill_order_filled_from_parquet.py \
+    --start-date 2024-01-01 --end-date 2024-03-31
 ```
 
 - Polymarket trades backfill uses the CLOB API (cursor-based, no record limit).
