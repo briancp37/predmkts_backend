@@ -235,7 +235,9 @@ class TestNoSilverGoldAssumptions:
                 if not line.strip().startswith("#") and not line.strip().startswith('"""')
             ]
             code_only = "\n".join(lines)
-            assert "gold" not in code_only.lower(), f"Found 'gold' reference in {py_file}"
+            # Exclude "goldsky" (vendor name) before checking for "gold" tier references
+            filtered = code_only.lower().replace("goldsky", "")
+            assert "gold" not in filtered, f"Found 'gold' reference in {py_file}"
 
     def test_no_transformation_or_aggregation_logic(self) -> None:
         """Bronze layer should only do ingestion, not transformation."""

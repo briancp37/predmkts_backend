@@ -1,0 +1,237 @@
+"""Goldsky GraphQL client for querying OrderFilledEvent data from Polymarket orderbook subgraph."""
+
+import asyncio
+from typing import Any
+
+import structlog
+
+from prediction_data.core.http import HttpClient, RetryConfig, TimeoutConfig
+from prediction_data.core.logging import get_logger
+
+GOLDSKY_API_BASE_URL = (
+    "https://api.goldsky.com/api/public/"
+    "project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn"
+)
+
+# Standard subgraph page size
+DEFAULT_PAGE_SIZE = 1000
+
+# GraphQL query for OrderFilledEvent with id_gt cursor pagination
+ORDER_FILLED_QUERY = """\
+query OrderFilledEvents($first: Int!, $cursor: String!, $timestamp_gte: BigInt!, $timestamp_lte: BigInt!) {
+  orderFilledEvents(
+    first: $first
+    orderBy: id
+    orderDirection: asc
+    where: { id_gt: $cursor, timestamp_gte: $timestamp_gte, timestamp_lte: $timestamp_lte }
+  ) {
+    id
+    transactionHash
+    orderHash
+    timestamp
+    maker
+    taker
+    makerAssetId
+    takerAssetId
+    makerAmountFilled
+    takerAmountFilled
+    fee
+  }
+}"""
+
+
+def build_query_variables(
+    *,
+    cursor: str = "",
+    timestamp_gte: int,
+    timestamp_lte: int,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> dict[str, Any]:
+    """Build GraphQL query variables for OrderFilledEvents.
+
+    Args:
+        cursor: The id_gt cursor for pagination (empty string for first page).
+        timestamp_gte: Lower bound Unix timestamp (inclusive).
+        timestamp_lte: Upper bound Unix timestamp (inclusive).
+        page_size: Number of records per page.
+
+    Returns:
+        Dict of GraphQL variables.
+    """
+    return {
+        "first": page_size,
+        "cursor": cursor,
+        "timestamp_gte": str(timestamp_gte),
+        "timestamp_lte": str(timestamp_lte),
+    }
+
+
+class GoldskyClient:
+    """Async client for Goldsky subgraph API.
+
+    Fetches OrderFilledEvent data via GraphQL POST requests with
+    id_gt cursor-based pagination and timestamp filtering.
+
+    Example:
+        async with GoldskyClient() as client:
+            events = await client.fetch_all_order_filled_events(
+                timestamp_gte=1700000000, timestamp_lte=1700086400,
+            )
+    """
+
+    def __init__(
+        self,
+        *,
+        retry_config: RetryConfig | None = None,
+        timeout_config: TimeoutConfig | None = None,
+        page_delay: float = 0.2,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> None:
+        self._retry_config = retry_config or RetryConfig()
+        self._timeout_config = timeout_config or TimeoutConfig()
+        self._page_delay = page_delay
+        self._page_size = page_size
+        self._http_client: HttpClient | None = None
+        self._logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    async def __aenter__(self) -> "GoldskyClient":
+        self._http_client = HttpClient(
+            retry_config=self._retry_config,
+            timeout_config=self._timeout_config,
+        )
+        await self._http_client.__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        if self._http_client is not None:
+            await self._http_client.__aexit__(exc_type, exc_val, exc_tb)
+            self._http_client = None
+
+    def _ensure_client(self) -> HttpClient:
+        if self._http_client is None:
+            raise RuntimeError(
+                "GoldskyClient must be used as async context manager: "
+                "async with GoldskyClient() as client: ..."
+            )
+        return self._http_client
+
+    async def fetch_order_filled_page(
+        self,
+        *,
+        timestamp_gte: int,
+        timestamp_lte: int,
+        cursor: str = "",
+    ) -> list[dict[str, Any]]:
+        """Fetch a single page of OrderFilledEvents.
+
+        Args:
+            timestamp_gte: Lower bound Unix timestamp (inclusive).
+            timestamp_lte: Upper bound Unix timestamp (inclusive).
+            cursor: The id_gt cursor for pagination (empty string for first page).
+
+        Returns:
+            List of OrderFilledEvent records. Empty list means no more pages.
+        """
+        client = self._ensure_client()
+
+        variables = build_query_variables(
+            cursor=cursor,
+            timestamp_gte=timestamp_gte,
+            timestamp_lte=timestamp_lte,
+            page_size=self._page_size,
+        )
+
+        payload = {"query": ORDER_FILLED_QUERY, "variables": variables}
+
+        self._logger.debug(
+            "Fetching Goldsky order filled page",
+            cursor=cursor,
+            timestamp_gte=timestamp_gte,
+            timestamp_lte=timestamp_lte,
+        )
+
+        response = await client.post(GOLDSKY_API_BASE_URL, json=payload)
+        data: dict[str, Any] = response.json()
+
+        if "errors" in data:
+            raise RuntimeError(f"Goldsky GraphQL error: {data['errors']}")
+
+        events: list[dict[str, Any]] = data.get("data", {}).get("orderFilledEvents", [])
+
+        self._logger.debug(
+            "Fetched Goldsky order filled page",
+            count=len(events),
+        )
+
+        return events
+
+    async def fetch_all_order_filled_events(
+        self,
+        *,
+        timestamp_gte: int,
+        timestamp_lte: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch all OrderFilledEvents for a timestamp range with automatic pagination.
+
+        Uses id_gt cursor pagination: each page's last record ID becomes the
+        cursor for the next page. Stops when a page returns fewer records
+        than the page size.
+
+        Args:
+            timestamp_gte: Lower bound Unix timestamp (inclusive).
+            timestamp_lte: Upper bound Unix timestamp (inclusive).
+
+        Returns:
+            List of all matching OrderFilledEvent records.
+        """
+        all_events: list[dict[str, Any]] = []
+        cursor = ""
+        page_count = 0
+
+        self._logger.info(
+            "Starting Goldsky order filled fetch",
+            timestamp_gte=timestamp_gte,
+            timestamp_lte=timestamp_lte,
+        )
+
+        while True:
+            events = await self.fetch_order_filled_page(
+                timestamp_gte=timestamp_gte,
+                timestamp_lte=timestamp_lte,
+                cursor=cursor,
+            )
+
+            if not events:
+                break
+
+            all_events.extend(events)
+            page_count += 1
+            cursor = events[-1]["id"]
+
+            self._logger.info(
+                "Goldsky order filled pagination progress",
+                page=page_count,
+                page_count=len(events),
+                total_fetched=len(all_events),
+            )
+
+            # If we got fewer than page_size, we've reached the end
+            if len(events) < self._page_size:
+                break
+
+            # Rate limit between pages
+            if self._page_delay > 0:
+                await asyncio.sleep(self._page_delay)
+
+        self._logger.info(
+            "Goldsky order filled fetch complete",
+            total_fetched=len(all_events),
+            pages=page_count,
+        )
+
+        return all_events

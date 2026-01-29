@@ -1,0 +1,82 @@
+[
+    {
+        "category": "goldsky_subgraph_client",
+        "description": "Add Goldsky GraphQL client for querying OrderFilledEvent data from the Polymarket orderbook subgraph",
+        "steps": [
+            "Create src/prediction_data/bronze/polymarket/goldsky.py with GoldskyClient class",
+            "Implement GraphQL POST requests to https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn",
+            "Implement id_gt cursor-based pagination for orderFilledEvents query (standard subgraph pattern: query first:1000, orderBy:id, where:{id_gt:$cursor})",
+            "Add timestamp filtering (timestamp_gte, timestamp_lte) to scope queries by day boundaries",
+            "Use existing httpx-based HTTP client (core/http.py) for retries and backoff",
+            "Add rate limiting between pages to respect Goldsky API limits",
+            "Add unit tests for GraphQL query construction, pagination, and response parsing"
+        ],
+        "passes": true
+    },
+    {
+        "category": "order_filled_ingestion",
+        "description": "Add order_filled ingestion function that fetches OrderFilledEvents from Goldsky and writes to bronze S3",
+        "steps": [
+            "Add ingest_order_filled() async function to polymarket/ingest.py",
+            "Compute day boundaries (start-of-day, end-of-day UTC) from --dt param as Unix timestamps",
+            "Use GoldskyClient to fetch all OrderFilledEvents for the day",
+            "Store raw subgraph response fields in camelCase (transactionHash, orderHash, timestamp, maker, taker, makerAssetId, takerAssetId, makerAmountFilled, takerAmountFilled, fee) as JSONL.gz",
+            "Upload to S3: bronze/polymarket/order_filled/dt={date}/run_id={uuid}/part-NNN.jsonl.gz",
+            "Generate manifest with api_base_url pointing to Goldsky endpoint, pagination='cursor'",
+            "Add run_ingest_order_filled() synchronous wrapper for CLI usage"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_integration",
+        "description": "Wire order_filled entity into CLI ingestion and backfill commands",
+        "steps": [
+            "Add 'prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD' command to cli/main.py",
+            "Register order_filled as a valid Polymarket entity in backfill CLI (--entity order_filled)",
+            "Route polymarket/order_filled in backfill _ingest_one() to ingest_order_filled()",
+            "Verify dry-run output includes order_filled when --entity all or --entity order_filled"
+        ],
+        "passes": false
+    },
+    {
+        "category": "parquet_backfill_converter",
+        "description": "Build script to convert existing S3 parquet data into bronze JSONL.gz format for historical backfill",
+        "steps": [
+            "Create scripts/backfill_order_filled_from_parquet.py",
+            "Read parquet files from s3://polymarket-bcp892/raw/polymarket/order_filled/ using pyarrow",
+            "Convert fields: rename snake_case to camelCase (transaction_hash -> transactionHash, maker_asset_id -> makerAssetId, etc.)",
+            "Convert amounts: multiply float values by 1e6 and cast to int (e.g. 4.45 -> 4450000) to match subgraph base units",
+            "Convert timestamp: datetime -> Unix epoch integer (seconds)",
+            "Set missing fields to null: orderHash, fee, id",
+            "Write output as JSONL.gz to bronze bucket: bronze/polymarket/order_filled/dt={date}/run_id={uuid}/part-NNN.jsonl.gz",
+            "Generate manifest per day with source metadata indicating parquet backfill origin",
+            "Add --dry-run flag to preview conversion without writing to S3",
+            "Add --start-date / --end-date filtering to scope which days to convert"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_validation",
+        "description": "Test order_filled ingestion and parquet conversion end-to-end",
+        "steps": [
+            "Add unit tests for GoldskyClient (query construction, pagination, timestamp filtering)",
+            "Add unit tests for order_filled ingestion (S3 key structure, manifest correctness)",
+            "Add unit tests for parquet-to-bronze field conversion (camelCase rename, amount scaling, timestamp conversion, null fields)",
+            "Add integration test for single-day Goldsky order_filled ingestion",
+            "Validate a Goldsky-ingested record vs a parquet-backfilled record to confirm schema alignment",
+            "Run full test suite: pytest -m 'not integration', mypy src/, ruff check src/ tests/"
+        ],
+        "passes": false
+    },
+    {
+        "category": "documentation",
+        "description": "Document Goldsky subgraph integration, order_filled schema, and backfill procedures",
+        "steps": [
+            "Update CLAUDE.md with Goldsky subgraph endpoint, OrderFilledEvent schema, and rate limits",
+            "Document order_filled CLI usage examples (ingest and backfill)",
+            "Document parquet backfill script usage with examples",
+            "Note schema differences between Goldsky-sourced and parquet-backfilled records (missing orderHash, fee, id)"
+        ],
+        "passes": false
+    }
+]

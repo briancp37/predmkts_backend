@@ -1,0 +1,28 @@
+# Sprint Progress: Order Filled Ingestion
+# Release: 01_bronze_level
+# Created: 2026-01-29
+
+## Status: In Progress
+
+## Completed Tasks
+- [x] goldsky_subgraph_client: Created GoldskyClient in src/prediction_data/bronze/polymarket/goldsky.py
+  - GraphQL POST to Goldsky subgraph endpoint
+  - id_gt cursor-based pagination (standard subgraph pattern)
+  - timestamp_gte/timestamp_lte filtering for day boundaries
+  - Uses existing HttpClient for retries/backoff
+  - Configurable page_delay for rate limiting
+  - 16 unit tests in tests/test_polymarket_goldsky.py (all passing)
+  - Updated test_exit_criteria.py to allow "goldsky" vendor name (was false-positive on "gold" tier check)
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- Goldsky subgraph endpoint: https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn
+- OrderFilledEvent schema has 11 fields; source parquet has 8 (missing: orderHash, fee, id)
+- Parquet amounts are scaled floats (e.g. 4.45 USDC); subgraph uses base units (4450000) — multiply by 1e6
+- Source parquet bucket: s3://polymarket-bcp892/raw/polymarket/order_filled/
+- GoldskyClient does NOT use base_url on HttpClient (posts full URL) since it's a single endpoint, unlike REST clients
