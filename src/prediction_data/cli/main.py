@@ -195,6 +195,37 @@ def polymarket_events(
         raise typer.Exit(code=1)
 
 
+@ingest_app.command(name="polymarket-order-filled")
+def polymarket_order_filled(
+    dt: Annotated[
+        str,
+        typer.Option(
+            "--dt",
+            help="Data partition date in YYYY-MM-DD format.",
+        ),
+    ],
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+) -> None:
+    """Ingest Polymarket order filled events for a given date."""
+    from prediction_data.bronze.polymarket.ingest import run_ingest_order_filled
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    try:
+        run_id = run_ingest_order_filled(dt, bucket=bucket)
+        typer.echo(run_id)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 @ingest_app.command(name="kalshi-trades")
 def kalshi_trades(
     dt: Annotated[
@@ -375,7 +406,7 @@ def _is_date_scoped_entity(entity: str) -> bool:
 
     Markets and events are full catalog fetches, not date-scoped.
     """
-    return entity == "trades"
+    return entity in {"trades", "order_filled"}
 
 
 async def _run_backfill(
@@ -478,11 +509,16 @@ async def _ingest_one(
             return await pm_ingest.ingest_trades_clob(dt_str, bucket=bucket)
         elif entity == "markets":
             return await pm_ingest.ingest_markets(dt_str, bucket=bucket)
+        elif entity == "order_filled":
+            return await pm_ingest.ingest_order_filled(dt_str, bucket=bucket)
         else:
             return await pm_ingest.ingest_events(dt_str, bucket=bucket)
-    else:
+    else:  # kalshi
         from prediction_data.bronze.kalshi import ingest as ka_ingest
 
+        if entity == "order_filled":
+            msg = "order_filled entity is only supported for polymarket"
+            raise ValueError(msg)
         if entity == "trades":
             min_ts, max_ts = _day_boundaries_ts(dt_date)
             return await ka_ingest.ingest_trades(
@@ -504,7 +540,7 @@ def _resolve_platforms(platform: str) -> list[str]:
 def _resolve_entities(entity: str) -> list[str]:
     """Resolve entity option to list of entity names."""
     if entity == "all":
-        return ["trades", "markets", "events"]
+        return ["trades", "markets", "events", "order_filled"]
     return [entity]
 
 
@@ -535,7 +571,7 @@ def backfill_run(
         str,
         typer.Option(
             "--entity",
-            help="Entity type to backfill (trades, markets, events, or all).",
+            help="Entity type to backfill (trades, markets, events, order_filled, or all).",
         ),
     ] = "all",
     bucket: Annotated[
@@ -570,7 +606,7 @@ def backfill_run(
         raise typer.Exit(code=1)
 
     valid_platforms = {"polymarket", "kalshi", "all"}
-    valid_entities = {"trades", "markets", "events", "all"}
+    valid_entities = {"trades", "markets", "events", "order_filled", "all"}
 
     if platform not in valid_platforms:
         typer.echo(f"Error: --platform must be one of {valid_platforms}", err=True)

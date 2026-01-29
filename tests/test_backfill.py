@@ -484,7 +484,7 @@ class TestResolvePlatformsAndEntities:
     def test_resolve_entities_all(self) -> None:
         from prediction_data.cli.main import _resolve_entities
 
-        assert _resolve_entities("all") == ["trades", "markets", "events"]
+        assert _resolve_entities("all") == ["trades", "markets", "events", "order_filled"]
 
     def test_resolve_entities_single(self) -> None:
         from prediction_data.cli.main import _resolve_entities

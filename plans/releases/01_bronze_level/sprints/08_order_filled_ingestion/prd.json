@@ -36,7 +36,7 @@
             "Route polymarket/order_filled in backfill _ingest_one() to ingest_order_filled()",
             "Verify dry-run output includes order_filled when --entity all or --entity order_filled"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "parquet_backfill_converter",

@@ -23,6 +23,16 @@
   - Sync wrapper run_ingest_order_filled() for CLI usage
   - All 365 tests pass, mypy clean
 
+- [x] cli_integration: Wired order_filled entity into CLI ingestion and backfill commands
+  - Added 'prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD' CLI command
+  - Registered order_filled in _resolve_entities() (included in "all")
+  - Added order_filled to _is_date_scoped_entity() (per-day backfill like trades)
+  - Routed polymarket/order_filled in _ingest_one() to ingest_order_filled()
+  - Added ValueError guard for kalshi + order_filled (polymarket-only entity)
+  - Updated valid_entities set and --entity help text in backfill command
+  - Updated test_resolve_entities_all test expectation
+  - All 365 tests pass, mypy clean
+
 ## In Progress
 
 
