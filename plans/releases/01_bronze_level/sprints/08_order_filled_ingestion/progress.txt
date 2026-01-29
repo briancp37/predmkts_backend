@@ -33,6 +33,20 @@
   - Updated test_resolve_entities_all test expectation
   - All 365 tests pass, mypy clean
 
+- [x] parquet_backfill_converter: Created scripts/backfill_order_filled_from_parquet.py
+  - Reads parquet from s3://polymarket-bcp892/raw/polymarket/order_filled/ using pyarrow
+  - Converts snake_case fields to camelCase (transaction_hash -> transactionHash, etc.)
+  - Scales float amounts by 1e6 to int (matches subgraph base units)
+  - Converts datetime timestamps to Unix epoch seconds
+  - Sets missing fields (orderHash, fee, id) to null
+  - Writes JSONL.gz to bronze bucket with standard S3 key structure
+  - Generates manifest per day with source=parquet S3 path, pagination=none
+  - --dry-run flag previews without S3 writes
+  - --start-date / --end-date scopes conversion range
+  - Continues on per-day failure, prints summary at end
+  - Added pyarrow>=15.0.0 as optional [backfill] and dev dependency
+  - All 365 tests pass, mypy clean, ruff clean on new script
+
 ## In Progress
 
 
