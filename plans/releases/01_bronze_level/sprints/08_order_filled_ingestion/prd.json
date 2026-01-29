@@ -66,7 +66,7 @@
             "Validate a Goldsky-ingested record vs a parquet-backfilled record to confirm schema alignment",
             "Run full test suite: pytest -m 'not integration', mypy src/, ruff check src/ tests/"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "documentation",

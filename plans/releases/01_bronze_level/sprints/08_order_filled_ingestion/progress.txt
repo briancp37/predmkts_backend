@@ -47,6 +47,12 @@
   - Added pyarrow>=15.0.0 as optional [backfill] and dev dependency
   - All 365 tests pass, mypy clean, ruff clean on new script
 
+- [x] testing_and_validation: Added tests/test_order_filled_ingest.py with 13 tests (all passing)
+  - 5 unit tests for ingest_order_filled() (fetch+upload, platform/entity, manifest metadata, custom bucket, day boundaries)
+  - 6 unit tests for parquet _convert_record() (camelCase rename, amount scaling, datetime conversion, int passthrough, null missing fields, None preservation)
+  - 2 schema alignment tests (Goldsky vs parquet key parity, missing fields documented)
+  - Full suite: 378 passed, mypy clean, ruff clean on new file
+
 ## In Progress
 
 
