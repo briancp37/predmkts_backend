@@ -25,7 +25,7 @@
             "Generate manifest with api_base_url pointing to Goldsky endpoint, pagination='cursor'",
             "Add run_ingest_order_filled() synchronous wrapper for CLI usage"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_integration",

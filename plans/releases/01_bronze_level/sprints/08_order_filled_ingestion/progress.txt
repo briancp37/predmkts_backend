@@ -14,6 +14,15 @@
   - 16 unit tests in tests/test_polymarket_goldsky.py (all passing)
   - Updated test_exit_criteria.py to allow "goldsky" vendor name (was false-positive on "gold" tier check)
 
+- [x] order_filled_ingestion: Added ingest_order_filled() and run_ingest_order_filled() to polymarket/ingest.py
+  - Computes day boundaries (start-of-day, end-of-day UTC) from dt param as Unix timestamps
+  - Uses GoldskyClient to fetch all OrderFilledEvents for the day
+  - Stores raw subgraph fields in camelCase as JSONL.gz
+  - Uploads to S3: bronze/polymarket/order_filled/dt={date}/run_id={uuid}/part-NNN.jsonl.gz
+  - Generates manifest with api_base_url pointing to Goldsky endpoint, pagination='cursor'
+  - Sync wrapper run_ingest_order_filled() for CLI usage
+  - All 365 tests pass, mypy clean
+
 ## In Progress
 
 

@@ -458,6 +458,122 @@ def run_ingest_events(
     )
 
 
+async def ingest_order_filled(
+    dt: str,
+    *,
+    bucket: str | None = None,
+) -> str:
+    """Ingest Polymarket OrderFilledEvents for a given date via Goldsky subgraph.
+
+    Fetches all OrderFilledEvents from the Goldsky orderbook subgraph
+    and stores them in the Bronze layer as gzip-compressed JSONL files.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    import calendar
+    from datetime import date as date_type
+    from datetime import datetime
+
+    from prediction_data.bronze.polymarket.goldsky import (
+        GOLDSKY_API_BASE_URL,
+        GoldskyClient,
+    )
+
+    settings = get_settings()
+    bucket = bucket or settings.bronze_bucket
+    logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    # Create run context for tracking
+    run_ctx = RunContext(platform="polymarket", entity="order_filled")
+    run_ctx.bind_to_logger(dt=dt)
+    run_ctx.log_start(logger)
+
+    # Compute day boundaries as Unix timestamps
+    dt_date = date_type.fromisoformat(dt)
+    start_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
+    )
+    end_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
+    )
+
+    logger.info(
+        "Starting Polymarket order_filled ingestion",
+        dt=dt,
+        bucket=bucket,
+        timestamp_gte=start_ts,
+        timestamp_lte=end_ts,
+    )
+
+    # Fetch OrderFilledEvents from Goldsky subgraph
+    async with GoldskyClient() as client:
+        events = await client.fetch_all_order_filled_events(
+            timestamp_gte=start_ts, timestamp_lte=end_ts,
+        )
+
+    logger.info("Fetched order_filled events from Goldsky", record_count=len(events))
+
+    # Upload to S3
+    async with S3Client(bucket=bucket) as s3_client:
+        data_key, row_count = await s3_client.upload_jsonl(
+            records=events,
+            platform="polymarket",
+            entity="order_filled",
+            dt=dt,
+            run_id=run_ctx.run_id,
+        )
+
+        logger.info(
+            "Uploaded order_filled data to S3",
+            key=data_key,
+            row_count=row_count,
+        )
+
+        manifest = create_manifest(
+            run_id=run_ctx.run_id,
+            platform="polymarket",
+            entity="order_filled",
+            dt=dt,
+            bucket=bucket,
+            key=data_key,
+            row_count=row_count,
+            api_base_url=GOLDSKY_API_BASE_URL,
+            pagination="cursor",
+            cursor=None,
+        )
+
+        manifest_key = await s3_client.upload_manifest(manifest)
+        logger.info("Uploaded manifest to S3", key=manifest_key)
+
+    # Mark run complete
+    run_ctx.mark_complete()
+    run_ctx.log_end(logger)
+
+    return run_ctx.run_id
+
+
+def run_ingest_order_filled(
+    dt: str,
+    *,
+    bucket: str | None = None,
+) -> str:
+    """Synchronous wrapper for ingest_order_filled.
+
+    Args:
+        dt: Data partition date in YYYY-MM-DD format.
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+
+    Returns:
+        The run_id for this ingestion run.
+    """
+    return asyncio.run(ingest_order_filled(dt, bucket=bucket))
+
+
 def run_ingest_markets(
     dt: str,
     *,
