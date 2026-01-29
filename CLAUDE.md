@@ -23,6 +23,27 @@ ruff check src/ tests/
 prediction-data --help
 ```
 
+## Polymarket Rate Limits
+
+Full reference: https://docs.polymarket.com/quickstart/introduction/rate-limits
+
+### Endpoints We Hit
+
+| API | Endpoint | Rate Limit |
+|---|---|---|
+| CLOB | `GET /data/trades` | 500 req/10s |
+| Gamma | `GET /markets` | 300 req/10s |
+| Gamma | `GET /events` | 500 req/10s |
+| Data | `GET /trades` | 200 req/10s |
+
+### Full Rate Limits by API
+
+**CLOB API** (`clob.polymarket.com`): 9,000 req/10s overall. `/data/trades`: 500/10s.
+
+**Gamma API** (`gamma-api.polymarket.com`): 4,000 req/10s overall. `/markets`: 300/10s. `/events`: 500/10s.
+
+**Data API** (`data-api.polymarket.com`): 1,000 req/10s overall. `/trades`: 200/10s.
+
 ## Polymarket CLOB API
 
 - **Base URL:** `https://clob.polymarket.com`
@@ -30,13 +51,19 @@ prediction-data --help
 - **Auth:** L2 HMAC-SHA256 — signs `timestamp + method + path` (query params excluded from signature)
 - **Headers:** `POLY_ADDRESS`, `POLY_SIGNATURE`, `POLY_TIMESTAMP`, `POLY_API_KEY`, `POLY_PASSPHRASE`
 - **Pagination:** Cursor-based (`next_cursor` field). End sentinel: `LTE=`. No offset limit.
-- **Rate limits:** No published hard limit; use `page_delay` parameter (default 0.2s) between paginated requests to be respectful.
 - **Page size:** Default 500 trades per page.
+
+### Polymarket Gamma API
+
+- **Base URL:** `https://gamma-api.polymarket.com`
+- **Used for:** Markets and events snapshot ingestion.
+- **Endpoints:** `GET /markets`, `GET /events`
+- **Pagination:** Offset-based, no hard record limit (can return 100k+ records).
 
 ### Polymarket Data API (non-CLOB)
 
 - **Base URL:** `https://data-api.polymarket.com`
-- **Used for:** Non-backfill trades ingestion, markets, events snapshots.
+- **Used for:** Non-backfill trades ingestion.
 - **Pagination:** Offset-based with 10,000 record limit.
 
 ## Kalshi API
@@ -54,7 +81,8 @@ prediction-data --help
 | `AWS_REGION` | No | AWS region (default: us-east-1) |
 | `KALSHI_API_KEY_ID` | For Kalshi | Kalshi API key ID |
 | `KALSHI_PRIVATE_KEY_PATH` | For Kalshi | Path to Kalshi RSA private key |
-| `POLYGON_WALLET_PUBLIC_KEY` | For CLOB | Polygon wallet public address |
+| `POLYGON_WALLET_ADDRESS` | For CLOB | CLOB API-derived address (used in POLY_ADDRESS header) |
+| `POLYGON_WALLET_PUBLIC_KEY` | For CLOB | Polygon wallet public key |
 | `POLYGON_WALLET_PRIVATE_KEY` | For CLOB | Polygon wallet private key |
 | `POLYMARKET_BUILDER_API_KEY` | For CLOB | Builder API key |
 | `POLYMARKET_BUILDER_SECRET` | For CLOB | Base64-encoded Builder API secret |
@@ -97,5 +125,6 @@ bronze/{platform}/{entity}/dt={YYYY-MM-DD}/run_id={uuid}/
 
 - **Polymarket trades:** ~5,000-50,000 trades/day (varies with market activity). At 500/page, expect 10-100 API calls per day.
 - **Kalshi trades:** ~1,000-10,000 trades/day.
-- **Markets/events snapshots:** Typically a few hundred records per platform per day.
-- **Full historical backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.
+- **Polymarket markets catalog:** ~360,000 records (~163 MB gzipped). Full fetch takes ~48 min at 100/page.
+- **Polymarket events catalog:** ~176,000 records (~165 MB gzipped). Full fetch takes ~19 min at 100/page.
+- **Full historical trades backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.

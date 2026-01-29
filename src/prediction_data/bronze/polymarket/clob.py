@@ -54,14 +54,14 @@ def load_clob_credentials() -> ClobCredentials:
     """
     settings = get_settings()
 
-    address = getattr(settings, "polygon_wallet_public_key", None)
+    address = getattr(settings, "polygon_wallet_address", None)
     api_key = getattr(settings, "polymarket_builder_api_key", None)
     secret = getattr(settings, "polymarket_builder_secret", None)
     passphrase = getattr(settings, "polymarket_builder_passphrase", None)
 
     missing = []
     if not address:
-        missing.append("POLYGON_WALLET_PUBLIC_KEY")
+        missing.append("POLYGON_WALLET_ADDRESS")
     if not api_key:
         missing.append("POLYMARKET_BUILDER_API_KEY")
     if not secret:

@@ -370,6 +370,14 @@ def _day_boundaries_ts(dt: date) -> tuple[int, int]:
     return start_ts, end_ts
 
 
+def _is_date_scoped_entity(entity: str) -> bool:
+    """Return True if the entity uses per-day backfill (e.g. trades).
+
+    Markets and events are full catalog fetches, not date-scoped.
+    """
+    return entity == "trades"
+
+
 async def _run_backfill(
     *,
     platform: str,
@@ -379,38 +387,74 @@ async def _run_backfill(
     bucket: str | None,
     dry_run: bool,
 ) -> list[tuple[str, str]]:
-    """Run backfill for a single platform/entity combination over a date range.
+    """Run backfill for a single platform/entity combination.
 
-    Returns list of (date_str, error_msg) for failed days.
+    For date-scoped entities (trades), iterates over each day in the range.
+    For catalog entities (markets, events), runs a single full fetch using
+    today's date as the partition key.
+
+    Returns list of (label, error_msg) for failures.
     """
     from prediction_data.core.logging import get_logger
 
     logger = get_logger(__name__)
-    dates = _date_range(start_date, end_date)
     failed_days: list[tuple[str, str]] = []
 
-    for d in dates:
-        dt_str = d.isoformat()
-        label = f"{platform}/{entity} dt={dt_str}"
+    if _is_date_scoped_entity(entity):
+        dates = _date_range(start_date, end_date)
+        for d in dates:
+            dt_str = d.isoformat()
+            label = f"{platform}/{entity} dt={dt_str}"
+
+            if dry_run:
+                typer.echo(f"[dry-run] Would ingest {label}")
+                continue
+
+            logger.info("Backfill starting", platform=platform, entity=entity, dt=dt_str)
+
+            try:
+                run_id = await _ingest_one(
+                    platform=platform, entity=entity, dt_str=dt_str, dt_date=d, bucket=bucket
+                )
+                typer.echo(f"OK {label} run_id={run_id}")
+            except Exception as exc:
+                failed_days.append((dt_str, str(exc)))
+                logger.error(
+                    "Backfill day failed",
+                    platform=platform,
+                    entity=entity,
+                    dt=dt_str,
+                    error=str(exc),
+                )
+                typer.echo(f"FAIL {label}: {exc}", err=True)
+    else:
+        # Catalog entities: single full fetch, partition by today's date
+        dt_str = date.today().isoformat()
+        label = f"{platform}/{entity} (full catalog, dt={dt_str})"
 
         if dry_run:
             typer.echo(f"[dry-run] Would ingest {label}")
-            continue
+            return failed_days
 
-        logger.info("Backfill starting", platform=platform, entity=entity, dt=dt_str)
+        logger.info(
+            "Catalog fetch starting", platform=platform, entity=entity, dt=dt_str
+        )
 
         try:
             run_id = await _ingest_one(
-                platform=platform, entity=entity, dt_str=dt_str, dt_date=d, bucket=bucket
+                platform=platform,
+                entity=entity,
+                dt_str=dt_str,
+                dt_date=date.today(),
+                bucket=bucket,
             )
             typer.echo(f"OK {label} run_id={run_id}")
         except Exception as exc:
-            failed_days.append((dt_str, str(exc)))
+            failed_days.append((entity, str(exc)))
             logger.error(
-                "Backfill day failed",
+                "Catalog fetch failed",
                 platform=platform,
                 entity=entity,
-                dt=dt_str,
                 error=str(exc),
             )
             typer.echo(f"FAIL {label}: {exc}", err=True)
@@ -539,8 +583,15 @@ def backfill_run(
     entities = _resolve_entities(entity)
     total_days = (end - start).days + 1
 
+    date_scoped = [e for e in entities if _is_date_scoped_entity(e)]
+    catalog = [e for e in entities if not _is_date_scoped_entity(e)]
+    parts = []
+    if date_scoped:
+        parts.append(f"{', '.join(date_scoped)} x {total_days} day(s)")
+    if catalog:
+        parts.append(f"{', '.join(catalog)} (full catalog, once)")
     typer.echo(
-        f"Backfill: {len(platforms)} platform(s) x {len(entities)} entity(ies) x {total_days} day(s)"
+        f"Backfill: {len(platforms)} platform(s) — {'; '.join(parts)}"
     )
 
     all_failures: list[tuple[str, str]] = []

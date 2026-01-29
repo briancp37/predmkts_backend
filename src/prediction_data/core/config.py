@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     bronze_bucket: str
@@ -28,6 +29,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Polymarket CLOB API settings (optional - only required for CLOB trades backfill)
+    polygon_wallet_address: str | None = None
     polygon_wallet_public_key: str | None = None
     polygon_wallet_private_key: str | None = None
     polymarket_builder_api_key: str | None = None

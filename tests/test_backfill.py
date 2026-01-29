@@ -575,7 +575,28 @@ class TestBackfillCLI:
         assert "test-run-id-123" in result.output
         mock_ingest.assert_called_once()
 
-    def test_multi_day_calls_ingest_per_day(self) -> None:
+    def test_multi_day_calls_ingest_per_day_for_trades(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.cli.main._ingest_one", new_callable=AsyncMock) as mock_ingest,
+        ):
+            mock_ingest.return_value = "run-id"
+            result = runner.invoke(
+                app,
+                [
+                    "backfill", "run",
+                    "--start-date", "2025-06-13",
+                    "--end-date", "2025-06-16",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                ],
+            )
+        assert result.exit_code == 0
+        assert mock_ingest.call_count == 4
+
+    def test_catalog_entity_runs_once(self) -> None:
         from prediction_data.cli.main import app
 
         with (
@@ -594,7 +615,7 @@ class TestBackfillCLI:
                 ],
             )
         assert result.exit_code == 0
-        assert mock_ingest.call_count == 4
+        assert mock_ingest.call_count == 1
 
     def test_failure_on_one_day_continues_and_exits_1(self) -> None:
         from prediction_data.cli.main import app

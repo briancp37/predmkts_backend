@@ -9,10 +9,18 @@
 #   ./scripts/backfill_polymarket.sh --end 2024-12-31    # custom end date
 #
 # Required env vars (see .env.example):
-#   BRONZE_BUCKET, POLYGON_WALLET_PUBLIC_KEY, POLYGON_WALLET_PRIVATE_KEY,
+#   BRONZE_BUCKET, POLYGON_WALLET_ADDRESS, POLYGON_WALLET_PRIVATE_KEY,
 #   POLYMARKET_BUILDER_API_KEY, POLYMARKET_BUILDER_SECRET, POLYMARKET_BUILDER_PASSPHRASE
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/../.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
 
 START_DATE="2023-01-01"
 END_DATE="$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d 'yesterday' +%Y-%m-%d)"
@@ -28,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required env vars
-for var in BRONZE_BUCKET POLYGON_WALLET_PRIVATE_KEY POLYMARKET_BUILDER_API_KEY POLYMARKET_BUILDER_SECRET POLYMARKET_BUILDER_PASSPHRASE; do
+for var in BRONZE_BUCKET POLYGON_WALLET_ADDRESS POLYGON_WALLET_PRIVATE_KEY POLYMARKET_BUILDER_API_KEY POLYMARKET_BUILDER_SECRET POLYMARKET_BUILDER_PASSPHRASE; do
     if [[ -z "${!var:-}" ]]; then
         echo "ERROR: $var is not set" >&2
         exit 1
@@ -41,18 +49,47 @@ echo "Bucket:     ${BRONZE_BUCKET}"
 [[ -n "$DRY_RUN" ]] && echo "Mode:       DRY RUN"
 echo ""
 
-# Run trades, markets, and events backfills sequentially.
-# Each entity is a separate run so a failure in one doesn't block the others.
+# Run each entity separately so a failure in one doesn't block the others.
+# - trades: per-day backfill over the date range
+# - markets/events: single full catalog fetch (not date-scoped)
 
-for entity in trades markets events; do
-    echo "--- Backfilling polymarket/${entity} ---"
-    prediction-data backfill run \
+FAILURES=()
+
+# 1. Catalog fetches (markets & events) — run once, not per-day
+for entity in markets events; do
+    echo "--- Fetching full polymarket/${entity} catalog ---"
+    if prediction-data backfill run \
         --start-date "$START_DATE" \
         --end-date "$END_DATE" \
         --platform polymarket \
         --entity "$entity" \
-        $DRY_RUN
+        $DRY_RUN; then
+        echo "polymarket/${entity}: OK"
+    else
+        echo "polymarket/${entity}: FAILED" >&2
+        FAILURES+=("$entity")
+    fi
     echo ""
 done
 
-echo "=== Polymarket backfill complete ==="
+# 2. Trades backfill — per-day over the date range
+echo "--- Backfilling polymarket/trades (${START_DATE} to ${END_DATE}) ---"
+if prediction-data backfill run \
+    --start-date "$START_DATE" \
+    --end-date "$END_DATE" \
+    --platform polymarket \
+    --entity trades \
+    $DRY_RUN; then
+    echo "polymarket/trades: OK"
+else
+    echo "polymarket/trades: FAILED" >&2
+    FAILURES+=("trades")
+fi
+echo ""
+
+if [[ ${#FAILURES[@]} -gt 0 ]]; then
+    echo "=== Polymarket backfill finished with failures: ${FAILURES[*]} ===" >&2
+    exit 1
+else
+    echo "=== Polymarket backfill complete ==="
+fi
