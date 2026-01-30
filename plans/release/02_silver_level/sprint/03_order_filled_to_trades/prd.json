@@ -1,0 +1,54 @@
+[
+    {
+        "category": "markets_reference_loader",
+        "description": "Build token ID to market/side lookup from Bronze markets data",
+        "steps": [
+            "Load Bronze markets JSONL data to extract `clobTokenIds` per market",
+            "Melt/unpivot into long-form lookup: `(market_id, side, asset_id)` where side is token1 or token2",
+            "Handle float-notation asset IDs (e.g., 6.58e+76) by resolving to full-precision token IDs",
+            "Cache lookup table for reuse across trade derivation batches",
+            "Add logging for lookup table size and coverage stats"
+        ],
+        "passes": true
+    },
+    {
+        "category": "trade_derivation_logic",
+        "description": "Transform OrderFilledEvents into derived trades",
+        "steps": [
+            "Create `silver/polymarket/derive_trades.py` with trade derivation pipeline",
+            "Identify non-USDC asset (asset_id != '0') as the conditional token for each event",
+            "Join against markets lookup to get market_id and side (token1/token2)",
+            "Label each party's asset: USDC provider vs conditional token provider",
+            "Scale amounts: divide makerAmountFilled and takerAmountFilled by 1e6",
+            "Determine trade direction: taker providing USDC = buying; taker providing token = selling",
+            "Compute price = usd_amount / token_amount",
+            "Output columns: timestamp, market_id, maker, taker, nonusdc_side, maker_direction, taker_direction, price, usd_amount, token_amount, transactionHash"
+        ],
+        "passes": false
+    },
+    {
+        "category": "polymarket_trades_normalizer",
+        "description": "Wrap trade derivation as a normalizer compatible with the processing pipeline",
+        "steps": [
+            "Implement `PolymarketTradesNormalizer` that wraps trade derivation logic",
+            "Input: Bronze order_filled records + markets reference table",
+            "Output: normalized Silver trade records matching the trades schema",
+            "Handle records where market lookup fails (log warning, skip or quarantine)",
+            "Handle edge cases: zero amounts, division by zero in price calc"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Comprehensive tests for order_filled to trades transformation",
+        "steps": [
+            "Unit tests with sample OrderFilledEvent records",
+            "Test USDC identification (maker providing USDC vs taker providing USDC)",
+            "Test price calculation accuracy",
+            "Test market lookup resolution (token1 vs token2)",
+            "Test edge cases: missing market lookup, zero amounts, unknown asset IDs",
+            "Test with real Bronze data samples"
+        ],
+        "passes": false
+    }
+]

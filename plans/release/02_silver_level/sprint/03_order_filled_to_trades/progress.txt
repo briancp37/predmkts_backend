@@ -1,0 +1,28 @@
+# Sprint Progress: Order Filled To Trades
+# Release: 02_silver_level
+# Created: 2026-01-30
+
+## Status: In Progress
+
+## Completed Tasks
+
+- [2026-01-30] markets_reference_loader: Built `MarketsReferenceLookup` class in
+  `src/prediction_data/silver/polymarket/markets_reference.py`. Loads Bronze markets
+  JSONL data, extracts `clobTokenIds` per market, and builds a long-form lookup table
+  mapping `(asset_id) -> (market_id, side)`. Handles float-notation asset IDs (e.g.
+  6.58e+76) by indexing both full-precision and float keys. Supports loading from
+  raw JSONL bytes (gzipped or plain). 14 unit tests in `tests/test_markets_reference.py`
+  all passing. mypy clean.
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+- Next up: `trade_derivation_logic` — the core OrderFilledEvent -> derived trades
+  transformation. This depends on the markets_reference_loader (now complete).
+- After that: `polymarket_trades_normalizer` wraps the derivation as a Normalizer
+  subclass and registers it in the NORMALIZERS registry.
