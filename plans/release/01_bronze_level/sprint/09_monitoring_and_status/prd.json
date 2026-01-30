@@ -24,7 +24,7 @@
             "Support --platform and --entity filters (default: all platforms and entities)",
             "Add unit tests with mocked S3Client covering full coverage, partial gaps, and empty ranges"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "list_runs",

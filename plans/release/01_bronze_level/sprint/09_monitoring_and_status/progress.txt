@@ -12,6 +12,15 @@
   cli/main.py. Verified `prediction-data status --help` works. All tests pass (378), mypy clean,
   no new ruff errors.
 
+- [2026-01-30] coverage_check: Added `prediction-data status coverage` command to
+  src/prediction_data/cli/status.py. Implements --start-date, --end-date, --platform,
+  --entity, --bucket options. Lists S3 prefixes per date, reads manifests for run count
+  and row_count, flags missing dates as gaps, displays aligned table with status column
+  (OK/MISSING) and summary line. Added _date_range, _resolve_filters, _get_coverage_data
+  helpers. Tests in tests/test_status_coverage.py (8 tests): full coverage, partial gaps,
+  empty range, multiple runs per date, invalid date, start > end, no bucket, default
+  all-platforms-entities. All 386 tests pass, mypy clean, ruff clean.
+
 ## In Progress
 
 ## Blockers/Issues
