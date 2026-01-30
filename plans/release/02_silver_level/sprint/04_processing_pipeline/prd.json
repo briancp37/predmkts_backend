@@ -58,7 +58,7 @@
             "Fail fast on normalization or write errors",
             "Emit processing metadata: manifest processed, rows read/written, dedup count, snapshot ID"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",
