@@ -8,7 +8,7 @@
             "Add metadata fields: `bronze_run_id`, `silver_ingestion_ts`, `dedup_key`",
             "Define dedup key for trades: `(platform, platform_trade_id)` or content hash"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "markets_schema",
@@ -19,7 +19,7 @@
             "Define dedup key: `(platform, platform_market_id, updated_at)`",
             "Add change tracking fields: `first_seen_at`, `last_updated_at`"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "events_schema",
@@ -29,7 +29,7 @@
             "Define `silver_kalshi.events` schema (scaffold)",
             "Define dedup key for events"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "normalization_engine",
@@ -53,6 +53,6 @@
             "Test type conversion edge cases (invalid timestamps, malformed numbers)",
             "Create test fixtures from real Bronze data samples"
         ],
-        "passes": false
+        "passes": true
     }
 ]

@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -20,6 +20,19 @@
   - `dedup_key()` on each normalizer returns `platform:id[:updated_at]` string
   - 22 unit tests in `test_silver_normalize.py` — all passing
   - mypy clean, ruff clean
+
+- [2026-01-30] testing: Comprehensive unit tests for schemas and normalizers
+  - 45 total tests (up from 22) in `test_silver_normalize.py`
+  - `TestNullHandling` — all-optional-null coverage for all 5 normalizers + explicit None values
+  - `TestTypeConversionEdgeCases` — malformed floats/ints return None, float epoch timestamps,
+    empty string raises, tokens dict/string passthrough, timestamp fallbacks, condition_id fallback
+  - `TestBronzeDataFixtures` — realistic Bronze JSON records for all 5 entities,
+    dedup key format verification, batch normalization with mixed good/bad records
+  - All 45 tests passing, mypy clean, ruff clean
+
+- [2026-01-30] trades_schema, markets_schema, events_schema: Marked as passes=true
+  - All 6 Silver schemas already defined in `tables.py` from prior sprint work
+  - Dedup keys defined in normalizers
 
 ## In Progress
 
