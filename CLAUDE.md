@@ -4,6 +4,33 @@
 
 Python data pipeline for ingesting prediction market data (Polymarket, Kalshi) into S3 bronze layer.
 
+## Release & Sprint Plans
+
+Project work is organized into releases and sprints under `plans/release/`.
+
+```
+plans/release/
+├── 01_bronze_level/
+│   ├── RELEASE.md              # Release scope, goals, exit criteria
+│   ├── progress.txt            # Release-level progress tracking
+│   └── sprint/
+│       ├── 01_project_bootstrap/
+│       │   ├── prd.json        # Sprint PRD: categories with steps and pass/fail
+│       │   └── progress.txt    # Sprint progress log
+│       ├── 02_core_infra/
+│       ├── ...
+│       └── 08_order_filled_ingestion/
+├── 02_silver_level/
+│   └── RELEASE.md
+└── 03_gold_level/
+    └── RELEASE.md
+```
+
+- **RELEASE.md**: Defines scope, exit criteria, entities, and architecture for a release.
+- **prd.json**: Array of `{ category, description, steps[], passes }` objects. `passes` is `true`/`false` indicating completion.
+- **progress.txt**: Free-form log of completed tasks, blockers, and notes per sprint.
+- Use `/sprint_generator <release_name>` to generate sprints from a RELEASE.md.
+
 ## Quick Reference
 
 ```bash
@@ -196,6 +223,28 @@ python scripts/backfill_order_filled_from_parquet.py \
 - Markets/events run existing snapshot ingestion per day.
 - On per-day failure, continues to next day and prints failure summary at end.
 - Sequential processing only (concurrency deferred).
+
+## Status CLI
+
+```bash
+# Check data coverage for a date range (shows gaps)
+prediction-data status coverage --start-date 2024-01-01 --end-date 2024-01-31
+prediction-data status coverage --start-date 2024-01-01 --end-date 2024-01-31 \
+    --platform polymarket --entity trades
+
+# List recent ingestion runs (default: last 20)
+prediction-data status runs
+prediction-data status runs --platform kalshi --last 10
+prediction-data status runs --dt 2024-06-15  # all runs for a specific date
+
+# Show full details of a specific run
+prediction-data status show-run <run_id>
+
+# Validate manifest integrity and detect orphaned/incomplete data
+prediction-data status validate --start-date 2024-01-01 --end-date 2024-01-31
+prediction-data status validate --start-date 2024-06-01 --end-date 2024-06-30 \
+    --platform polymarket --entity trades
+```
 
 ## S3 Key Structure
 

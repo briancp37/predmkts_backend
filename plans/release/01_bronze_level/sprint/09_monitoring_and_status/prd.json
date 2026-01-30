@@ -81,6 +81,6 @@
             "Update CLAUDE.md with new status CLI command examples",
             "Update RELEASE.md CLI Contract (section 9) with the new status commands"
         ],
-        "passes": false
+        "passes": true
     }
 ]

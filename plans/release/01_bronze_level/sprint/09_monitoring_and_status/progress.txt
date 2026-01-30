@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -53,6 +53,16 @@
   tests/test_status_validate.py (9 tests): valid data, invalid manifest, missing part
   files, orphaned files, empty run, no data, invalid date, no bucket, start > end.
   All 408 tests pass, mypy clean, ruff clean.
+
+- [2026-01-30] testing_and_documentation: Verified all 408 tests pass (pytest -m
+  'not integration'), mypy clean (no issues in 23 source files), ruff clean on
+  all status source and test files. Tests already exist across 4 files:
+  test_status_coverage.py (8 tests), test_status_runs.py (7 tests),
+  test_status_show_run.py (7 tests), test_status_validate.py (9 tests) — 31
+  total tests covering all status subcommands with mocked S3Client. Added Status
+  CLI section to CLAUDE.md with usage examples for coverage, runs, show-run, and
+  validate commands. RELEASE.md CLI Contract (section 9) already had status
+  commands documented. All PRD categories now pass.
 
 ## In Progress
 
