@@ -1,0 +1,71 @@
+[
+    {
+        "category": "incremental_order_filled",
+        "description": "Modify order_filled ingestion to support incremental fetching — only fetch records newer than the last known timestamp instead of re-fetching the entire day",
+        "steps": [
+            "Add helper function to find the latest timestamp from existing order_filled data in S3 (read latest manifest, check for latest_timestamp in source metadata)",
+            "Add fallback: if manifest has no latest_timestamp field, download the latest data file and scan for max timestamp value",
+            "Modify ingest_order_filled() to accept optional since_timestamp parameter",
+            "When since_timestamp is provided, use timestamp_gte=since_timestamp in Goldsky query instead of day boundaries",
+            "Write latest_timestamp into manifest source metadata on each run (max timestamp from fetched records)",
+            "Preserve backwards compatibility: without since_timestamp, existing full-day behavior is unchanged",
+            "Add unit tests for incremental fetch path (since_timestamp passed to GoldskyClient, manifest includes latest_timestamp)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "latest_timestamp_discovery",
+        "description": "Build S3 scanning logic to find the most recent timestamp for a given platform/entity, used by both incremental ingestion and the catchup command",
+        "steps": [
+            "Create async helper function: find_latest_timestamp(s3_client, bucket, platform, entity) -> int | None",
+            "List S3 prefixes under bronze/{platform}/{entity}/ to discover all dt= date partitions",
+            "Extract dates from key paths via regex, find the latest date",
+            "Within the latest date, find the latest run_id directory (by manifest generated_at timestamp)",
+            "Read the manifest: if source.latest_timestamp exists, return it",
+            "Fallback: download the data file (part-000.jsonl.gz), decompress, scan for max timestamp field, return it",
+            "Return None if no data exists at all",
+            "Add unit tests: manifest with latest_timestamp field, manifest without field (data scan fallback), no data exists, multiple dates/runs"
+        ],
+        "passes": false
+    },
+    {
+        "category": "catchup_command",
+        "description": "Add 'prediction-data backfill catchup' CLI command that auto-detects the latest data and catches up to present",
+        "steps": [
+            "Add catchup command to backfill_app in cli/main.py with options: --platform, --entity, --bucket, --dry-run",
+            "Resolve platform/entity filters using existing _resolve_platforms() and _resolve_entities() helpers",
+            "For order_filled: call find_latest_timestamp(), then run incremental ingest_order_filled(since_timestamp=latest_ts)",
+            "For other date-scoped entities (trades): find latest date in S3, backfill missing days to today using existing _run_backfill()",
+            "For catalog entities (markets, events): find latest date, run fresh snapshot for today if not already present",
+            "In --dry-run mode: print what would be fetched (latest timestamp found, time range to fetch, entities to process) without executing",
+            "Log 'already up to date' and skip if no new data is expected",
+            "Log 'no existing data found' and skip if platform/entity has never been ingested (user should run initial backfill first)",
+            "Continue on failure per entity, collect errors, report summary and exit non-zero if any failures"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Add comprehensive tests for incremental ingestion and catchup command",
+        "steps": [
+            "Add unit tests for find_latest_timestamp() with mocked S3Client (manifest with field, fallback scan, no data, multiple dates)",
+            "Add unit tests for catchup command: dry-run output, incremental path for order_filled, full-day path for trades, catalog path for markets/events",
+            "Add unit tests for edge cases: no existing data (skip), already up to date (skip), failure continues to next entity",
+            "Add unit tests for incremental ingest_order_filled (since_timestamp forwarded to Goldsky, latest_timestamp written to manifest)",
+            "Ensure all tests pass: pytest -m 'not integration'",
+            "Ensure type checking passes: mypy src/",
+            "Ensure linting passes: ruff check src/ tests/"
+        ],
+        "passes": false
+    },
+    {
+        "category": "documentation",
+        "description": "Update project documentation with catchup command and incremental ingestion model",
+        "steps": [
+            "Update CLAUDE.md: add catchup CLI examples to Backfill CLI section, add note about incremental order_filled ingestion",
+            "Update RELEASE.md: add catchup command to CLI contract (section 9), document incremental ingestion model for order_filled",
+            "Update FORBRIAN.md: add Sprint 10 section explaining incremental ingestion design, catchup command, and lessons learned"
+        ],
+        "passes": false
+    }
+]

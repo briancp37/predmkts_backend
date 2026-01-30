@@ -220,6 +220,22 @@ If anything is wrong, it exits with a non-zero code — so you can run it in CI 
 
 **Implementation detail:** All status commands share the same `--platform` and `--entity` filter options via Typer's annotated types. The `format_table()` utility ensures consistent terminal output across all subcommands. This is a small thing but it matters — users build muscle memory around consistent interfaces.
 
+### Sprint 10: Incremental Ingestion & Catchup
+
+**What:** Redesign order_filled ingestion to be incremental (fetch only new records) and add a `backfill catchup` command that auto-detects the latest data and catches up to present.
+
+**Why it matters:** The original design fetches the entire day on every run. If you're running every 5 minutes, that's 288 runs per day — each one re-fetching every record since midnight. By end of day, ~99.7% of the data you've written is duplicate. That's wasteful in API calls, S3 storage, and processing time.
+
+The fix is simple in concept: before fetching, ask "what's the newest record I already have?" and only fetch records newer than that. The Goldsky subgraph already supports `timestamp_gte` filtering, so no API changes are needed — just smarter query construction.
+
+**The tricky part** is figuring out "what's the newest record I already have" without a database. The solution: read the most recent manifest. We add a `latest_timestamp` field to the manifest's source metadata. When the next run starts, it reads the previous manifest, grabs that timestamp, and passes it as `timestamp_gte` to the Goldsky query. If the manifest is old (from before this feature), we fall back to downloading the data file and scanning for the max timestamp. It's a bit slower but only happens once per legacy manifest.
+
+**The catchup command** (`prediction-data backfill catchup`) ties it all together. It looks at what's in S3, figures out where you left off, and fills the gap to now. For order_filled, it uses the incremental path (timestamp-based). For trades, it finds the latest date and backfills missing days. For markets/events, it checks if today's snapshot exists and runs one if not.
+
+Think of it like a DVR's "catch up to live" button — it figures out where you are and fast-forwards to the present.
+
+**Lesson:** The original "fetch everything, deduplicate later" design was correct for the *initial build* — it's simpler, harder to break, and good enough when you're running manually. But once you move to scheduled execution, the economics change. A 5-minute schedule with full-day fetches produces O(n^2) data per day. Incremental fetching produces O(n). Know when your design assumptions change and adapt accordingly.
+
 ---
 
 ## How to Use the System (The Operator's Guide)
@@ -254,6 +270,21 @@ prediction-data backfill run --start-date 2026-01-01 --end-date 2026-01-07 --dry
 ```
 
 Always run `--dry-run` first for large date ranges. Backfills for a month of trades can take hours due to rate limiting.
+
+### Catching Up to Present
+
+```bash
+# Catch up everything to now
+prediction-data backfill catchup
+
+# Just order_filled (incremental — only fetches new records)
+prediction-data backfill catchup --platform polymarket --entity order_filled
+
+# Preview first
+prediction-data backfill catchup --dry-run
+```
+
+This auto-detects the latest data in S3 and fills the gap to present. For order_filled, it uses incremental ingestion (timestamp-based). For other entities, it backfills missing days.
 
 ### Historical Parquet Backfill (Order Filled)
 

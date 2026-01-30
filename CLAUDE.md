@@ -194,6 +194,21 @@ prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
     --platform polymarket --entity order_filled
 ```
 
+### Catchup (Auto-Detect & Backfill to Present)
+
+```bash
+# Catch up all platforms/entities to present
+prediction-data backfill catchup
+
+# Catch up only Polymarket order_filled (incremental — fetches only new records)
+prediction-data backfill catchup --platform polymarket --entity order_filled
+
+# Preview what would be fetched
+prediction-data backfill catchup --dry-run
+```
+
+For `order_filled`, catchup uses **incremental ingestion**: it finds the latest timestamp in existing data and fetches only newer records from the Goldsky subgraph. For other entities, it finds the latest date and backfills missing days.
+
 ### Parquet-to-Bronze Backfill (order_filled)
 
 Convert historical parquet data to bronze JSONL.gz format. Reads from the monolithic
