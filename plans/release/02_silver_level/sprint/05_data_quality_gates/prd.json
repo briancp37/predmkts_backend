@@ -1,0 +1,48 @@
+[
+    {
+        "category": "quality_framework",
+        "description": "Build quality check framework with fail-fast semantics",
+        "steps": [
+            "Create `silver/quality.py` with `QualityCheck` abstract base class",
+            "Define `QualityCheckResult` dataclass (passed, failed_count, error_message, sample_failures)",
+            "Implement check registry and sequential runner",
+            "Configure failure behavior: abort Silver job, no partial commits",
+            "Add quality check failure exception type"
+        ],
+        "passes": false
+    },
+    {
+        "category": "checks",
+        "description": "Implement specific quality checks per RELEASE.md requirements",
+        "steps": [
+            "Implement `NonNullCheck` for critical columns per entity (platform_trade_id, event_ts, market_id, etc.)",
+            "Implement `UniquenessCheck` for dedup key uniqueness within normalized batch",
+            "Implement `TimestampRangeCheck`: event_ts within expected date +/- 1 day tolerance, not in future",
+            "Implement `ReferentialCheck`: trade market_id exists in markets (optional, warn-only mode)",
+            "Define per-entity check configurations (which checks apply to which entity)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "integration",
+        "description": "Wire quality checks into the processing pipeline",
+        "steps": [
+            "Insert quality checks after normalization, before Iceberg write",
+            "Log quality check results with structured metrics",
+            "On failure: log details, abort processing, do not write to Iceberg",
+            "On success: include quality summary in processing metadata"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Tests for quality checks and failure behavior",
+        "steps": [
+            "Unit tests for each check with passing and failing data",
+            "Test that quality failure prevents Iceberg writes",
+            "Test quality check results are logged with metrics",
+            "Create fixtures for common quality violations (nulls, duplicates, bad timestamps)"
+        ],
+        "passes": false
+    }
+]

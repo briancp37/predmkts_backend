@@ -1,0 +1,75 @@
+[
+    {
+        "category": "manifest_discovery",
+        "description": "Scan S3 for Bronze manifests to drive Silver processing",
+        "steps": [
+            "Create `silver/discovery.py` with manifest scanner",
+            "Implement S3 listing for Bronze manifests: `bronze/{platform}/{entity}/dt={date}/run_id={uuid}/_manifest.json`",
+            "Filter manifests by date range, platform, and entity",
+            "Parse and validate manifest JSON against Bronze manifest schema",
+            "Return structured list of manifests with metadata (run_id, dt, row_count, files)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "bronze_reader",
+        "description": "Stream Bronze JSONL.gz data referenced by manifests",
+        "steps": [
+            "Create `silver/reader.py` with streaming Bronze data reader",
+            "Load JSONL.gz files referenced in manifest (handle multi-part files)",
+            "Parse JSONL records and yield Python dicts",
+            "Handle decompression and UTF-8 decoding",
+            "Add progress tracking (records read counter)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "deduplication",
+        "description": "In-batch deduplication by dedup key with conflict resolution",
+        "steps": [
+            "Create `silver/dedup.py` with deduplication engine",
+            "Implement in-memory dedup keyed by entity-specific dedup_key",
+            "Conflict resolution: latest wins by `updated_at` or `event_ts`",
+            "Track dedup stats: records in, duplicates dropped, records out",
+            "Log duplicate records for observability"
+        ],
+        "passes": false
+    },
+    {
+        "category": "iceberg_writer",
+        "description": "Write normalized records to Iceberg tables via PyIceberg",
+        "steps": [
+            "Create `silver/writer.py` with Iceberg writer",
+            "Convert normalized Python dicts to PyArrow RecordBatch",
+            "Append RecordBatch to Iceberg table via PyIceberg",
+            "Configure write properties: ZSTD compression, target file size 256MB",
+            "Atomic commit with transaction, capture snapshot ID",
+            "Handle write failures gracefully"
+        ],
+        "passes": false
+    },
+    {
+        "category": "processor",
+        "description": "End-to-end orchestrator: manifest → read → normalize → dedup → write",
+        "steps": [
+            "Create `silver/processor.py` with end-to-end processing workflow",
+            "Orchestrate: discover manifest, read Bronze, normalize, dedup, write Silver",
+            "Add structured logging at each stage with metrics",
+            "Fail fast on normalization or write errors",
+            "Emit processing metadata: manifest processed, rows read/written, dedup count, snapshot ID"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Integration tests for the full processing pipeline",
+        "steps": [
+            "End-to-end test with mock Bronze manifest and data",
+            "Test deduplication within single run",
+            "Test Iceberg write and snapshot creation",
+            "Test error handling (malformed JSON, schema violations)",
+            "Verify PyArrow schema matches Iceberg schema"
+        ],
+        "passes": false
+    }
+]

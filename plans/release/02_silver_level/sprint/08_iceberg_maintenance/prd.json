@@ -1,0 +1,60 @@
+[
+    {
+        "category": "compaction",
+        "description": "Implement file compaction for Iceberg tables",
+        "steps": [
+            "Create `silver/maintenance.py` with maintenance operations",
+            "Implement file compaction using PyIceberg rewrite API",
+            "Target partitions with excessive small files (<64MB, >50 files)",
+            "Rewrite to target file size (256MB)",
+            "Add CLI: `prediction-data silver compact --table X [--partition Y]`",
+            "Log compaction stats: files before/after, bytes saved"
+        ],
+        "passes": false
+    },
+    {
+        "category": "snapshot_expiration",
+        "description": "Expire old Iceberg snapshots to control metadata size",
+        "steps": [
+            "Implement snapshot expiration using PyIceberg API",
+            "Retain snapshots for configurable period (default 7 days)",
+            "Add CLI: `prediction-data silver expire-snapshots --table X --older-than-days 7`",
+            "Verify old snapshots are removed from metadata"
+        ],
+        "passes": false
+    },
+    {
+        "category": "orphan_cleanup",
+        "description": "Detect and remove orphaned data files",
+        "steps": [
+            "Implement orphan file detection (Parquet files not referenced by metadata)",
+            "Safety check: only delete files >7 days old",
+            "Add CLI: `prediction-data silver remove-orphans --table X --dry-run`",
+            "Log orphan files found and deleted"
+        ],
+        "passes": false
+    },
+    {
+        "category": "scheduler",
+        "description": "Schedule automated maintenance jobs",
+        "steps": [
+            "Create maintenance runner script for all tables",
+            "Schedule compaction: daily",
+            "Schedule snapshot expiration: weekly",
+            "Schedule orphan cleanup: weekly",
+            "Integrate with EventBridge Scheduler or cron"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Tests for maintenance operations",
+        "steps": [
+            "Test compaction reduces file count",
+            "Test snapshot expiration removes old snapshots",
+            "Test orphan cleanup detects untracked files",
+            "Test dry-run modes for all operations"
+        ],
+        "passes": false
+    }
+]

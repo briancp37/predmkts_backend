@@ -1,0 +1,54 @@
+[
+    {
+        "category": "e2e_validation",
+        "description": "Run full Bronze-to-Silver pipeline and validate output",
+        "steps": [
+            "Run full pipeline for Polymarket trades (1 week of data)",
+            "Run full pipeline for Polymarket markets (1 week)",
+            "Run full pipeline for Polymarket events (1 week)",
+            "Run full pipeline for Kalshi entities (scaffold verification only)",
+            "Verify Iceberg tables in Glue Catalog",
+            "Query Silver tables using PyIceberg and verify data quality"
+        ],
+        "passes": false
+    },
+    {
+        "category": "historical_backfill",
+        "description": "Backfill meaningful historical date range into Silver",
+        "steps": [
+            "Backfill Polymarket trades for a representative date range",
+            "Backfill Polymarket markets for the same range",
+            "Backfill Polymarket events for the same range",
+            "Monitor backfill progress and handle failures",
+            "Verify Silver data coverage matches Bronze coverage"
+        ],
+        "passes": false
+    },
+    {
+        "category": "exit_criteria",
+        "description": "Verify all RELEASE.md exit criteria are met",
+        "steps": [
+            "Verify: Iceberg catalog (Glue) is live and versioned",
+            "Verify: Silver tables exist for Polymarket and Kalshi entities",
+            "Verify: Bronze to Silver processing is manifest-driven",
+            "Verify: Deduplication rules are enforced in Silver",
+            "Verify: Late-arriving data is handled correctly",
+            "Verify: Data quality checks run and fail loudly",
+            "Verify: Silver partitions can be backfilled and rebuilt",
+            "Verify: Iceberg maintenance jobs are automated",
+            "Verify: No Gold/ClickHouse logic exists in Silver code"
+        ],
+        "passes": false
+    },
+    {
+        "category": "documentation",
+        "description": "Update documentation for Silver layer operations",
+        "steps": [
+            "Update CLAUDE.md with Silver CLI reference and commands",
+            "Create Silver operations runbook (backfills, troubleshooting, maintenance)",
+            "Document schema evolution procedures",
+            "Document quality check configuration"
+        ],
+        "passes": false
+    }
+]

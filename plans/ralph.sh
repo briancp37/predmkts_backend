@@ -8,8 +8,8 @@ fi
 
 # Set file paths based on optional release/sprint parameters
 if [ -n "$2" ] && [ -n "$3" ]; then
-  PRD_FILE="plans/releases/$2/sprints/$3/prd.json"
-  PROGRESS_FILE="plans/releases/$2/sprints/$3/progress.txt"
+  PRD_FILE="plans/release/$2/sprint/$3/prd.json"
+  PROGRESS_FILE="plans/release/$2/sprint/$3/progress.txt"
 else
   PRD_FILE="plans/prd.json"
   PROGRESS_FILE="progress.txt"

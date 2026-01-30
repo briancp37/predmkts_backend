@@ -1,0 +1,49 @@
+[
+    {
+        "category": "upsert_implementation",
+        "description": "Implement Iceberg merge for deduplication across writes",
+        "steps": [
+            "Enhance `silver/writer.py` with merge/overwrite logic",
+            "Define merge key matching entity dedup_key",
+            "Implement conflict resolution: latest wins by `updated_at` or `event_ts`",
+            "Replace simple append with merge-based writes where appropriate",
+            "Capture merge statistics (inserts, updates)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "late_arrival_handling",
+        "description": "Handle late-arriving data writing to historical partitions",
+        "steps": [
+            "Allow writes to old event_ts partitions (Iceberg supports natively)",
+            "Add warning log if writing to partition >7 days old",
+            "Test: process data for old date after newer dates already processed",
+            "Verify late data lands in correct event_ts partition",
+            "Document late-arrival tolerance window"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cross_run_dedup",
+        "description": "Deduplicate across multiple Bronze runs for the same date",
+        "steps": [
+            "Handle multiple Bronze manifests for same (platform, entity, dt)",
+            "Use Iceberg merge to deduplicate records from different run_ids",
+            "Track which run_id contributed each final record (metadata field)",
+            "Ensure reprocessing same manifest is idempotent"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Tests for upsert, late data, and cross-run dedup",
+        "steps": [
+            "Test upsert with new records (insert path)",
+            "Test upsert with existing records (update path)",
+            "Test conflict resolution produces correct winner",
+            "Test late-arriving data writes to correct partition",
+            "Test cross-run dedup produces correct final state"
+        ],
+        "passes": false
+    }
+]

@@ -1,0 +1,51 @@
+[
+    {
+        "category": "silver_cli",
+        "description": "Add Silver processing commands to the CLI",
+        "steps": [
+            "Create `src/prediction_data/cli/silver.py` with Silver command group",
+            "Add command: `prediction-data silver process --platform X --entity Y --dt YYYY-MM-DD`",
+            "Add command: `prediction-data silver process --start-date YYYY-MM-DD --end-date YYYY-MM-DD`",
+            "Add flags: `--dry-run`, `--force-reprocess`, `--skip-quality-checks`",
+            "Print run summary: manifests processed, rows written, snapshot IDs",
+            "Register silver command group in main CLI app"
+        ],
+        "passes": false
+    },
+    {
+        "category": "state_tracking",
+        "description": "Track which Bronze manifests have been processed to enable idempotency",
+        "steps": [
+            "Create `silver/state.py` for processing state management",
+            "Implement state storage as S3 JSONL state log",
+            "Implement `mark_processed(manifest_id)` and `is_processed(manifest_id)`",
+            "Skip already-processed manifests by default",
+            "Support `--force-reprocess` flag to ignore state"
+        ],
+        "passes": false
+    },
+    {
+        "category": "backfill_workflow",
+        "description": "Support date-range backfills with error resilience",
+        "steps": [
+            "Implement date range iteration for multi-day Silver backfills",
+            "Process manifests sequentially per day",
+            "Continue on per-day failure, collect errors",
+            "Print failure summary at end of backfill",
+            "Add progress indicator for long backfills"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "CLI and backfill tests",
+        "steps": [
+            "Test single-day processing via CLI",
+            "Test date range backfill",
+            "Test dry-run mode (no writes)",
+            "Test state tracking prevents reprocessing",
+            "Test force-reprocess flag overrides state"
+        ],
+        "passes": false
+    }
+]
