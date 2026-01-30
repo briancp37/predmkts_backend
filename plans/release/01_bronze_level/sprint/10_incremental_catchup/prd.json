@@ -56,7 +56,7 @@
             "Ensure type checking passes: mypy src/",
             "Ensure linting passes: ruff check src/ tests/"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "documentation",

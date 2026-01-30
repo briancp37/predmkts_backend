@@ -57,3 +57,14 @@
   - Actual incremental execution for order_filled
   - Failure continues to next entity
 - All 433 tests pass, mypy clean
+
+2026-01-30: Completed testing category (verification pass)
+- All tests for sprint 10 features were already written in previous categories:
+  - 11 tests in test_discovery.py (find_latest_timestamp, find_latest_date)
+  - 4 tests in TestIncrementalIngestOrderFilled (since_timestamp, manifest latest_timestamp)
+  - 10 tests in TestCatchupCLI (dry-run, skip, incremental, failure handling)
+- Verified: 433 tests pass (pytest -m "not integration")
+- Verified: mypy src/ clean (no issues in 24 source files)
+- Verified: ruff check src/ tests/ has 118 pre-existing warnings (all UP017 datetime.UTC alias
+  style issues predating sprint 10 — no new lint issues introduced)
+- Marked testing category as passes: true in prd.json
