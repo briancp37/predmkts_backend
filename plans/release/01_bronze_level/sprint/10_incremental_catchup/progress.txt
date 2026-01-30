@@ -37,3 +37,23 @@
 - All 423 tests pass, mypy clean
 - find_latest_timestamp() in discovery.py will now find the latest_timestamp field
   in manifests written by incremental ingestion (no more fallback scan needed)
+
+2026-01-30: Completed catchup_command category
+- Added `backfill catchup` command to cli/main.py with options: --platform, --entity, --bucket, --dry-run
+- Three execution paths based on entity type:
+  - order_filled (incremental): uses find_latest_timestamp(), calls ingest_order_filled(since_timestamp=...)
+  - Date-scoped (trades): uses find_latest_date(), backfills missing days to today via _run_backfill()
+  - Catalog (markets, events): uses find_latest_date(), runs fresh snapshot for today if not present
+- Skips with message when no existing data found (user should run initial backfill first)
+- Skips with message when already up to date
+- Dry-run mode prints what would be fetched without executing
+- Continues on failure per entity, collects errors, reports summary and exits non-zero
+- Resolves bucket from --bucket flag or BRONZE_BUCKET env var (errors if neither set)
+- Added 10 unit tests in TestCatchupCLI covering:
+  - Invalid platform/entity validation
+  - Missing bucket env var
+  - Dry-run for order_filled (incremental) and trades (date-scoped)
+  - Skip when no existing data / already up to date (trades and catalog)
+  - Actual incremental execution for order_filled
+  - Failure continues to next entity
+- All 433 tests pass, mypy clean

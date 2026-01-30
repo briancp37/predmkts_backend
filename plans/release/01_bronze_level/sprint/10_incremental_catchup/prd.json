@@ -42,7 +42,7 @@
             "Log 'no existing data found' and skip if platform/entity has never been ingested (user should run initial backfill first)",
             "Continue on failure per entity, collect errors, report summary and exit non-zero if any failures"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

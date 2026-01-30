@@ -646,3 +646,157 @@ class TestBackfillCLI:
         assert call_count == 3
         assert result.exit_code == 1
         assert "1 failure" in result.output
+
+
+class TestCatchupCLI:
+    """Tests for the backfill catchup CLI command."""
+
+    def _invoke(self, args: list[str]) -> Any:
+        from prediction_data.cli.main import app
+
+        with patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")):
+            return runner.invoke(app, ["backfill", "catchup"] + args)
+
+    def test_invalid_platform_exits_1(self) -> None:
+        result = self._invoke(["--platform", "binance"])
+        assert result.exit_code == 1
+
+    def test_invalid_entity_exits_1(self) -> None:
+        result = self._invoke(["--entity", "orders"])
+        assert result.exit_code == 1
+
+    def test_no_bucket_env_exits_1(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            result = self._invoke(["--platform", "polymarket", "--entity", "trades"])
+        assert result.exit_code == 1
+
+    def test_dry_run_order_filled_incremental(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_timestamp", new_callable=AsyncMock) as mock_ts,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_ts.return_value = 1706745600
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "since_timestamp=1706745600" in result.output
+
+    def test_dry_run_trades_date_scoped(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.cli.main.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 6, 20)
+            mock_date.fromisoformat = date.fromisoformat
+            mock_dt.return_value = "2025-06-17"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "kalshi", "--entity", "trades", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "3 day(s)" in result.output
+
+    def test_skip_no_existing_data(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_timestamp", new_callable=AsyncMock) as mock_ts,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_ts.return_value = None
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "no existing data found" in result.output
+
+    def test_skip_already_up_to_date_trades(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.cli.main.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 6, 20)
+            mock_date.fromisoformat = date.fromisoformat
+            mock_dt.return_value = "2025-06-20"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "kalshi", "--entity", "trades", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "already up to date" in result.output
+
+    def test_skip_already_up_to_date_catalog(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.cli.main.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 6, 20)
+            mock_date.fromisoformat = date.fromisoformat
+            mock_dt.return_value = "2025-06-20"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "already up to date" in result.output
+
+    def test_order_filled_incremental_executes(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_timestamp", new_callable=AsyncMock) as mock_ts,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.bronze.polymarket.ingest.ingest_order_filled", new_callable=AsyncMock) as mock_ingest,
+        ):
+            mock_ts.return_value = 1706745600
+            mock_ingest.return_value = "test-run-id"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "test-run-id" in result.output
+        mock_ingest.assert_called_once()
+        call_kwargs = mock_ingest.call_args
+        assert call_kwargs.kwargs.get("since_timestamp") == 1706745600 or call_kwargs[1].get("since_timestamp") == 1706745600
+
+    def test_failure_continues_to_next_entity(self) -> None:
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_timestamp", new_callable=AsyncMock) as mock_ts,
+            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_ts.side_effect = RuntimeError("S3 error")
+            mock_dt.return_value = None
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "all", "--bucket", "test-bucket"],
+            )
+        # Should have failures but still process all entities
+        assert result.exit_code == 1
+        assert "failure" in result.output

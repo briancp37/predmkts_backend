@@ -660,3 +660,188 @@ def backfill_run(
         raise typer.Exit(code=1)
     elif not dry_run:
         typer.echo("Backfill completed successfully.")
+
+
+@backfill_app.command(name="catchup")
+def backfill_catchup(
+    platform: Annotated[
+        str,
+        typer.Option(
+            "--platform",
+            help="Platform to catch up (polymarket, kalshi, or all).",
+        ),
+    ] = "all",
+    entity: Annotated[
+        str,
+        typer.Option(
+            "--entity",
+            help="Entity type to catch up (trades, markets, events, order_filled, or all).",
+        ),
+    ] = "all",
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview what would be fetched without executing.",
+        ),
+    ] = False,
+) -> None:
+    """Auto-detect latest data and catch up to present."""
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    valid_platforms = {"polymarket", "kalshi", "all"}
+    valid_entities = {"trades", "markets", "events", "order_filled", "all"}
+
+    if platform not in valid_platforms:
+        typer.echo(f"Error: --platform must be one of {valid_platforms}", err=True)
+        raise typer.Exit(code=1)
+    if entity not in valid_entities:
+        typer.echo(f"Error: --entity must be one of {valid_entities}", err=True)
+        raise typer.Exit(code=1)
+
+    platforms = _resolve_platforms(platform)
+    entities = _resolve_entities(entity)
+    all_failures: list[tuple[str, str]] = []
+
+    async def _run_all() -> None:
+        import os
+
+        from prediction_data.storage import S3Client
+        from prediction_data.storage.discovery import find_latest_date, find_latest_timestamp
+
+        resolved_bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+        if not resolved_bucket:
+            typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+            raise typer.Exit(code=1)
+
+        s3 = S3Client(bucket=resolved_bucket)
+        today = date.today()
+
+        for p in platforms:
+            for e in entities:
+                label = f"{p}/{e}"
+
+                # order_filled is only for polymarket
+                if e == "order_filled" and p != "polymarket":
+                    continue
+
+                try:
+                    if e == "order_filled":
+                        # Incremental: find latest timestamp, fetch newer records
+                        latest_ts = await find_latest_timestamp(s3, p, e)
+                        if latest_ts is None:
+                            typer.echo(
+                                f"SKIP {label}: no existing data found "
+                                "(run initial backfill first)"
+                            )
+                            continue
+
+                        if dry_run:
+                            typer.echo(
+                                f"[dry-run] Would incrementally ingest {label} "
+                                f"since_timestamp={latest_ts} "
+                                f"({datetime.utcfromtimestamp(latest_ts).isoformat()}Z)"
+                            )
+                            continue
+
+                        from prediction_data.bronze.polymarket import ingest as pm_ingest
+
+                        dt_str = today.isoformat()
+                        run_id = await pm_ingest.ingest_order_filled(
+                            dt_str, bucket=bucket, since_timestamp=latest_ts
+                        )
+                        typer.echo(f"OK {label} run_id={run_id}")
+
+                    elif _is_date_scoped_entity(e):
+                        # Date-scoped: find latest date, backfill missing days
+                        latest = await find_latest_date(s3, p, e)
+                        if latest is None:
+                            typer.echo(
+                                f"SKIP {label}: no existing data found "
+                                "(run initial backfill first)"
+                            )
+                            continue
+
+                        latest_dt = date.fromisoformat(latest)
+                        start_dt = latest_dt + timedelta(days=1)
+
+                        if start_dt > today:
+                            typer.echo(f"SKIP {label}: already up to date (latest={latest})")
+                            continue
+
+                        if dry_run:
+                            days = (today - start_dt).days + 1
+                            typer.echo(
+                                f"[dry-run] Would backfill {label} "
+                                f"from {start_dt.isoformat()} to {today.isoformat()} "
+                                f"({days} day(s))"
+                            )
+                            continue
+
+                        failures = await _run_backfill(
+                            platform=p,
+                            entity=e,
+                            start_date=start_dt,
+                            end_date=today,
+                            bucket=bucket,
+                            dry_run=False,
+                        )
+                        all_failures.extend(failures)
+
+                    else:
+                        # Catalog: check if today's snapshot exists, run if not
+                        latest = await find_latest_date(s3, p, e)
+                        today_str = today.isoformat()
+
+                        if latest == today_str:
+                            typer.echo(f"SKIP {label}: already up to date (latest={latest})")
+                            continue
+
+                        if latest is None:
+                            typer.echo(
+                                f"SKIP {label}: no existing data found "
+                                "(run initial backfill first)"
+                            )
+                            continue
+
+                        if dry_run:
+                            typer.echo(
+                                f"[dry-run] Would ingest {label} "
+                                f"(fresh catalog snapshot for {today_str})"
+                            )
+                            continue
+
+                        failures = await _run_backfill(
+                            platform=p,
+                            entity=e,
+                            start_date=today,
+                            end_date=today,
+                            bucket=bucket,
+                            dry_run=False,
+                        )
+                        all_failures.extend(failures)
+
+                except Exception as exc:
+                    all_failures.append((label, str(exc)))
+                    typer.echo(f"FAIL {label}: {exc}", err=True)
+
+    try:
+        asyncio.run(_run_all())
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    if all_failures:
+        typer.echo(f"\nCatchup completed with {len(all_failures)} failure(s).", err=True)
+        raise typer.Exit(code=1)
+    elif not dry_run:
+        typer.echo("Catchup completed successfully.")
