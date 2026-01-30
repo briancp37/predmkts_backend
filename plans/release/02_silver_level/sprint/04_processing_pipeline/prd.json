@@ -21,7 +21,7 @@
             "Handle decompression and UTF-8 decoding",
             "Add progress tracking (records read counter)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "deduplication",

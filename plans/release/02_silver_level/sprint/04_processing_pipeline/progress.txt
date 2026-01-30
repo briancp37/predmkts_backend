@@ -15,6 +15,15 @@
   - 9 unit tests in `tests/test_silver_discovery.py` (all passing)
   - mypy clean, 546 total tests passing
 
+- [2026-01-30] bronze_reader: Created `silver/reader.py` with `read_manifest_data()` and `ReadResult` dataclass.
+  - Reads all JSONL.gz files referenced by a DiscoveredManifest's FileReference list
+  - Handles multi-part files, preserving record order across parts
+  - Gracefully handles per-file errors (counts errors, continues reading remaining files)
+  - Raises ValueError if manifest has no files
+  - Uses existing `decompress_jsonl()` from core.compression
+  - 7 unit tests in `tests/test_silver_reader.py` (all passing)
+  - mypy clean, 553 total tests passing
+
 ## In Progress
 
 
@@ -24,4 +33,4 @@
 ## Notes
 
 - Discovery reuses existing `S3Client.list_prefixes()` (delimiter trick) and `download_manifest()` — no new S3 primitives needed.
-- Next priority: bronze_reader (streaming JSONL.gz reader), then dedup, then iceberg_writer, then processor orchestrator.
+- Next priority: dedup engine, then iceberg_writer, then processor orchestrator, then integration tests.
