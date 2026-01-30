@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
 from typing import Annotated, Any
@@ -406,3 +407,155 @@ def show_run(
     typer.echo("-" * 40)
     for f in manifest.files:
         typer.echo(f"  s3://{f.bucket}/{f.key}")
+
+
+@dataclass
+class ValidationResult:
+    """Accumulates validation findings across all checked prefixes."""
+
+    valid_runs: int = 0
+    invalid_manifests: int = 0
+    missing_parts: int = 0
+    orphaned_files: int = 0
+    empty_runs: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+async def _validate_data(
+    s3_client: Any,
+    combos: list[tuple[str, str]],
+    dates: list[date],
+) -> ValidationResult:
+    """Validate manifest integrity and detect orphaned/incomplete data.
+
+    For each date/platform/entity combo:
+    - Checks every run directory has a parseable manifest with required fields
+    - Verifies every part file listed in the manifest exists in S3
+    - Detects orphaned data files (in directories without a manifest)
+    - Flags manifests with row_count=0 as empty runs
+    """
+    from pydantic import ValidationError
+
+    result = ValidationResult()
+
+    for plat, ent in combos:
+        for d in dates:
+            dt_str = d.isoformat()
+            prefix = f"bronze/{plat}/{ent}/dt={dt_str}/"
+            all_keys = await s3_client.list_keys(prefix)
+
+            if not all_keys:
+                continue
+
+            # Group keys by run directory
+            run_dirs: dict[str, list[str]] = {}
+            for key in all_keys:
+                # Extract run_id dir: everything up to and including run_id=xxx/
+                parts = key[len(prefix):]
+                run_dir = parts.split("/")[0] if "/" in parts else ""
+                if run_dir:
+                    run_dirs.setdefault(run_dir, []).append(key)
+
+            for _run_dir, keys in run_dirs.items():
+                manifest_keys = [k for k in keys if k.endswith("manifest.json")]
+                data_keys = [k for k in keys if not k.endswith("manifest.json")]
+
+                if not manifest_keys:
+                    # Orphaned files — no manifest in this run directory
+                    result.orphaned_files += len(data_keys)
+                    for dk in data_keys:
+                        result.errors.append(f"Orphaned file (no manifest): {dk}")
+                    continue
+
+                # Try to parse manifest
+                mk = manifest_keys[0]
+                try:
+                    manifest = await s3_client.download_manifest(mk)
+                except (ValidationError, Exception) as exc:
+                    result.invalid_manifests += 1
+                    result.errors.append(f"Invalid manifest {mk}: {exc}")
+                    continue
+
+                # Check empty runs
+                if manifest.row_count == 0:
+                    result.empty_runs += 1
+                    result.errors.append(f"Empty run (row_count=0): {mk}")
+
+                # Verify all part files listed in manifest exist in S3
+                existing_keys_set = set(all_keys)
+                for file_ref in manifest.files:
+                    if file_ref.key not in existing_keys_set:
+                        result.missing_parts += 1
+                        result.errors.append(f"Missing part file: {file_ref.key} (referenced in {mk})")
+
+                result.valid_runs += 1
+
+    return result
+
+
+@app.command(name="validate")
+def validate(
+    start_date: Annotated[
+        str,
+        typer.Option("--start-date", help="Start date (YYYY-MM-DD, inclusive)."),
+    ],
+    end_date: Annotated[
+        str,
+        typer.Option("--end-date", help="End date (YYYY-MM-DD, inclusive)."),
+    ],
+    platform: PlatformOption = None,
+    entity: EntityOption = None,
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="S3 bucket (defaults to BRONZE_BUCKET env var)."),
+    ] = None,
+) -> None:
+    """Check manifest integrity and detect orphaned or incomplete data."""
+    from prediction_data.storage.s3 import S3Client
+
+    bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+    if not bucket:
+        typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except ValueError as exc:
+        typer.echo(f"Error: Invalid date format: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if start > end:
+        typer.echo("Error: --start-date must be <= --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    dates = _date_range(start, end)
+    combos = _resolve_filters(platform, entity)
+    vr = ValidationResult()
+
+    async def _run() -> None:
+        nonlocal vr
+        async with S3Client(bucket=bucket) as client:
+            vr = await _validate_data(client, combos, dates)
+
+    asyncio.run(_run())
+
+    # Display results
+    typer.echo("Validation Results")
+    typer.echo("=" * 40)
+    typer.echo(f"  Valid runs:         {vr.valid_runs}")
+    typer.echo(f"  Invalid manifests:  {vr.invalid_manifests}")
+    typer.echo(f"  Missing part files: {vr.missing_parts}")
+    typer.echo(f"  Orphaned files:     {vr.orphaned_files}")
+    typer.echo(f"  Empty runs:         {vr.empty_runs}")
+
+    if vr.errors:
+        typer.echo("")
+        typer.echo("Errors")
+        typer.echo("-" * 40)
+        for err in vr.errors:
+            typer.echo(f"  - {err}")
+
+    has_errors = vr.invalid_manifests > 0 or vr.missing_parts > 0 or vr.orphaned_files > 0
+    if has_errors:
+        raise typer.Exit(code=1)

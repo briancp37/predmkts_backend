@@ -41,6 +41,19 @@
   prefix match, no bucket, null cursor display, hint message. All 399 tests pass,
   mypy clean, ruff clean.
 
+- [2026-01-30] validate: Added `prediction-data status validate` command to
+  src/prediction_data/cli/status.py. Implements --start-date, --end-date, --platform,
+  --entity, --bucket options. For each date/platform/entity combo, groups S3 keys by
+  run directory, checks each run has a valid parseable manifest, verifies all part files
+  referenced in manifests exist in S3, detects orphaned data files (run dirs without
+  manifests), and flags empty runs (row_count=0). Reports summary with counts for
+  valid runs, invalid manifests, missing parts, orphaned files, empty runs. Exits
+  non-zero if validation errors found (invalid manifests, missing parts, or orphaned
+  files). Added ValidationResult dataclass and _validate_data async helper. Tests in
+  tests/test_status_validate.py (9 tests): valid data, invalid manifest, missing part
+  files, orphaned files, empty run, no data, invalid date, no bucket, start > end.
+  All 408 tests pass, mypy clean, ruff clean.
+
 ## In Progress
 
 ## Blockers/Issues

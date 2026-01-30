@@ -68,7 +68,7 @@
             "Exit with non-zero code if any validation errors found",
             "Add unit tests covering valid data, missing manifests, missing parts, orphaned files, and empty runs"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing_and_documentation",
