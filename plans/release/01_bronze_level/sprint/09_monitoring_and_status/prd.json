@@ -38,7 +38,7 @@
             "When --dt is specified, show all runs for that date (not limited by --last)",
             "Add unit tests with mocked S3Client for filtering, sorting, and limit behavior"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "show_run",

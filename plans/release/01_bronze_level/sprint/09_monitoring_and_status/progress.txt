@@ -21,6 +21,16 @@
   empty range, multiple runs per date, invalid date, start > end, no bucket, default
   all-platforms-entities. All 386 tests pass, mypy clean, ruff clean.
 
+- [2026-01-30] list_runs: Added `prediction-data status runs` command to
+  src/prediction_data/cli/status.py. Implements --platform, --entity, --dt, --last,
+  --bucket options. Lists S3 manifest keys, downloads and parses each manifest,
+  displays table with run_id/platform/entity/dt/row_count/generated_at sorted by
+  generated_at descending. Default --last=20; --dt shows all runs for that date
+  (ignoring --last). Added _get_runs_data async helper. Tests in
+  tests/test_status_runs.py (7 tests): listing/sorting, --last limit, --dt filter
+  shows all, no runs, invalid dt, no bucket, cross-platform sorting. All 393 tests
+  pass, mypy clean, ruff clean.
+
 ## In Progress
 
 ## Blockers/Issues

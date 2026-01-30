@@ -222,3 +222,103 @@ def coverage(
         f"\nSummary: {total_dates} date(s), {dates_with_data} with data, "
         f"{missing_dates} missing, {grand_total_rows} total rows"
     )
+
+
+async def _get_runs_data(
+    s3_client: Any,
+    combos: list[tuple[str, str]],
+    dt_filter: str | None,
+    last: int,
+) -> list[dict[str, Any]]:
+    """Fetch run metadata from manifests across platform/entity combos.
+
+    Returns list of dicts sorted by generated_at descending.
+    """
+    runs: list[dict[str, Any]] = []
+    for plat, ent in combos:
+        if dt_filter:
+            prefix = f"bronze/{plat}/{ent}/dt={dt_filter}/"
+            keys = await s3_client.list_keys(prefix)
+        else:
+            prefix = f"bronze/{plat}/{ent}/"
+            keys = await s3_client.list_keys(prefix)
+
+        manifest_keys = [k for k in keys if k.endswith("manifest.json")]
+        for mk in manifest_keys:
+            manifest = await s3_client.download_manifest(mk)
+            runs.append({
+                "run_id": manifest.run_id,
+                "platform": manifest.platform,
+                "entity": manifest.entity,
+                "dt": manifest.dt,
+                "row_count": manifest.row_count,
+                "generated_at": manifest.generated_at,
+            })
+
+    # Sort by generated_at descending
+    runs.sort(key=lambda r: r["generated_at"], reverse=True)
+
+    # Apply limit only when no dt filter
+    if not dt_filter:
+        runs = runs[:last]
+
+    return runs
+
+
+@app.command(name="runs")
+def runs(
+    platform: PlatformOption = None,
+    entity: EntityOption = None,
+    dt: Annotated[
+        str | None,
+        typer.Option("--dt", help="Filter to a specific date (YYYY-MM-DD). Shows all runs for that date."),
+    ] = None,
+    last: Annotated[
+        int,
+        typer.Option("--last", help="Number of recent runs to show (default 20, ignored with --dt)."),
+    ] = 20,
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="S3 bucket (defaults to BRONZE_BUCKET env var)."),
+    ] = None,
+) -> None:
+    """List recent ingestion runs with metadata from manifests."""
+    from prediction_data.storage.s3 import S3Client
+
+    bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+    if not bucket:
+        typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+        raise typer.Exit(code=1)
+
+    if dt:
+        try:
+            date.fromisoformat(dt)
+        except ValueError as exc:
+            typer.echo(f"Error: Invalid date format: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+    combos = _resolve_filters(platform, entity)
+
+    run_list: list[dict[str, Any]] = []
+
+    async def _run() -> None:
+        nonlocal run_list
+        async with S3Client(bucket=bucket) as client:
+            run_list = await _get_runs_data(client, combos, dt, last)
+
+    asyncio.run(_run())
+
+    rows = [
+        [
+            r["run_id"],
+            r["platform"],
+            r["entity"],
+            r["dt"],
+            str(r["row_count"]),
+            r["generated_at"].isoformat(),
+        ]
+        for r in run_list
+    ]
+
+    headers = ["run_id", "platform", "entity", "dt", "row_count", "generated_at"]
+    typer.echo(format_table(headers, rows))
