@@ -34,6 +34,16 @@
   - 12 unit tests in `tests/test_silver_dedup.py` (all passing)
   - mypy clean, 565 total tests passing
 
+- [2026-01-30] iceberg_writer: Created `silver/writer.py` with `write_to_iceberg()`, `WriteResult`, and `IcebergWriteError`.
+  - Converts normalized dicts to PyArrow Table via `schema_to_pyarrow` from PyIceberg
+  - Resolves Iceberg schema from SILVER_TABLES registry (no redundant schema param)
+  - Loads table from catalog, appends PyArrow Table atomically
+  - Captures snapshot ID after commit (returns -1 if no snapshot)
+  - Structured logging at start/end with row count, snapshot ID, duration
+  - Raises IcebergWriteError on empty input, schema mismatch, missing table, or append failure
+  - 11 unit tests in `tests/test_silver_writer.py` (all passing)
+  - mypy clean, 576 total tests passing
+
 ## In Progress
 
 
@@ -43,4 +53,4 @@
 ## Notes
 
 - Discovery reuses existing `S3Client.list_prefixes()` (delimiter trick) and `download_manifest()` — no new S3 primitives needed.
-- Next priority: iceberg_writer, then processor orchestrator, then integration tests.
+- Next priority: processor orchestrator, then integration tests.

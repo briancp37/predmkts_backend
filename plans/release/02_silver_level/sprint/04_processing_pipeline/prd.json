@@ -46,7 +46,7 @@
             "Atomic commit with transaction, capture snapshot ID",
             "Handle write failures gracefully"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "processor",
