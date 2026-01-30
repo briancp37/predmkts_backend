@@ -34,6 +34,15 @@
   - Registered silver_app in cli/main.py
 - All 434 tests pass, mypy clean
 
+- [testing_and_validation] Created tests/test_silver_catalog.py with 13 tests:
+  - TestBuildCatalogProperties: validates catalog properties dict
+  - TestLoadCatalog: tests success, retry on failure, CatalogConnectionError after max retries
+  - TestInitTables: tests all 6 tables created, dry-run skips creation, idempotent skip existing, namespace creation, table properties passed
+  - TestSilverTablesRegistry: validates 6 tables, event_ts first field, platform ID second, schema round-trip
+- [bugfix] Fixed pyiceberg sort import in tables.py: `pyiceberg.sort` -> `pyiceberg.table.sorting` (pyiceberg 0.10.0 API)
+- All 447 tests pass, mypy clean
+- Integration test for Glue Catalog deferred (requires live AWS) — covered by aws_glue_catalog_setup category
+
 ## In Progress
 
 

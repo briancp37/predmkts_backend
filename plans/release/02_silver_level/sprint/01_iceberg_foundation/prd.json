@@ -45,6 +45,6 @@
             "Test schema round-trip (create table, read schema, verify)",
             "Integration test: create table and verify in Glue Catalog"
         ],
-        "passes": false
+        "passes": true
     }
 ]
