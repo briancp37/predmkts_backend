@@ -20,6 +20,20 @@
   That will be added in the incremental_order_filled category when manifests
   start writing latest_timestamp into source metadata.
 
+2026-01-30: Performance fix for latest_timestamp_discovery
+- Both find_latest_timestamp() and find_latest_date() were using list_keys() to
+  enumerate every S3 object under the entity prefix — extremely slow with large datasets.
+- Extracted _find_latest_date_partition() helper that uses list_prefixes() (S3 delimiter
+  trick) to list only dt= partition names, not individual keys. This is O(partitions/1000)
+  API calls vs O(total_keys/1000).
+- find_latest_timestamp() now calls list_prefixes for date discovery, then list_keys only
+  on the single latest-date partition (small listing).
+- find_latest_date() now delegates to _find_latest_date_partition().
+- Added list_prefixes() method to S3Client using S3 Delimiter parameter.
+- Updated test mock (_mock_s3_client) to auto-derive list_prefixes from keys and to
+  filter list_keys by prefix argument.
+- All 434 tests pass.
+
 2026-01-30: Completed incremental_order_filled category
 - Added `latest_timestamp` optional field to Source pydantic model in storage/manifest.py
 - Added `latest_timestamp` parameter to `create_manifest()` helper function

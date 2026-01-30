@@ -48,6 +48,17 @@ EntityOption = Annotated[
 ALL_PLATFORMS = [p.value for p in Platform]
 ALL_ENTITIES = [e.value for e in Entity]
 
+# Entities that produce per-day partitions in bronze (used by coverage).
+# markets/events are catalog snapshots (not date-scoped).
+# polymarket/trades doesn't exist in bronze (only in silver).
+DATE_SCOPED_ENTITIES = {"trades", "order_filled"}
+
+# Platform/entity combos that actually exist in bronze with per-day partitions.
+BRONZE_DATE_SCOPED_COMBOS: set[tuple[str, str]] = {
+    ("kalshi", "trades"),
+    ("polymarket", "order_filled"),
+}
+
 def format_table(headers: list[str], rows: list[list[str]]) -> str:
     """Format data as an aligned text table.
 
@@ -88,12 +99,21 @@ def _date_range(start: date, end: date) -> list[date]:
 
 
 def _resolve_filters(
-    platform: Platform | None, entity: Entity | None
+    platform: Platform | None,
+    entity: Entity | None,
+    *,
+    allowed: set[tuple[str, str]] | None = None,
 ) -> list[tuple[str, str]]:
-    """Resolve platform/entity filters to list of (platform, entity) pairs."""
+    """Resolve platform/entity filters to list of (platform, entity) pairs.
+
+    If *allowed* is given, only combos present in that set are returned.
+    """
     platforms = [platform.value] if platform else ALL_PLATFORMS
     entities = [entity.value] if entity else ALL_ENTITIES
-    return [(p, e) for p in platforms for e in entities]
+    combos = [(p, e) for p in platforms for e in entities]
+    if allowed is not None:
+        combos = [c for c in combos if c in allowed]
+    return combos
 
 
 async def _get_coverage_data(
@@ -183,7 +203,15 @@ def coverage(
         raise typer.Exit(code=1)
 
     dates = _date_range(start, end)
-    combos = _resolve_filters(platform, entity)
+    combos = _resolve_filters(platform, entity, allowed=BRONZE_DATE_SCOPED_COMBOS)
+
+    if not combos:
+        typer.echo("No date-scoped bronze entities match the given filters.")
+        typer.echo(
+            "Hint: markets/events are catalog snapshots, not date-partitioned. "
+            "polymarket/trades is not available in the bronze layer."
+        )
+        raise typer.Exit(code=0)
 
     all_rows: list[list[str]] = []
     total_dates = 0
@@ -223,6 +251,55 @@ def coverage(
         f"\nSummary: {total_dates} date(s), {dates_with_data} with data, "
         f"{missing_dates} missing, {grand_total_rows} total rows"
     )
+
+
+@app.command(name="latest")
+def latest(
+    platform: PlatformOption = None,
+    entity: EntityOption = None,
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="S3 bucket (defaults to BRONZE_BUCKET env var)."),
+    ] = None,
+) -> None:
+    """Show the latest date partition for each platform/entity (fast)."""
+    import re
+
+    from prediction_data.storage.s3 import S3Client
+
+    bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+    if not bucket:
+        typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+        raise typer.Exit(code=1)
+
+    combos = _resolve_filters(platform, entity, allowed=BRONZE_DATE_SCOPED_COMBOS)
+    if not combos:
+        typer.echo("No date-scoped bronze entities match the given filters.")
+        raise typer.Exit(code=0)
+
+    dt_pattern = re.compile(r"dt=(\d{4}-\d{2}-\d{2})")
+    rows: list[list[str]] = []
+
+    async def _run() -> None:
+        async with S3Client(bucket=bucket) as client:
+            for plat, ent in combos:
+                prefix = f"bronze/{plat}/{ent}/"
+                prefixes = await client.list_prefixes(prefix)
+                dates = []
+                for p in prefixes:
+                    m = dt_pattern.search(p)
+                    if m:
+                        dates.append(m.group(1))
+                if dates:
+                    latest_dt = max(dates)
+                    rows.append([plat, ent, latest_dt, str(len(dates))])
+                else:
+                    rows.append([plat, ent, "(none)", "0"])
+
+    asyncio.run(_run())
+
+    headers = ["platform", "entity", "latest_date", "total_days"]
+    typer.echo(format_table(headers, rows))
 
 
 async def _get_runs_data(

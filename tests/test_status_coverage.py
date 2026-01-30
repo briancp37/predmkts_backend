@@ -15,7 +15,7 @@ runner = CliRunner()
 
 def _make_manifest(
     *,
-    platform: str = "polymarket",
+    platform: str = "kalshi",
     entity: str = "trades",
     dt: str = "2024-01-01",
     run_id: str = "run-001",
@@ -61,18 +61,18 @@ class TestCoverageCommand:
         manifest2 = _make_manifest(dt="2024-01-02", row_count=75, generated_at="2024-01-02T12:00:00+00:00")
 
         keys_by_prefix = {
-            "bronze/polymarket/trades/dt=2024-01-01/": [
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json",
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/part-000.jsonl.gz",
+            "bronze/kalshi/trades/dt=2024-01-01/": [
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json",
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/part-000.jsonl.gz",
             ],
-            "bronze/polymarket/trades/dt=2024-01-02/": [
-                "bronze/polymarket/trades/dt=2024-01-02/run_id=run-001/manifest.json",
-                "bronze/polymarket/trades/dt=2024-01-02/run_id=run-001/part-000.jsonl.gz",
+            "bronze/kalshi/trades/dt=2024-01-02/": [
+                "bronze/kalshi/trades/dt=2024-01-02/run_id=run-001/manifest.json",
+                "bronze/kalshi/trades/dt=2024-01-02/run_id=run-001/part-000.jsonl.gz",
             ],
         }
         manifests = {
-            "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json": manifest1,
-            "bronze/polymarket/trades/dt=2024-01-02/run_id=run-001/manifest.json": manifest2,
+            "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json": manifest1,
+            "bronze/kalshi/trades/dt=2024-01-02/run_id=run-001/manifest.json": manifest2,
         }
         fake = FakeS3Client(keys_by_prefix, manifests)
 
@@ -81,7 +81,7 @@ class TestCoverageCommand:
                 "status", "coverage",
                 "--start-date", "2024-01-01",
                 "--end-date", "2024-01-02",
-                "--platform", "polymarket",
+                "--platform", "kalshi",
                 "--entity", "trades",
                 "--bucket", "test-bucket",
             ])
@@ -100,14 +100,14 @@ class TestCoverageCommand:
         manifest = _make_manifest(dt="2024-01-01", row_count=200)
 
         keys_by_prefix = {
-            "bronze/polymarket/trades/dt=2024-01-01/": [
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json",
+            "bronze/kalshi/trades/dt=2024-01-01/": [
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json",
             ],
-            "bronze/polymarket/trades/dt=2024-01-02/": [],
-            "bronze/polymarket/trades/dt=2024-01-03/": [],
+            "bronze/kalshi/trades/dt=2024-01-02/": [],
+            "bronze/kalshi/trades/dt=2024-01-03/": [],
         }
         manifests = {
-            "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json": manifest,
+            "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json": manifest,
         }
         fake = FakeS3Client(keys_by_prefix, manifests)
 
@@ -116,7 +116,7 @@ class TestCoverageCommand:
                 "status", "coverage",
                 "--start-date", "2024-01-01",
                 "--end-date", "2024-01-03",
-                "--platform", "polymarket",
+                "--platform", "kalshi",
                 "--entity", "trades",
                 "--bucket", "test-bucket",
             ])
@@ -128,24 +128,33 @@ class TestCoverageCommand:
         assert "2 missing" in result.output
         assert "200 total rows" in result.output
 
-    def test_empty_range(self) -> None:
-        """No data for any date in range."""
-        fake = FakeS3Client({}, {})
-
-        with patch("prediction_data.storage.s3.S3Client", return_value=fake):
-            result = runner.invoke(app, [
-                "status", "coverage",
-                "--start-date", "2024-06-01",
-                "--end-date", "2024-06-02",
-                "--platform", "kalshi",
-                "--entity", "markets",
-                "--bucket", "test-bucket",
-            ])
+    def test_non_date_scoped_entity_skipped(self) -> None:
+        """Catalog entities (markets, events) are skipped with a hint."""
+        result = runner.invoke(app, [
+            "status", "coverage",
+            "--start-date", "2024-06-01",
+            "--end-date", "2024-06-02",
+            "--platform", "kalshi",
+            "--entity", "markets",
+            "--bucket", "test-bucket",
+        ])
 
         assert result.exit_code == 0
-        assert "0 with data" in result.output
-        assert "2 missing" in result.output
-        assert "0 total rows" in result.output
+        assert "No date-scoped bronze entities" in result.output
+
+    def test_polymarket_trades_skipped(self) -> None:
+        """polymarket/trades is not in bronze, so coverage skips it."""
+        result = runner.invoke(app, [
+            "status", "coverage",
+            "--start-date", "2024-06-01",
+            "--end-date", "2024-06-02",
+            "--platform", "polymarket",
+            "--entity", "trades",
+            "--bucket", "test-bucket",
+        ])
+
+        assert result.exit_code == 0
+        assert "No date-scoped bronze entities" in result.output
 
     def test_multiple_runs_per_date(self) -> None:
         """A date with multiple ingestion runs sums row counts."""
@@ -153,16 +162,16 @@ class TestCoverageCommand:
         m2 = _make_manifest(dt="2024-01-01", run_id="run-002", row_count=50, generated_at="2024-01-01T14:00:00+00:00")
 
         keys_by_prefix = {
-            "bronze/polymarket/trades/dt=2024-01-01/": [
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json",
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-002/manifest.json",
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/part-000.jsonl.gz",
-                "bronze/polymarket/trades/dt=2024-01-01/run_id=run-002/part-000.jsonl.gz",
+            "bronze/kalshi/trades/dt=2024-01-01/": [
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json",
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-002/manifest.json",
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/part-000.jsonl.gz",
+                "bronze/kalshi/trades/dt=2024-01-01/run_id=run-002/part-000.jsonl.gz",
             ],
         }
         manifests = {
-            "bronze/polymarket/trades/dt=2024-01-01/run_id=run-001/manifest.json": m1,
-            "bronze/polymarket/trades/dt=2024-01-01/run_id=run-002/manifest.json": m2,
+            "bronze/kalshi/trades/dt=2024-01-01/run_id=run-001/manifest.json": m1,
+            "bronze/kalshi/trades/dt=2024-01-01/run_id=run-002/manifest.json": m2,
         }
         fake = FakeS3Client(keys_by_prefix, manifests)
 
@@ -171,7 +180,7 @@ class TestCoverageCommand:
                 "status", "coverage",
                 "--start-date", "2024-01-01",
                 "--end-date", "2024-01-01",
-                "--platform", "polymarket",
+                "--platform", "kalshi",
                 "--entity", "trades",
                 "--bucket", "test-bucket",
             ])
@@ -215,7 +224,7 @@ class TestCoverageCommand:
         assert result.exit_code == 1
 
     def test_default_all_platforms_entities(self) -> None:
-        """Without --platform/--entity, iterates all combos."""
+        """Without --platform/--entity, iterates only date-scoped bronze combos."""
         fake = FakeS3Client({}, {})
 
         with patch("prediction_data.storage.s3.S3Client", return_value=fake):
@@ -227,6 +236,6 @@ class TestCoverageCommand:
             ])
 
         assert result.exit_code == 0
-        # 2 platforms * 4 entities * 1 date = 8 date combos
-        assert "8 date(s)" in result.output
-        assert "8 missing" in result.output
+        # 2 date-scoped combos (kalshi/trades, polymarket/order_filled) * 1 date = 2
+        assert "2 date(s)" in result.output
+        assert "2 missing" in result.output

@@ -16,6 +16,37 @@ logger = structlog.stdlib.get_logger(__name__)
 _DT_PATTERN = re.compile(r"/dt=(\d{4}-\d{2}-\d{2})/")
 
 
+async def _find_latest_date_partition(
+    s3_client: S3Client,
+    platform: str,
+    entity: str,
+) -> str | None:
+    """Return the latest ``dt=YYYY-MM-DD`` date string using delimiter listing.
+
+    Uses ``list_prefixes`` (S3 delimiter trick) so only partition names are
+    returned — no enumeration of individual keys.
+    """
+    prefix = f"bronze/{platform}/{entity}/"
+    prefixes = await s3_client.list_prefixes(prefix)
+
+    if not prefixes:
+        logger.info("No date partitions found", platform=platform, entity=entity)
+        return None
+
+    dates: list[str] = []
+    for p in prefixes:
+        m = _DT_PATTERN.search(p)
+        if m:
+            dates.append(m.group(1))
+
+    if not dates:
+        return None
+
+    latest = max(dates)
+    logger.info("Found latest date partition", platform=platform, entity=entity, latest_date=latest)
+    return latest
+
+
 async def find_latest_timestamp(
     s3_client: S3Client,
     platform: str,
@@ -23,10 +54,8 @@ async def find_latest_timestamp(
 ) -> int | None:
     """Find the latest record timestamp for a given platform/entity in S3.
 
-    Scans S3 prefixes to find the most recent date partition, then reads the
-    manifest from the latest run. If the manifest has a ``latest_timestamp``
-    field in its source metadata, that value is returned. Otherwise, the latest
-    data file is downloaded and scanned for the maximum ``timestamp`` field.
+    Uses ``list_prefixes`` to quickly locate the latest date partition, then
+    only lists keys within that single partition to read manifests/data.
 
     Args:
         s3_client: Initialised S3Client.
@@ -36,30 +65,13 @@ async def find_latest_timestamp(
     Returns:
         The maximum Unix-epoch-seconds timestamp found, or ``None`` if no data exists.
     """
-    prefix = f"bronze/{platform}/{entity}/"
-    all_keys = await s3_client.list_keys(prefix)
-
-    if not all_keys:
-        logger.info("No data found", platform=platform, entity=entity)
+    latest_date = await _find_latest_date_partition(s3_client, platform, entity)
+    if latest_date is None:
         return None
 
-    # Extract unique dates from keys
-    dates: set[str] = set()
-    for key in all_keys:
-        m = _DT_PATTERN.search(key)
-        if m:
-            dates.add(m.group(1))
-
-    if not dates:
-        logger.info("No date partitions found", platform=platform, entity=entity)
-        return None
-
-    latest_date = max(dates)
-    logger.info("Found latest date partition", platform=platform, entity=entity, latest_date=latest_date)
-
-    # Find all manifests for the latest date
+    # List keys only within the latest date partition
     date_prefix = f"bronze/{platform}/{entity}/dt={latest_date}/"
-    date_keys = [k for k in all_keys if k.startswith(date_prefix)]
+    date_keys = await s3_client.list_keys(date_prefix)
     manifest_keys = [k for k in date_keys if k.endswith("manifest.json")]
 
     if not manifest_keys:
@@ -130,16 +142,4 @@ async def find_latest_date(
     Returns:
         The latest date string (YYYY-MM-DD), or ``None`` if no data exists.
     """
-    prefix = f"bronze/{platform}/{entity}/"
-    all_keys = await s3_client.list_keys(prefix)
-
-    if not all_keys:
-        return None
-
-    dates: set[str] = set()
-    for key in all_keys:
-        m = _DT_PATTERN.search(key)
-        if m:
-            dates.add(m.group(1))
-
-    return max(dates) if dates else None
+    return await _find_latest_date_partition(s3_client, platform, entity)

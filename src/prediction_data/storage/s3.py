@@ -293,6 +293,25 @@ class S3Client:
 
         return keys
 
+    async def list_prefixes(self, prefix: str, delimiter: str = "/") -> list[str]:
+        """List common prefixes (virtual directories) under *prefix*.
+
+        Uses the S3 delimiter trick so only prefix strings are returned,
+        not every individual key.  This is much faster than ``list_keys``
+        when you only need the partition names.
+        """
+        client = self._get_client()
+        paginator = client.get_paginator("list_objects_v2")
+        prefixes: list[str] = []
+
+        for page in paginator.paginate(
+            Bucket=self._bucket, Prefix=prefix, Delimiter=delimiter,
+        ):
+            for cp in page.get("CommonPrefixes", []):
+                prefixes.append(cp["Prefix"])
+
+        return prefixes
+
     async def key_exists(self, key: str) -> bool:
         """Check if a key exists in the bucket.
 

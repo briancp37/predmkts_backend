@@ -123,8 +123,11 @@ This ensures:
 The `order_filled` entity supports **incremental ingestion**: each run fetches only records newer than the last known timestamp, rather than re-fetching the entire day. This avoids massive data duplication when running on a frequent schedule (e.g., every 5 minutes).
 
 - The latest timestamp is discovered by reading the most recent manifest's `source.latest_timestamp` field (or falling back to scanning the data file).
+- Discovery uses S3 delimiter listing (`list_prefixes`) for fast partition enumeration — no full key scan required.
 - New records are appended as a new `run_id` directory (Bronze append-only contract preserved).
 - The `backfill catchup` command uses this incremental path for `order_filled` and standard full-day backfill for other entities.
+- The `status coverage` command only checks date-scoped bronze entities (kalshi/trades, polymarket/order_filled). Catalog entities (markets, events) and polymarket/trades (not in bronze) are excluded.
+- The `status latest` command provides a fast check of the most recent date partition per entity using S3 delimiter listing.
 
 ---
 
@@ -291,6 +294,7 @@ prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD
 
 # Monitoring & status
 prediction-data status coverage --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity]
+prediction-data status latest [--platform] [--entity]
 prediction-data status runs [--platform] [--entity] [--dt YYYY-MM-DD] [--last N]
 prediction-data status show-run <run_id>
 prediction-data status validate --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity]

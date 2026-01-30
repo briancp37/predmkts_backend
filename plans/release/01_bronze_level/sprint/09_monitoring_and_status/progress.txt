@@ -64,6 +64,20 @@
   validate commands. RELEASE.md CLI Contract (section 9) already had status
   commands documented. All PRD categories now pass.
 
+- [2026-01-30] coverage_check (post-completion fix): Coverage command was checking all
+  platform/entity combos including non-date-scoped entities (markets, events) and
+  polymarket/trades (which doesn't exist in bronze). Fixed by:
+  - Added BRONZE_DATE_SCOPED_COMBOS set: only (kalshi, trades) and (polymarket, order_filled)
+  - Added `allowed` parameter to _resolve_filters() to restrict combos
+  - Coverage now passes allowed=BRONZE_DATE_SCOPED_COMBOS, skipping markets/events/polymarket-trades
+  - When no valid combos match user's filters, prints hint and exits cleanly
+  - Updated tests in test_status_coverage.py: switched fixtures from polymarket/trades to
+    kalshi/trades, added test_non_date_scoped_entity_skipped and test_polymarket_trades_skipped,
+    updated default combo count from 8 to 2
+  - Added `status latest` command for fast "how current am I?" check using S3 delimiter
+    listing (list_prefixes) — returns in seconds regardless of data volume
+  - All 434 tests pass
+
 ## In Progress
 
 ## Blockers/Issues

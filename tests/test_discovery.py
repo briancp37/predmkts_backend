@@ -46,10 +46,31 @@ def _mock_s3_client(
     keys: list[str],
     manifests: dict[str, Manifest] | None = None,
     jsonl_data: dict[str, list[dict]] | None = None,
+    prefixes: list[str] | None = None,
 ) -> AsyncMock:
-    """Create a mock S3Client."""
+    """Create a mock S3Client.
+
+    If *prefixes* is not supplied it is derived from *keys* by extracting
+    unique ``dt=YYYY-MM-DD/`` segments.
+    """
+    import re
+
     client = AsyncMock()
-    client.list_keys = AsyncMock(return_value=keys)
+
+    async def _list_keys(prefix: str) -> list[str]:
+        return [k for k in keys if k.startswith(prefix)]
+    client.list_keys = AsyncMock(side_effect=_list_keys)
+
+    # Derive prefixes from keys when not explicitly provided
+    if prefixes is None:
+        _dt_re = re.compile(r"(bronze/[^/]+/[^/]+/dt=\d{4}-\d{2}-\d{2}/)")
+        derived: set[str] = set()
+        for k in keys:
+            m = _dt_re.search(k)
+            if m:
+                derived.add(m.group(1))
+        prefixes = sorted(derived)
+    client.list_prefixes = AsyncMock(return_value=prefixes)
 
     if manifests:
         async def _download_manifest(key: str) -> Manifest:
