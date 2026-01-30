@@ -8,7 +8,7 @@
             "Set up S3 path structure for Silver Iceberg data (e.g., s3://<bucket>/silver/)",
             "Verify catalog connectivity from local dev environment"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "pyiceberg_integration",

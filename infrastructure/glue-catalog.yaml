@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Glue Catalog database for Silver Iceberg tables
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  SilverBucketName:
+    Type: String
+    Description: Name of the Silver S3 bucket (e.g., prediction-silver-dev)
+
+Resources:
+  SilverDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref 'AWS::AccountId'
+      DatabaseInput:
+        Name: prediction_silver
+        Description: !Sub 'Silver layer Iceberg tables for prediction market data (${Environment})'
+        LocationUri: !Sub 's3://${SilverBucketName}/silver/'
+
+Outputs:
+  DatabaseName:
+    Description: Name of the Glue Catalog database
+    Value: prediction_silver
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseName'

@@ -1,0 +1,81 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 bucket for Silver layer Iceberg table data storage
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in bucket naming)
+
+  ECSTaskRoleArn:
+    Type: String
+    Default: ''
+    Description: ARN of the ECS task role that will access this bucket (optional)
+
+Conditions:
+  HasECSTaskRole: !Not [!Equals [!Ref ECSTaskRoleArn, '']]
+
+Resources:
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub 'prediction-silver-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: silver
+
+  SilverBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: HasECSTaskRole
+    Properties:
+      Bucket: !Ref SilverBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowECSTaskRoleAccess
+            Effect: Allow
+            Principal:
+              AWS: !Ref ECSTaskRoleArn
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !GetAtt SilverBucket.Arn
+              - !Sub '${SilverBucket.Arn}/*'
+
+Outputs:
+  BucketName:
+    Description: Name of the Silver S3 bucket
+    Value: !Ref SilverBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+
+  BucketArn:
+    Description: ARN of the Silver S3 bucket
+    Value: !GetAtt SilverBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketArn'

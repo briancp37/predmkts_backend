@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -43,6 +43,21 @@
 - All 447 tests pass, mypy clean
 - Integration test for Glue Catalog deferred (requires live AWS) — covered by aws_glue_catalog_setup category
 
+- [aws_glue_catalog_setup] Created infrastructure/glue-catalog.yaml CloudFormation template:
+  - AWS::Glue::Database resource for `prediction_silver` database
+  - Parameterized with Environment and SilverBucketName
+  - LocationUri points to s3://<silver-bucket>/silver/
+- [aws_glue_catalog_setup] Created infrastructure/s3-silver-bucket.yaml CloudFormation template:
+  - S3 bucket `prediction-silver-{Environment}` with versioning, AES256 encryption, public access blocked
+  - Conditional bucket policy for ECS task role access (PutObject, GetObject, DeleteObject, ListBucket)
+- [aws_glue_catalog_setup] Updated infrastructure/iam-ecs-roles.yaml:
+  - Added SilverBucketArn parameter and HasSilverBucket condition
+  - Added GlueCatalogAccess policy: GetDatabase, CreateDatabase, GetDatabases on catalog + prediction_silver + silver_* databases
+  - Added GlueTableAccess policy: GetTable, CreateTable, UpdateTable, DeleteTable, partition operations on silver_* tables
+  - Added conditional S3SilverBucketAccess policy for Silver bucket read/write
+- All 447 tests pass, mypy clean
+- Catalog connectivity verification requires live AWS credentials — run `prediction-data silver init-tables --dry-run` after deploying the CloudFormation stacks
+
 ## In Progress
 
 
@@ -53,5 +68,6 @@
 
 - pyiceberg 0.10.0 installed with glue and s3fs extras
 - The Bronze exit criteria test for "no silver references" was scoped to scan only src/bronze/ instead of all src/ — this is correct since the intent is to keep Bronze code free of Silver assumptions, not to prevent Silver code from existing.
-- Next priority: testing_and_validation category (unit tests for tables.py) or aws_glue_catalog_setup (AWS infra)
-- Verification of tables in Glue Catalog requires live AWS — deferred to aws_glue_catalog_setup or integration testing
+- All 4 PRD categories now pass. Sprint is complete.
+- To deploy Silver AWS infra: deploy s3-silver-bucket.yaml first, then glue-catalog.yaml, then update iam-ecs-roles stack with SilverBucketArn parameter.
+- After deploying, verify connectivity with `prediction-data silver init-tables --dry-run`
