@@ -1,0 +1,86 @@
+[
+    {
+        "category": "status_command_group",
+        "description": "Add a 'prediction-data status' Typer command group as the entry point for all monitoring and audit subcommands",
+        "steps": [
+            "Create src/prediction_data/cli/status.py with a Typer app for the status command group",
+            "Register the status app as a subcommand in cli/main.py",
+            "Verify 'prediction-data status --help' lists all subcommands",
+            "Add shared options/utilities for --platform and --entity filtering (reuse across subcommands)",
+            "Add shared table formatting utility for consistent terminal output (platform | entity | dt | rows | etc.)"
+        ],
+        "passes": true
+    },
+    {
+        "category": "coverage_check",
+        "description": "Add 'prediction-data status coverage' command to show which dates have data, which are missing, and row counts per platform/entity/date",
+        "steps": [
+            "Implement 'prediction-data status coverage --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity]'",
+            "List S3 prefixes under bronze/{platform}/{entity}/dt={date}/ for each date in the range",
+            "For each date with data, read the manifest(s) to extract run count and total row_count",
+            "Identify missing dates (dates in the range with no S3 prefix) and flag them as gaps",
+            "Display results as a table: date | platform | entity | runs | total_rows | latest_run_time",
+            "Add a summary line: total dates, dates with data, missing dates, total rows",
+            "Support --platform and --entity filters (default: all platforms and entities)",
+            "Add unit tests with mocked S3Client covering full coverage, partial gaps, and empty ranges"
+        ],
+        "passes": false
+    },
+    {
+        "category": "list_runs",
+        "description": "Add 'prediction-data status runs' command to list recent ingestion runs with metadata from manifests",
+        "steps": [
+            "Implement 'prediction-data status runs [--platform] [--entity] [--dt YYYY-MM-DD] [--last N]'",
+            "List S3 manifest keys matching the filters, download and parse each manifest",
+            "Display results as a table: run_id | platform | entity | dt | row_count | generated_at",
+            "Sort by generated_at descending (most recent first)",
+            "Default --last to 20 runs; allow override",
+            "When --dt is specified, show all runs for that date (not limited by --last)",
+            "Add unit tests with mocked S3Client for filtering, sorting, and limit behavior"
+        ],
+        "passes": false
+    },
+    {
+        "category": "show_run",
+        "description": "Add 'prediction-data status show-run' command to display full details of a specific ingestion run",
+        "steps": [
+            "Implement 'prediction-data status show-run <run_id>' that finds and displays a single run's manifest",
+            "Search S3 for manifest keys containing the run_id (support partial prefix matching)",
+            "Display full manifest fields: run_id, platform, entity, dt, generated_at, row_count",
+            "List all part files referenced in the manifest with their S3 keys",
+            "Display source metadata: api_base_url, pagination method, final cursor value",
+            "Exit with error and helpful message if run_id not found",
+            "Add unit tests for found/not-found cases and partial prefix matching"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validate",
+        "description": "Add 'prediction-data status validate' command to check manifest integrity and detect orphaned or incomplete data",
+        "steps": [
+            "Implement 'prediction-data status validate --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity]'",
+            "For each date/platform/entity combo, list all S3 keys under the prefix",
+            "Check that every run directory contains a valid _manifest.json (parseable, required fields present)",
+            "Verify that every part file listed in the manifest actually exists in S3",
+            "Detect orphaned data files (part-NNN.jsonl.gz files in directories without a manifest)",
+            "Flag manifests with row_count=0 as empty runs",
+            "Report results: valid runs, invalid manifests, missing part files, orphaned files, empty runs",
+            "Exit with non-zero code if any validation errors found",
+            "Add unit tests covering valid data, missing manifests, missing parts, orphaned files, and empty runs"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_documentation",
+        "description": "Add comprehensive tests for all status commands and update project documentation",
+        "steps": [
+            "Create tests/test_status.py with unit tests for all status subcommands using mocked S3Client",
+            "Ensure all tests pass: pytest -m 'not integration'",
+            "Ensure type checking passes: mypy src/",
+            "Ensure linting passes: ruff check src/ tests/",
+            "Update CLAUDE.md with new status CLI command examples",
+            "Update RELEASE.md CLI Contract (section 9) with the new status commands"
+        ],
+        "passes": false
+    }
+]

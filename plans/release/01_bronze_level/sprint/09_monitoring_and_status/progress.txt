@@ -1,0 +1,23 @@
+# Sprint Progress: 09 Monitoring and Status
+# Release: 01_bronze_level
+# Created: 2026-01-30
+
+## Status: In Progress
+
+## Completed Tasks
+
+- [2026-01-30] status_command_group: Created src/prediction_data/cli/status.py with Typer app,
+  Platform/Entity enums, PlatformOption/EntityOption annotated types for shared --platform/--entity
+  filtering, and format_table() utility for consistent terminal output. Registered status app in
+  cli/main.py. Verified `prediction-data status --help` works. All tests pass (378), mypy clean,
+  no new ruff errors.
+
+## In Progress
+
+## Blockers/Issues
+
+## Notes
+
+- The status.py module defines the Typer app, shared option types, and table formatter.
+  Subsequent subcommands (coverage, runs, show-run, validate) should import from status.py
+  and add their commands to the `app` instance there.

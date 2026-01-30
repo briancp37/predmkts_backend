@@ -8,12 +8,16 @@ from typing import Annotated
 import typer
 
 from prediction_data import __version__
+from prediction_data.cli.status import app as status_app
 
 app = typer.Typer(
     name="prediction-data",
     help="Data pipeline for prediction market data ingestion and processing.",
     no_args_is_help=True,
 )
+
+# Status command group
+app.add_typer(status_app, name="status")
 
 # Ingest command group placeholder
 ingest_app = typer.Typer(
