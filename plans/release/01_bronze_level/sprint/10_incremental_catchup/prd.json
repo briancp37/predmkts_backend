@@ -66,6 +66,6 @@
             "Update RELEASE.md: add catchup command to CLI contract (section 9), document incremental ingestion model for order_filled",
             "Update FORBRIAN.md: add Sprint 10 section explaining incremental ingestion design, catchup command, and lessons learned"
         ],
-        "passes": false
+        "passes": true
     }
 ]
