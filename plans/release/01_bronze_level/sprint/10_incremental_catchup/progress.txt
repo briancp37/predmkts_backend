@@ -1,0 +1,21 @@
+2026-01-30: Completed latest_timestamp_discovery category
+- Created src/prediction_data/storage/discovery.py with two async functions:
+  - find_latest_timestamp(s3_client, platform, entity) -> int | None
+    Scans S3 for the latest date partition, finds the latest run by generated_at,
+    checks for latest_timestamp in source metadata (not yet written by any ingestion),
+    falls back to downloading data files and scanning for max timestamp field.
+  - find_latest_date(s3_client, platform, entity) -> str | None
+    Simple helper to find the latest dt= date partition for a platform/entity.
+- Exported both functions from storage/__init__.py
+- Added tests/test_discovery.py with 11 unit tests covering:
+  - No data / no date partitions / no manifests → returns None
+  - Fallback data scan (manifest without latest_timestamp field)
+  - Multiple dates picks latest
+  - Multiple runs picks latest generated_at
+  - No data files → returns None
+  - Records without timestamp field → returns None
+  - find_latest_date with single/multiple dates
+- All 419 tests pass, mypy clean, ruff clean
+- Note: The Source pydantic model does not yet have a latest_timestamp field.
+  That will be added in the incremental_order_filled category when manifests
+  start writing latest_timestamp into source metadata.

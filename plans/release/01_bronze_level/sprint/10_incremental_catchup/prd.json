@@ -26,7 +26,7 @@
             "Return None if no data exists at all",
             "Add unit tests: manifest with latest_timestamp field, manifest without field (data scan fallback), no data exists, multiple dates/runs"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "catchup_command",

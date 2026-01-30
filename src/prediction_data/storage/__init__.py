@@ -1,5 +1,6 @@
 """Storage module for S3 operations."""
 
+from prediction_data.storage.discovery import find_latest_date, find_latest_timestamp
 from prediction_data.storage.manifest import (
     FileReference,
     Manifest,
@@ -24,6 +25,8 @@ __all__ = [
     "Source",
     "build_s3_key_prefix",
     "create_manifest",
+    "find_latest_date",
+    "find_latest_timestamp",
     "validate_bronze_key",
     "validate_bronze_key_prefix",
 ]
