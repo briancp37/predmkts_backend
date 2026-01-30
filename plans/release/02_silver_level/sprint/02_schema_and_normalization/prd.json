@@ -1,0 +1,58 @@
+[
+    {
+        "category": "trades_schema",
+        "description": "Define Silver schema for trades tables (Polymarket and Kalshi scaffold)",
+        "steps": [
+            "Define `silver_polymarket.trades` PyIceberg schema (timestamp, market_id, maker, taker, nonusdc_side, maker_direction, taker_direction, price, usd_amount, token_amount, transaction_hash, etc.)",
+            "Define `silver_kalshi.trades` PyIceberg schema (scaffold, no data yet)",
+            "Add metadata fields: `bronze_run_id`, `silver_ingestion_ts`, `dedup_key`",
+            "Define dedup key for trades: `(platform, platform_trade_id)` or content hash"
+        ],
+        "passes": false
+    },
+    {
+        "category": "markets_schema",
+        "description": "Define Silver schema for markets tables",
+        "steps": [
+            "Define `silver_polymarket.markets` schema (flatten key fields from Gamma API JSON)",
+            "Define `silver_kalshi.markets` schema (scaffold)",
+            "Define dedup key: `(platform, platform_market_id, updated_at)`",
+            "Add change tracking fields: `first_seen_at`, `last_updated_at`"
+        ],
+        "passes": false
+    },
+    {
+        "category": "events_schema",
+        "description": "Define Silver schema for events tables",
+        "steps": [
+            "Define `silver_polymarket.events` schema (flatten key fields from Gamma API JSON)",
+            "Define `silver_kalshi.events` schema (scaffold)",
+            "Define dedup key for events"
+        ],
+        "passes": false
+    },
+    {
+        "category": "normalization_engine",
+        "description": "Build normalizer interface and implement per-entity normalizers",
+        "steps": [
+            "Create `silver/normalize.py` with base normalizer interface",
+            "Implement `PolymarketMarketsNormalizer`",
+            "Implement `PolymarketEventsNormalizer`",
+            "Implement scaffold normalizers for Kalshi (trades, markets, events)",
+            "Handle type conversions: string timestamps to UTC datetime, numeric strings to typed values",
+            "Handle missing/null fields with defaults or explicit errors"
+        ],
+        "passes": true
+    },
+    {
+        "category": "testing",
+        "description": "Unit tests for schemas and normalizers",
+        "steps": [
+            "Unit tests for each normalizer with sample Bronze JSON records",
+            "Test null handling and default values",
+            "Test type conversion edge cases (invalid timestamps, malformed numbers)",
+            "Create test fixtures from real Bronze data samples"
+        ],
+        "passes": false
+    }
+]

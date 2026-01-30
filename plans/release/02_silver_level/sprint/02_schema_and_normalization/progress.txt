@@ -1,0 +1,39 @@
+# Sprint Progress: Schema And Normalization
+# Release: 02_silver_level
+# Created: 2026-01-30
+
+## Status: In Progress
+
+## Completed Tasks
+
+- [2026-01-30] normalization_engine: Built `silver/normalize.py` with full normalizer interface
+  - Base `Normalizer` ABC with `normalize()`, `dedup_key()`, and `normalize_batch()` methods
+  - `PolymarketMarketsNormalizer` — maps Gamma API markets JSON to Silver schema
+  - `PolymarketEventsNormalizer` — maps Gamma API events JSON to Silver schema
+  - `KalshiTradesNormalizer` (scaffold) — maps Kalshi trade records
+  - `KalshiMarketsNormalizer` (scaffold) — maps Kalshi market records
+  - `KalshiEventsNormalizer` (scaffold) — maps Kalshi event records
+  - `_parse_timestamp_utc()` handles Unix int/string, ISO-8601 with/without TZ
+  - `_safe_str`, `_safe_float`, `_safe_int` for null-safe type coercion
+  - `NORMALIZERS` registry + `get_normalizer(platform, entity)` factory
+  - `NormalizationError` for unrecoverable record issues
+  - `dedup_key()` on each normalizer returns `platform:id[:updated_at]` string
+  - 22 unit tests in `test_silver_normalize.py` — all passing
+  - mypy clean, ruff clean
+
+## In Progress
+
+
+## Blockers/Issues
+
+- PolymarketTradesNormalizer (order_filled → trades) not yet implemented.
+  Requires market reference data for token ID resolution (see RELEASE.md §4.2).
+  This is expected to be built in sprint 03 (order_filled_to_trades).
+
+## Notes
+
+- Schemas (trades_schema, markets_schema, events_schema categories) were already
+  implemented in prior sprint work (tables.py). Dedup keys are now defined in
+  normalizers rather than in schema definitions.
+- The `_content_hash()` helper is available but not yet used; may be needed for
+  entities without stable platform IDs.
