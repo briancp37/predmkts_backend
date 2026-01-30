@@ -11,7 +11,7 @@
             "Preserve backwards compatibility: without since_timestamp, existing full-day behavior is unchanged",
             "Add unit tests for incremental fetch path (since_timestamp passed to GoldskyClient, manifest includes latest_timestamp)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "latest_timestamp_discovery",

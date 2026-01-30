@@ -19,3 +19,21 @@
 - Note: The Source pydantic model does not yet have a latest_timestamp field.
   That will be added in the incremental_order_filled category when manifests
   start writing latest_timestamp into source metadata.
+
+2026-01-30: Completed incremental_order_filled category
+- Added `latest_timestamp` optional field to Source pydantic model in storage/manifest.py
+- Added `latest_timestamp` parameter to `create_manifest()` helper function
+- Modified `ingest_order_filled()` to accept optional `since_timestamp` parameter:
+  - When provided, uses since_timestamp as timestamp_gte and current time as timestamp_lte
+  - Without it, existing full-day boundary behavior is preserved (backwards compatible)
+- `ingest_order_filled()` now computes max timestamp from fetched records and writes
+  it into manifest source metadata as `latest_timestamp`
+- Updated `run_ingest_order_filled()` sync wrapper to forward `since_timestamp`
+- Added 4 unit tests in TestIncrementalIngestOrderFilled:
+  - since_timestamp forwarded to Goldsky client
+  - Without since_timestamp, day boundaries used (backwards compat)
+  - Manifest includes latest_timestamp (max from records)
+  - Manifest latest_timestamp is None when no events fetched
+- All 423 tests pass, mypy clean
+- find_latest_timestamp() in discovery.py will now find the latest_timestamp field
+  in manifests written by incremental ingestion (no more fallback scan needed)

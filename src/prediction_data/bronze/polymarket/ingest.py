@@ -462,15 +462,21 @@ async def ingest_order_filled(
     dt: str,
     *,
     bucket: str | None = None,
+    since_timestamp: int | None = None,
 ) -> str:
     """Ingest Polymarket OrderFilledEvents for a given date via Goldsky subgraph.
 
     Fetches all OrderFilledEvents from the Goldsky orderbook subgraph
     and stores them in the Bronze layer as gzip-compressed JSONL files.
 
+    When ``since_timestamp`` is provided, only records newer than that timestamp
+    are fetched (incremental mode).  Otherwise the full day is fetched.
+
     Args:
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        since_timestamp: If provided, fetch only records with
+            ``timestamp_gte=since_timestamp`` instead of using day boundaries.
 
     Returns:
         The run_id for this ingestion run.
@@ -493,14 +499,19 @@ async def ingest_order_filled(
     run_ctx.bind_to_logger(dt=dt)
     run_ctx.log_start(logger)
 
-    # Compute day boundaries as Unix timestamps
-    dt_date = date_type.fromisoformat(dt)
-    start_ts = calendar.timegm(
-        datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
-    )
-    end_ts = calendar.timegm(
-        datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
-    )
+    if since_timestamp is not None:
+        # Incremental mode: fetch from since_timestamp to now
+        start_ts = since_timestamp
+        end_ts = calendar.timegm(datetime.utcnow().timetuple())
+    else:
+        # Full-day mode: compute day boundaries as Unix timestamps
+        dt_date = date_type.fromisoformat(dt)
+        start_ts = calendar.timegm(
+            datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
+        )
+        end_ts = calendar.timegm(
+            datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
+        )
 
     logger.info(
         "Starting Polymarket order_filled ingestion",
@@ -508,6 +519,7 @@ async def ingest_order_filled(
         bucket=bucket,
         timestamp_gte=start_ts,
         timestamp_lte=end_ts,
+        incremental=since_timestamp is not None,
     )
 
     # Fetch OrderFilledEvents from Goldsky subgraph
@@ -517,6 +529,15 @@ async def ingest_order_filled(
         )
 
     logger.info("Fetched order_filled events from Goldsky", record_count=len(events))
+
+    # Compute latest_timestamp from fetched records
+    max_ts: int | None = None
+    for evt in events:
+        ts_val = evt.get("timestamp")
+        if ts_val is not None:
+            ts_int = int(ts_val)
+            if max_ts is None or ts_int > max_ts:
+                max_ts = ts_int
 
     # Upload to S3
     async with S3Client(bucket=bucket) as s3_client:
@@ -545,6 +566,7 @@ async def ingest_order_filled(
             api_base_url=GOLDSKY_API_BASE_URL,
             pagination="cursor",
             cursor=None,
+            latest_timestamp=max_ts,
         )
 
         manifest_key = await s3_client.upload_manifest(manifest)
@@ -561,17 +583,21 @@ def run_ingest_order_filled(
     dt: str,
     *,
     bucket: str | None = None,
+    since_timestamp: int | None = None,
 ) -> str:
     """Synchronous wrapper for ingest_order_filled.
 
     Args:
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        since_timestamp: If provided, fetch only records newer than this timestamp.
 
     Returns:
         The run_id for this ingestion run.
     """
-    return asyncio.run(ingest_order_filled(dt, bucket=bucket))
+    return asyncio.run(
+        ingest_order_filled(dt, bucket=bucket, since_timestamp=since_timestamp)
+    )
 
 
 def run_ingest_markets(

@@ -36,6 +36,10 @@ class Source(BaseModel):
     api_base_url: str = Field(..., min_length=1, description="Base URL of the source API")
     pagination: str = Field(..., description="Pagination method used")
     cursor: str | None = Field(default=None, description="Final cursor value, if applicable")
+    latest_timestamp: int | None = Field(
+        default=None,
+        description="Max timestamp (Unix epoch seconds) seen in fetched records, for incremental ingestion",
+    )
 
 
 class Manifest(BaseModel):
@@ -146,6 +150,7 @@ def create_manifest(
     api_base_url: str,
     pagination: str = "none",
     cursor: str | None = None,
+    latest_timestamp: int | None = None,
     generated_at: datetime | None = None,
 ) -> Manifest:
     """Create a new manifest with a single data file.
@@ -164,6 +169,7 @@ def create_manifest(
         api_base_url: Base URL of the source API.
         pagination: Pagination method used.
         cursor: Final cursor value, if applicable.
+        latest_timestamp: Max timestamp from fetched records (Unix epoch seconds).
         generated_at: Manifest generation timestamp (defaults to now).
 
     Returns:
@@ -184,5 +190,6 @@ def create_manifest(
             api_base_url=api_base_url,
             pagination=pagination,
             cursor=cursor,
+            latest_timestamp=latest_timestamp,
         ),
     )

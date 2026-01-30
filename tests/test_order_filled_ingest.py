@@ -205,6 +205,130 @@ class TestIngestOrderFilled:
             assert call_kwargs["timestamp_lte"] == 1731628799
 
 
+class TestIncrementalIngestOrderFilled:
+    """Tests for incremental order_filled ingestion (since_timestamp parameter)."""
+
+    @pytest.mark.asyncio
+    async def test_since_timestamp_forwarded_to_goldsky(self) -> None:
+        """When since_timestamp is provided, timestamp_gte uses it instead of day start."""
+        with (
+            patch(
+                "prediction_data.bronze.polymarket.goldsky.GoldskyClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_order_filled_events.return_value = (
+                SAMPLE_ORDER_FILLED_EVENTS
+            )
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest.json"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_order_filled(
+                dt="2024-11-14", since_timestamp=1700000050
+            )
+
+            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            assert call_kwargs["timestamp_gte"] == 1700000050
+            # end should be ~now, not day boundary
+            assert call_kwargs["timestamp_lte"] != 1731628799
+
+    @pytest.mark.asyncio
+    async def test_without_since_timestamp_uses_day_boundaries(self) -> None:
+        """Without since_timestamp, full-day boundaries are used (backwards compatible)."""
+        with (
+            patch(
+                "prediction_data.bronze.polymarket.goldsky.GoldskyClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_order_filled_events.return_value = []
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 0)
+            mock_s3.upload_manifest.return_value = "manifest.json"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            await ingest_order_filled(dt="2024-11-14")
+
+            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            assert call_kwargs["timestamp_gte"] == 1731542400
+            assert call_kwargs["timestamp_lte"] == 1731628799
+
+    @pytest.mark.asyncio
+    async def test_manifest_includes_latest_timestamp(self) -> None:
+        """Manifest should include latest_timestamp from fetched records."""
+        with (
+            patch(
+                "prediction_data.bronze.polymarket.goldsky.GoldskyClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_order_filled_events.return_value = (
+                SAMPLE_ORDER_FILLED_EVENTS
+            )
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 2)
+            mock_s3.upload_manifest.return_value = "manifest.json"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            mock_manifest.return_value = {"mocked": True}
+
+            await ingest_order_filled(dt="2024-11-14")
+
+            manifest_kwargs = mock_manifest.call_args.kwargs
+            # Max timestamp from SAMPLE_ORDER_FILLED_EVENTS is 1700000100
+            assert manifest_kwargs["latest_timestamp"] == 1700000100
+
+    @pytest.mark.asyncio
+    async def test_manifest_latest_timestamp_none_when_no_events(self) -> None:
+        """When no events are fetched, latest_timestamp should be None."""
+        with (
+            patch(
+                "prediction_data.bronze.polymarket.goldsky.GoldskyClient"
+            ) as mock_client_class,
+            patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
+        ):
+            mock_settings.return_value.bronze_bucket = "test-bucket"
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_order_filled_events.return_value = []
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            mock_s3 = AsyncMock()
+            mock_s3.upload_jsonl.return_value = ("key", 0)
+            mock_s3.upload_manifest.return_value = "manifest.json"
+            mock_s3_class.return_value.__aenter__.return_value = mock_s3
+
+            mock_manifest.return_value = {"mocked": True}
+
+            await ingest_order_filled(dt="2024-11-14")
+
+            manifest_kwargs = mock_manifest.call_args.kwargs
+            assert manifest_kwargs["latest_timestamp"] is None
+
+
 class TestParquetConversion:
     """Tests for parquet-to-bronze field conversion logic."""
 
