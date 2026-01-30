@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     )
 
     bronze_bucket: str
+    silver_bucket: str = ""
     aws_region: str = "us-east-1"
     log_level: str = "INFO"
 

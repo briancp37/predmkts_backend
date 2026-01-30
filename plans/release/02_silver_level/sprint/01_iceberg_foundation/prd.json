@@ -1,0 +1,50 @@
+[
+    {
+        "category": "aws_glue_catalog_setup",
+        "description": "Create AWS Glue Catalog infrastructure for Silver Iceberg tables",
+        "steps": [
+            "Create Glue Catalog database `prediction_silver`",
+            "Configure IAM roles with Glue Catalog and S3 read/write permissions",
+            "Set up S3 path structure for Silver Iceberg data (e.g., s3://<bucket>/silver/)",
+            "Verify catalog connectivity from local dev environment"
+        ],
+        "passes": false
+    },
+    {
+        "category": "pyiceberg_integration",
+        "description": "Integrate PyIceberg library and create Silver module structure",
+        "steps": [
+            "Add PyIceberg dependency (with boto3/s3fs/glue extras) to pyproject.toml",
+            "Create `src/prediction_data/silver/__init__.py` module structure",
+            "Create `src/prediction_data/silver/catalog.py` with Glue catalog connection factory",
+            "Implement catalog connection error handling and retries",
+            "Configure catalog properties (warehouse location, catalog type=glue)"
+        ],
+        "passes": true
+    },
+    {
+        "category": "table_initialization",
+        "description": "Create CLI command to initialize all Silver Iceberg tables",
+        "steps": [
+            "Create CLI command `prediction-data silver init-tables`",
+            "Implement table creation for all 6 Silver tables (polymarket trades/markets/events, kalshi trades/markets/events)",
+            "Configure table properties: Parquet format, ZSTD compression, 128-512MB target file size, copy-on-write",
+            "Configure partition spec: `days(event_ts)`",
+            "Configure sort order: `platform_market_id`, `event_ts`",
+            "Add dry-run mode for table creation",
+            "Verify tables appear in Glue Catalog"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_validation",
+        "description": "Unit and integration tests for Iceberg foundation",
+        "steps": [
+            "Create `tests/test_silver_catalog.py` with catalog connection tests",
+            "Test table creation idempotency (create-if-not-exists)",
+            "Test schema round-trip (create table, read schema, verify)",
+            "Integration test: create table and verify in Glue Catalog"
+        ],
+        "passes": false
+    }
+]

@@ -214,8 +214,8 @@ class TestCloudWatchObservability:
 class TestNoSilverGoldAssumptions:
     """Criterion 8: No Silver/Gold assumptions exist in Bronze source code."""
 
-    def test_no_silver_references_in_source(self) -> None:
-        for py_file in SRC_DIR.rglob("*.py"):
+    def test_no_silver_references_in_bronze_source(self) -> None:
+        for py_file in (SRC_DIR / "bronze").rglob("*.py"):
             content = py_file.read_text()
             # Allow "silver" only in comments about the medallion architecture
             lines = [
