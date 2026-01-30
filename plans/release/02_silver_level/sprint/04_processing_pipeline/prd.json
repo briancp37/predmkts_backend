@@ -9,7 +9,7 @@
             "Parse and validate manifest JSON against Bronze manifest schema",
             "Return structured list of manifests with metadata (run_id, dt, row_count, files)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "bronze_reader",

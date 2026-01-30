@@ -2,10 +2,18 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [2026-01-30] manifest_discovery: Created `silver/discovery.py` with `discover_manifests()` and `DiscoveredManifest` dataclass.
+  - Scans S3 Bronze layout for manifests using delimiter-based partition listing
+  - Filters by date range (start_date/end_date), platform, entity
+  - Parses and validates manifests via existing `Manifest.from_json`
+  - Returns sorted list (by date asc, then generated_at asc)
+  - Gracefully skips malformed manifests with warning logs
+  - 9 unit tests in `tests/test_silver_discovery.py` (all passing)
+  - mypy clean, 546 total tests passing
 
 ## In Progress
 
@@ -15,3 +23,5 @@
 
 ## Notes
 
+- Discovery reuses existing `S3Client.list_prefixes()` (delimiter trick) and `download_manifest()` — no new S3 primitives needed.
+- Next priority: bronze_reader (streaming JSONL.gz reader), then dedup, then iceberg_writer, then processor orchestrator.
