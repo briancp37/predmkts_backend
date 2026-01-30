@@ -49,6 +49,6 @@
             "Test edge cases: missing market lookup, zero amounts, unknown asset IDs",
             "Test with real Bronze data samples"
         ],
-        "passes": false
+        "passes": true
     }
 ]

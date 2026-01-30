@@ -31,7 +31,7 @@
 
 ## Notes
 
-- Next up: `testing` — comprehensive integration tests with real Bronze data samples.
+- All 4 PRD categories now pass. Sprint is complete.
 
 ---
 
@@ -45,3 +45,11 @@
   `TradeDerivationError` to `NormalizationError` for pipeline compatibility.
   Registered as `("polymarket", "trades")` in the NORMALIZERS registry.
   14 new tests in `tests/test_silver_normalize.py` (60 total) all passing. mypy clean.
+
+- [2026-01-30] testing: Added comprehensive integration tests in
+  `tests/integration/test_order_filled_to_trades.py`. 14 tests covering end-to-end
+  pipeline: Bronze markets JSONL → MarketsReferenceLookup → derive_trades_batch →
+  PolymarketTradesNormalizer. Uses realistic Bronze data fixtures including Goldsky
+  subgraph records, parquet-backfilled records (null id/orderHash/fee), float-notation
+  token ID resolution, cross-market derivation, error handling for unknown assets and
+  zero amounts. All 551 tests passing (537 unit + 14 integration). mypy clean.
