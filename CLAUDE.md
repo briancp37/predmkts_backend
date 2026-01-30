@@ -169,18 +169,26 @@ prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
 
 ### Parquet-to-Bronze Backfill (order_filled)
 
-Convert historical parquet data to bronze JSONL.gz format:
+Convert historical parquet data to bronze JSONL.gz format. Reads from the monolithic
+`s3://polymarket-bcp892/raw/polymarket/order_filled.parquet` (~15 GB, 313M rows),
+streams row groups to avoid loading everything into memory, and filters by date.
+
+The script uses a single-pass scan over all row groups, bucketing rows by date as they
+are read. This streams the 15 GB file exactly once regardless of how many days are in the
+range — O(row_groups) vs the naive O(days * row_groups) that would re-scan per day.
+
+Token ID resolution: Asset IDs in the parquet are float-notation strings (e.g. `6.58e+76`)
+due to precision loss. The script builds a mapping from bronze markets JSONL data
+(`clobTokenIds` field) to resolve them to full-precision token IDs.
 
 ```bash
-# Convert all days from parquet source
-python scripts/backfill_order_filled_from_parquet.py
+# Convert a date range from the monolithic parquet
+python scripts/backfill_order_filled_from_parquet.py \
+    --start-date 2022-11-01 --end-date 2026-01-31
 
 # Preview without writing to S3
-python scripts/backfill_order_filled_from_parquet.py --dry-run
-
-# Scope to date range
 python scripts/backfill_order_filled_from_parquet.py \
-    --start-date 2024-01-01 --end-date 2024-03-31
+    --start-date 2024-01-01 --end-date 2024-03-31 --dry-run
 ```
 
 - Polymarket trades backfill uses the CLOB API (cursor-based, no record limit).

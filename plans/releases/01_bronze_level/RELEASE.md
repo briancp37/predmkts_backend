@@ -43,16 +43,24 @@ Release 1 is complete when:
 - Kalshi
 
 ### Entities (MVP)
-| Platform | Entity | Type | Recommended cadence |
-|---|---|---|---|
-| Polymarket | `trades` | high-frequency | every 5 minutes |
-| Polymarket | `markets` | slowly-changing | every 1–6 hours |
-| Polymarket | `events` | slowly-changing | every 1–6 hours |
-| Kalshi | `trades` | high-frequency | every 5 minutes |
-| Kalshi | `markets` | slowly-changing | every 1–6 hours |
-| Kalshi | `events` | slowly-changing | every 1–6 hours |
+| Platform | Entity | Type | Ingestion model | Recommended cadence |
+|---|---|---|---|---|
+| Polymarket | `trades` | high-frequency | date-scoped (per-day) | every 5 minutes |
+| Polymarket | `markets` | catalog | full fetch (not date-scoped) | every 1–6 hours |
+| Polymarket | `events` | catalog | full fetch (not date-scoped) | every 1–6 hours |
+| Kalshi | `trades` | high-frequency | date-scoped (per-day) | every 5 minutes |
+| Kalshi | `markets` | slowly-changing | date-scoped (per-day) | every 1–6 hours |
+| Kalshi | `events` | slowly-changing | date-scoped (per-day) | every 1–6 hours |
+| Polymarket | `order_filled` | high-frequency | date-scoped (per-day) | every 5 minutes |
 
-> Explicitly out of scope in R1: order books, fills, transfers, canonicalization.
+**Catalog vs date-scoped entities:**
+- **Date-scoped** (trades): Fetched per-day using timestamp filters. Backfill iterates over each day in the range.
+- **Catalog** (Polymarket markets/events): Full fetch of every record via the Gamma API. Not date-filtered — the API returns the entire catalog (~360k markets, ~176k events). Backfill runs a single fetch partitioned by today's date. Incremental updates (future) will use timestamp-based filtering.
+
+> Explicitly out of scope in R1: order books, transfers, canonicalization.
+
+**On-chain data (Goldsky subgraph):**
+- **`order_filled`**: Fetched from Goldsky-hosted orderbook subgraph (GraphQL). Date-scoped using timestamp filters. Schema: `OrderFilledEvent` (transactionHash, orderHash, timestamp, maker, taker, makerAssetId, takerAssetId, makerAmountFilled, takerAmountFilled, fee). Historical backfill reads from a monolithic parquet file at `s3://polymarket-bcp892/raw/polymarket/order_filled.parquet` (~15 GB, 313M rows). The backfill script streams row groups to filter by date without loading the full file into memory. Asset IDs (stored as float-notation strings due to precision loss) are resolved to full-precision token IDs via a mapping built from bronze markets JSONL data. Records from parquet are missing `orderHash`, `fee`, and `id` (stored as null).
 
 ---
 
@@ -72,6 +80,7 @@ Release 1 is complete when:
 - Raw API payloads (minimal write-safe normalization only)
 
 ### 4.3 S3 key layout (Required)
+
 ```
 
 s3://<BRONZE_BUCKET>/bronze/<platform>/<entity>/dt=YYYY-MM-DD/run_id=<uuid>/
@@ -270,6 +279,7 @@ prediction-data ingest polymarket-events --dt YYYY-MM-DD
 prediction-data ingest kalshi-trades --dt YYYY-MM-DD
 prediction-data ingest kalshi-markets --dt YYYY-MM-DD
 prediction-data ingest kalshi-events --dt YYYY-MM-DD
+prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD
 ```
 
 CLI guarantees:
