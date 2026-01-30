@@ -5,9 +5,14 @@ import calendar
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import typer
 
 from prediction_data import __version__
+from prediction_data.cli.silver import app as silver_app
 from prediction_data.cli.status import app as status_app
 
 app = typer.Typer(
@@ -18,6 +23,9 @@ app = typer.Typer(
 
 # Status command group
 app.add_typer(status_app, name="status")
+
+# Silver command group
+app.add_typer(silver_app, name="silver")
 
 # Ingest command group placeholder
 ingest_app = typer.Typer(

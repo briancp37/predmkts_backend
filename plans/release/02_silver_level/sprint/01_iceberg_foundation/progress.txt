@@ -19,6 +19,21 @@
 - Updated test_exit_criteria.py: scoped "no silver references" test to bronze/ directory only (was blocking silver module creation)
 - All 434 tests pass, mypy clean
 
+- [table_initialization] Created src/prediction_data/silver/tables.py with:
+  - Schema definitions for all 6 Silver tables (polymarket trades/markets/events, kalshi trades/markets/events)
+  - All schemas include event_ts (field 1), platform ID (field 2), bronze_run_id, silver_ingestion_ts metadata columns
+  - Polymarket trades schema derived from order_filled: event_ts, platform_market_id, platform_trade_id, maker, taker, nonusdc_side, maker/taker_direction, price, usd_amount, token_amount, transaction_hash
+  - Kalshi tables are scaffolds with basic columns
+  - TABLE_PROPERTIES: format-version=2, ZSTD compression, 256MB target file size, copy-on-write modes
+  - Partition spec: days(event_ts)
+  - Sort order: platform_market_id ASC, event_ts ASC
+  - SILVER_TABLES registry mapping (namespace, table_name) -> (schema, sort_order)
+  - init_tables() function: idempotent creation (load-or-create), namespace auto-creation, dry-run support
+- [table_initialization] Created src/prediction_data/cli/silver.py with `prediction-data silver init-tables` command
+  - --dry-run flag for previewing without creating
+  - Registered silver_app in cli/main.py
+- All 434 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -29,4 +44,5 @@
 
 - pyiceberg 0.10.0 installed with glue and s3fs extras
 - The Bronze exit criteria test for "no silver references" was scoped to scan only src/bronze/ instead of all src/ — this is correct since the intent is to keep Bronze code free of Silver assumptions, not to prevent Silver code from existing.
-- Next priority: aws_glue_catalog_setup or table_initialization category
+- Next priority: testing_and_validation category (unit tests for tables.py) or aws_glue_catalog_setup (AWS infra)
+- Verification of tables in Glue Catalog requires live AWS — deferred to aws_glue_catalog_setup or integration testing

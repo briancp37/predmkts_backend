@@ -34,7 +34,7 @@
             "Add dry-run mode for table creation",
             "Verify tables appear in Glue Catalog"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing_and_validation",
