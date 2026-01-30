@@ -33,7 +33,7 @@
             "Track dedup stats: records in, duplicates dropped, records out",
             "Log duplicate records for observability"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "iceberg_writer",

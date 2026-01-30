@@ -24,6 +24,16 @@
   - 7 unit tests in `tests/test_silver_reader.py` (all passing)
   - mypy clean, 553 total tests passing
 
+- [2026-01-30] deduplication: Created `silver/dedup.py` with `dedup_batch()` and `DedupStats` dataclass.
+  - In-memory dedup keyed by entity-specific `normalizer.dedup_key()`
+  - Conflict resolution: latest wins by `updated_at` (preferred) or `event_ts`
+  - When timestamps are missing or only one side has one, first-seen wins
+  - Preserves original record ordering for determinism
+  - Tracks stats: records_in, duplicates_dropped, records_out
+  - Logs duplicate records at DEBUG level, summary at INFO level
+  - 12 unit tests in `tests/test_silver_dedup.py` (all passing)
+  - mypy clean, 565 total tests passing
+
 ## In Progress
 
 
@@ -33,4 +43,4 @@
 ## Notes
 
 - Discovery reuses existing `S3Client.list_prefixes()` (delimiter trick) and `download_manifest()` — no new S3 primitives needed.
-- Next priority: dedup engine, then iceberg_writer, then processor orchestrator, then integration tests.
+- Next priority: iceberg_writer, then processor orchestrator, then integration tests.
