@@ -36,7 +36,7 @@
             "Handle records where market lookup fails (log warning, skip or quarantine)",
             "Handle edge cases: zero amounts, division by zero in price calc"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

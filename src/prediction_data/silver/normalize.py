@@ -15,6 +15,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from prediction_data.core.logging import get_logger
+from prediction_data.silver.polymarket.derive_trades import (
+    TradeDerivationError,
+    derive_trade,
+)
+from prediction_data.silver.polymarket.markets_reference import MarketsReferenceLookup
 
 logger = get_logger(__name__)
 
@@ -436,10 +441,92 @@ class KalshiEventsNormalizer(Normalizer):
 
 
 # ---------------------------------------------------------------------------
+# Polymarket Trades Normalizer (derived from OrderFilledEvents)
+# ---------------------------------------------------------------------------
+
+
+class PolymarketTradesNormalizer(Normalizer):
+    """Normalize Bronze OrderFilledEvents → Silver trades via trade derivation.
+
+    Unlike other normalizers that map fields 1:1, this normalizer delegates
+    to the trade derivation logic which resolves conditional tokens to markets,
+    computes price, and determines buy/sell direction.
+
+    Requires a ``MarketsReferenceLookup`` to resolve token IDs to markets.
+    """
+
+    def __init__(self, lookup: MarketsReferenceLookup | None = None) -> None:
+        self._lookup = lookup
+
+    @property
+    def platform(self) -> str:
+        return "polymarket"
+
+    @property
+    def entity(self) -> str:
+        return "trades"
+
+    @property
+    def lookup(self) -> MarketsReferenceLookup:
+        if self._lookup is None:
+            raise NormalizationError(
+                "MarketsReferenceLookup not set — call set_lookup() before normalizing"
+            )
+        return self._lookup
+
+    def set_lookup(self, lookup: MarketsReferenceLookup) -> None:
+        """Set the markets reference lookup table."""
+        self._lookup = lookup
+
+    def dedup_key(self, record: dict[str, Any]) -> str:
+        tx_hash = record.get("transactionHash", "")
+        maker = record.get("maker", "")
+        taker = record.get("taker", "")
+        maker_asset = record.get("makerAssetId", "")
+        return f"polymarket:{tx_hash}:{maker}:{taker}:{maker_asset}"
+
+    def normalize(
+        self,
+        record: dict[str, Any],
+        *,
+        bronze_run_id: str | None = None,
+        silver_ingestion_ts: datetime | None = None,
+    ) -> dict[str, Any]:
+        try:
+            trade = derive_trade(record, self.lookup)
+        except TradeDerivationError as e:
+            raise NormalizationError(str(e)) from e
+
+        # Parse timestamp to UTC datetime
+        raw_ts = trade["timestamp"]
+        if raw_ts is None:
+            raise NormalizationError("Missing timestamp in derived trade")
+        event_ts = _parse_timestamp_utc(raw_ts)
+
+        return {
+            "event_ts": event_ts,
+            "platform_market_id": trade["market_id"],
+            "platform_trade_id": trade["trade_id"],
+            "maker": trade["maker"],
+            "taker": trade["taker"],
+            "nonusdc_side": trade["nonusdc_side"],
+            "maker_direction": trade["maker_direction"],
+            "taker_direction": trade["taker_direction"],
+            "price": trade["price"],
+            "usd_amount": trade["usd_amount"],
+            "token_amount": trade["token_amount"],
+            "transaction_hash": trade.get("transaction_hash"),
+            "bronze_run_id": bronze_run_id,
+            "silver_ingestion_ts": silver_ingestion_ts,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 NORMALIZERS: dict[tuple[str, str], type[Normalizer]] = {
+    ("polymarket", "trades"): PolymarketTradesNormalizer,
     ("polymarket", "markets"): PolymarketMarketsNormalizer,
     ("polymarket", "events"): PolymarketEventsNormalizer,
     ("kalshi", "trades"): KalshiTradesNormalizer,

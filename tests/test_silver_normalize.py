@@ -13,9 +13,11 @@ from prediction_data.silver.normalize import (
     NormalizationError,
     PolymarketEventsNormalizer,
     PolymarketMarketsNormalizer,
+    PolymarketTradesNormalizer,
     _parse_timestamp_utc,
     get_normalizer,
 )
+from prediction_data.silver.polymarket.markets_reference import MarketsReferenceLookup
 
 # ---------------------------------------------------------------------------
 # Timestamp parsing
@@ -202,6 +204,156 @@ class TestKalshiEventsNormalizer:
 
 
 # ---------------------------------------------------------------------------
+# Polymarket Trades (derived from OrderFilledEvents)
+# ---------------------------------------------------------------------------
+
+
+def _make_lookup() -> MarketsReferenceLookup:
+    """Build a small lookup for testing."""
+    lookup = MarketsReferenceLookup()
+    lookup.load_from_records([
+        {
+            "id": "market-abc",
+            "clobTokenIds": ["111222333", "444555666"],
+        },
+    ])
+    return lookup
+
+
+def _order_filled_record(
+    *,
+    maker_asset: str = "0",
+    taker_asset: str = "111222333",
+    maker_amount: int = 5_000_000,
+    taker_amount: int = 10_000_000,
+    timestamp: int = 1700000000,
+    tx_hash: str = "0xabc123",
+) -> dict:
+    return {
+        "makerAssetId": maker_asset,
+        "takerAssetId": taker_asset,
+        "makerAmountFilled": maker_amount,
+        "takerAmountFilled": taker_amount,
+        "timestamp": timestamp,
+        "transactionHash": tx_hash,
+        "maker": "0xmaker",
+        "taker": "0xtaker",
+    }
+
+
+class TestPolymarketTradesNormalizer:
+    def setup_method(self) -> None:
+        self.lookup = _make_lookup()
+        self.norm = PolymarketTradesNormalizer(lookup=self.lookup)
+
+    def test_basic_taker_buys(self) -> None:
+        """Taker provides USDC (asset 0) → taker is buying."""
+        rec = _order_filled_record(
+            maker_asset="111222333",
+            taker_asset="0",
+            maker_amount=10_000_000,
+            taker_amount=5_000_000,
+        )
+        result = self.norm.normalize(rec, bronze_run_id="run-1")
+        assert result["platform_market_id"] == "market-abc"
+        assert result["taker_direction"] == "buy"
+        assert result["maker_direction"] == "sell"
+        assert result["nonusdc_side"] == "token1"
+        assert result["price"] == pytest.approx(0.5)
+        assert result["usd_amount"] == pytest.approx(5.0)
+        assert result["token_amount"] == pytest.approx(10.0)
+        assert result["transaction_hash"] == "0xabc123"
+        assert result["bronze_run_id"] == "run-1"
+        assert result["event_ts"].tzinfo is not None
+
+    def test_basic_taker_sells(self) -> None:
+        """Maker provides USDC (asset 0) → taker is selling."""
+        rec = _order_filled_record(
+            maker_asset="0",
+            taker_asset="111222333",
+            maker_amount=5_000_000,
+            taker_amount=10_000_000,
+        )
+        result = self.norm.normalize(rec)
+        assert result["taker_direction"] == "sell"
+        assert result["maker_direction"] == "buy"
+        assert result["price"] == pytest.approx(0.5)
+
+    def test_token2_side(self) -> None:
+        """Token in second position should resolve to token2."""
+        rec = _order_filled_record(
+            maker_asset="444555666",
+            taker_asset="0",
+            maker_amount=10_000_000,
+            taker_amount=7_000_000,
+        )
+        result = self.norm.normalize(rec)
+        assert result["nonusdc_side"] == "token2"
+        assert result["price"] == pytest.approx(0.7)
+
+    def test_missing_market_lookup_raises(self) -> None:
+        rec = _order_filled_record(taker_asset="unknown_token", maker_asset="0")
+        with pytest.raises(NormalizationError, match="Market lookup failed"):
+            self.norm.normalize(rec)
+
+    def test_both_usdc_raises(self) -> None:
+        rec = _order_filled_record(maker_asset="0", taker_asset="0")
+        with pytest.raises(NormalizationError, match="Cannot identify USDC side"):
+            self.norm.normalize(rec)
+
+    def test_both_non_usdc_raises(self) -> None:
+        rec = _order_filled_record(maker_asset="111222333", taker_asset="444555666")
+        with pytest.raises(NormalizationError, match="Cannot identify USDC side"):
+            self.norm.normalize(rec)
+
+    def test_zero_token_amount_raises(self) -> None:
+        rec = _order_filled_record(maker_asset="111222333", taker_asset="0", maker_amount=0)
+        with pytest.raises(NormalizationError, match="Zero token amount"):
+            self.norm.normalize(rec)
+
+    def test_missing_timestamp_raises(self) -> None:
+        rec = _order_filled_record()
+        rec["timestamp"] = None
+        with pytest.raises(NormalizationError, match="Missing timestamp"):
+            self.norm.normalize(rec)
+
+    def test_no_lookup_raises(self) -> None:
+        norm = PolymarketTradesNormalizer()
+        rec = _order_filled_record()
+        with pytest.raises(NormalizationError, match="MarketsReferenceLookup not set"):
+            norm.normalize(rec)
+
+    def test_set_lookup(self) -> None:
+        norm = PolymarketTradesNormalizer()
+        norm.set_lookup(self.lookup)
+        rec = _order_filled_record(maker_asset="111222333", taker_asset="0")
+        result = norm.normalize(rec)
+        assert result["platform_market_id"] == "market-abc"
+
+    def test_dedup_key(self) -> None:
+        rec = _order_filled_record()
+        key = self.norm.dedup_key(rec)
+        assert key == "polymarket:0xabc123:0xmaker:0xtaker:0"
+
+    def test_batch_skips_bad_records(self) -> None:
+        good = _order_filled_record(maker_asset="111222333", taker_asset="0")
+        bad = _order_filled_record(maker_asset="0", taker_asset="0")  # both USDC
+        results = self.norm.normalize_batch([good, bad, good])
+        assert len(results) == 2
+
+    def test_lineage_columns(self) -> None:
+        rec = _order_filled_record(maker_asset="111222333", taker_asset="0")
+        ts = datetime(2026, 1, 30, 12, 0, 0, tzinfo=UTC)
+        result = self.norm.normalize(rec, bronze_run_id="r1", silver_ingestion_ts=ts)
+        assert result["bronze_run_id"] == "r1"
+        assert result["silver_ingestion_ts"] == ts
+
+    def test_platform_and_entity(self) -> None:
+        assert self.norm.platform == "polymarket"
+        assert self.norm.entity == "trades"
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -209,6 +361,10 @@ class TestRegistry:
     def test_get_normalizer(self) -> None:
         n = get_normalizer("polymarket", "markets")
         assert isinstance(n, PolymarketMarketsNormalizer)
+
+    def test_get_polymarket_trades_normalizer(self) -> None:
+        n = get_normalizer("polymarket", "trades")
+        assert isinstance(n, PolymarketTradesNormalizer)
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError):

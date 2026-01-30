@@ -31,6 +31,17 @@
 
 ## Notes
 
-- Next up: `polymarket_trades_normalizer` — wraps derive_trades as a Normalizer
-  subclass and registers it in the NORMALIZERS registry.
-- After that: `testing` — comprehensive integration tests with real Bronze data samples.
+- Next up: `testing` — comprehensive integration tests with real Bronze data samples.
+
+---
+
+- [2026-01-30] polymarket_trades_normalizer: Implemented `PolymarketTradesNormalizer`
+  in `src/prediction_data/silver/normalize.py`. Wraps `derive_trade()` from
+  `derive_trades.py`, mapping its output to the Silver trades Iceberg schema
+  (event_ts, platform_market_id, platform_trade_id, maker, taker, nonusdc_side,
+  maker_direction, taker_direction, price, usd_amount, token_amount,
+  transaction_hash, bronze_run_id, silver_ingestion_ts). Accepts
+  `MarketsReferenceLookup` via constructor or `set_lookup()`. Converts
+  `TradeDerivationError` to `NormalizationError` for pipeline compatibility.
+  Registered as `("polymarket", "trades")` in the NORMALIZERS registry.
+  14 new tests in `tests/test_silver_normalize.py` (60 total) all passing. mypy clean.
