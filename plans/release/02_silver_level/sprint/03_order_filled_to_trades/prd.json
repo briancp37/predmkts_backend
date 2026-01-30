@@ -24,7 +24,7 @@
             "Compute price = usd_amount / token_amount",
             "Output columns: timestamp, market_id, maker, taker, nonusdc_side, maker_direction, taker_direction, price, usd_amount, token_amount, transactionHash"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "polymarket_trades_normalizer",

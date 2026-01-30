@@ -14,6 +14,15 @@
   raw JSONL bytes (gzipped or plain). 14 unit tests in `tests/test_markets_reference.py`
   all passing. mypy clean.
 
+- [2026-01-30] trade_derivation_logic: Created `derive_trades.py` in
+  `src/prediction_data/silver/polymarket/`. Implements `derive_trade()` and
+  `derive_trades_batch()` functions. Identifies USDC vs conditional token side,
+  resolves token to market/side via MarketsReferenceLookup, scales amounts by 1e6,
+  computes price = usd_amount / token_amount, determines buy/sell direction.
+  Handles edge cases: both-USDC, both-non-USDC, missing assets, zero amounts,
+  invalid amounts, missing market lookup. 16 unit tests in
+  `tests/test_derive_trades.py` all passing. mypy clean.
+
 ## In Progress
 
 
@@ -22,7 +31,6 @@
 
 ## Notes
 
-- Next up: `trade_derivation_logic` — the core OrderFilledEvent -> derived trades
-  transformation. This depends on the markets_reference_loader (now complete).
-- After that: `polymarket_trades_normalizer` wraps the derivation as a Normalizer
+- Next up: `polymarket_trades_normalizer` — wraps derive_trades as a Normalizer
   subclass and registers it in the NORMALIZERS registry.
+- After that: `testing` — comprehensive integration tests with real Bronze data samples.
