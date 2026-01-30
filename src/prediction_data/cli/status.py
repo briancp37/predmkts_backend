@@ -322,3 +322,87 @@ def runs(
 
     headers = ["run_id", "platform", "entity", "dt", "row_count", "generated_at"]
     typer.echo(format_table(headers, rows))
+
+
+async def _find_manifest_by_run_id(
+    s3_client: Any,
+    run_id: str,
+    combos: list[tuple[str, str]],
+) -> tuple[str, Any] | None:
+    """Search S3 for a manifest matching the given run_id (supports prefix matching).
+
+    Returns (manifest_key, Manifest) or None if not found.
+    """
+    for plat, ent in combos:
+        prefix = f"bronze/{plat}/{ent}/"
+        keys = await s3_client.list_keys(prefix)
+        manifest_keys = [k for k in keys if k.endswith("manifest.json")]
+        for mk in manifest_keys:
+            if run_id in mk:
+                manifest = await s3_client.download_manifest(mk)
+                return mk, manifest
+    return None
+
+
+@app.command(name="show-run")
+def show_run(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID to look up (supports partial prefix matching)."),
+    ],
+    platform: PlatformOption = None,
+    entity: EntityOption = None,
+    bucket: Annotated[
+        str | None,
+        typer.Option("--bucket", help="S3 bucket (defaults to BRONZE_BUCKET env var)."),
+    ] = None,
+) -> None:
+    """Display full details of a specific ingestion run."""
+    from prediction_data.storage.s3 import S3Client
+
+    bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+    if not bucket:
+        typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+        raise typer.Exit(code=1)
+
+    combos = _resolve_filters(platform, entity)
+    result: tuple[str, Any] | None = None
+
+    async def _run() -> None:
+        nonlocal result
+        async with S3Client(bucket=bucket) as client:
+            result = await _find_manifest_by_run_id(client, run_id, combos)
+
+    asyncio.run(_run())
+
+    if result is None:
+        typer.echo(f"Error: No run found matching '{run_id}'.", err=True)
+        typer.echo("Hint: Use 'prediction-data status runs' to list available runs.", err=True)
+        raise typer.Exit(code=1)
+
+    manifest_key, manifest = result
+
+    # Display manifest details
+    typer.echo("Run Details")
+    typer.echo("=" * 40)
+    typer.echo(f"  run_id:       {manifest.run_id}")
+    typer.echo(f"  platform:     {manifest.platform}")
+    typer.echo(f"  entity:       {manifest.entity}")
+    typer.echo(f"  dt:           {manifest.dt}")
+    typer.echo(f"  generated_at: {manifest.generated_at.isoformat()}")
+    typer.echo(f"  row_count:    {manifest.row_count}")
+
+    # Source metadata
+    typer.echo("")
+    typer.echo("Source")
+    typer.echo("-" * 40)
+    typer.echo(f"  api_base_url: {manifest.source.api_base_url}")
+    typer.echo(f"  pagination:   {manifest.source.pagination}")
+    typer.echo(f"  cursor:       {manifest.source.cursor or '(none)'}")
+
+    # Part files
+    typer.echo("")
+    typer.echo(f"Files ({len(manifest.files)})")
+    typer.echo("-" * 40)
+    for f in manifest.files:
+        typer.echo(f"  s3://{f.bucket}/{f.key}")

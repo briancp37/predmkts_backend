@@ -52,7 +52,7 @@
             "Exit with error and helpful message if run_id not found",
             "Add unit tests for found/not-found cases and partial prefix matching"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "validate",

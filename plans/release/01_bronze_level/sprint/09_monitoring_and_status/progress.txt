@@ -31,6 +31,16 @@
   shows all, no runs, invalid dt, no bucket, cross-platform sorting. All 393 tests
   pass, mypy clean, ruff clean.
 
+- [2026-01-30] show_run: Added `prediction-data status show-run <run_id>` command to
+  src/prediction_data/cli/status.py. Searches S3 for manifest keys containing the
+  run_id (supports partial prefix matching). Displays full manifest fields: run_id,
+  platform, entity, dt, generated_at, row_count. Lists all part files with S3 URIs.
+  Shows source metadata: api_base_url, pagination, cursor. Exits with error and
+  helpful hint if run_id not found. Added _find_manifest_by_run_id async helper.
+  Tests in tests/test_status_show_run.py (6 tests): found run, not found, partial
+  prefix match, no bucket, null cursor display, hint message. All 399 tests pass,
+  mypy clean, ruff clean.
+
 ## In Progress
 
 ## Blockers/Issues
