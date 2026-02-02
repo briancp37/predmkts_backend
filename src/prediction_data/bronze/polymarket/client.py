@@ -321,6 +321,164 @@ class PolymarketClient:
 
         return all_events
 
+    async def fetch_markets_incremental(
+        self,
+        *,
+        since_updated_at: str,
+        include_closed: bool = True,
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Fetch markets updated after a cutoff timestamp.
+
+        Paginates through markets ordered by updatedAt descending, collecting
+        only records whose updatedAt > since_updated_at. Stops when a record's
+        updatedAt <= since_updated_at.
+
+        Args:
+            since_updated_at: ISO 8601 cutoff timestamp. Only records with
+                updatedAt strictly greater than this value are returned.
+            include_closed: Whether to include closed/resolved markets.
+
+        Returns:
+            Tuple of (list of changed market records, max_updated_at seen).
+            max_updated_at is the highest updatedAt value among returned records,
+            or since_updated_at if no new records were found.
+        """
+        gamma_client, _ = self._ensure_clients()
+        collected: list[dict[str, Any]] = []
+        max_updated_at = since_updated_at
+        offset = 0
+
+        self._logger.info(
+            "Starting incremental markets fetch",
+            since_updated_at=since_updated_at,
+        )
+
+        while True:
+            params: dict[str, Any] = {
+                "limit": self._page_size,
+                "offset": offset,
+                "order": "updatedAt",
+                "ascending": "false",
+            }
+            if include_closed:
+                params["closed"] = "true"
+
+            response = await gamma_client.get("/markets", params=params)
+            page: list[dict[str, Any]] = response.json()
+
+            if not page:
+                self._logger.info(
+                    "Incremental markets fetch complete (empty page)",
+                    collected=len(collected),
+                )
+                break
+
+            found_old = False
+            for record in page:
+                if record.get("updatedAt", "") > since_updated_at:
+                    collected.append(record)
+                    if record["updatedAt"] > max_updated_at:
+                        max_updated_at = record["updatedAt"]
+                else:
+                    found_old = True
+                    break
+
+            if found_old:
+                self._logger.info(
+                    "Incremental markets fetch complete (reached cutoff)",
+                    collected=len(collected),
+                    max_updated_at=max_updated_at,
+                )
+                break
+
+            offset += self._page_size
+            self._logger.info(
+                "Incremental markets pagination progress",
+                offset=offset,
+                collected=len(collected),
+            )
+
+        return collected, max_updated_at
+
+    async def fetch_events_incremental(
+        self,
+        *,
+        since_updated_at: str,
+        include_closed: bool = True,
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Fetch events updated after a cutoff timestamp.
+
+        Paginates through events ordered by updatedAt descending, collecting
+        only records whose updatedAt > since_updated_at. Stops when a record's
+        updatedAt <= since_updated_at.
+
+        Args:
+            since_updated_at: ISO 8601 cutoff timestamp. Only records with
+                updatedAt strictly greater than this value are returned.
+            include_closed: Whether to include closed/resolved events.
+
+        Returns:
+            Tuple of (list of changed event records, max_updated_at seen).
+            max_updated_at is the highest updatedAt value among returned records,
+            or since_updated_at if no new records were found.
+        """
+        gamma_client, _ = self._ensure_clients()
+        collected: list[dict[str, Any]] = []
+        max_updated_at = since_updated_at
+        offset = 0
+
+        self._logger.info(
+            "Starting incremental events fetch",
+            since_updated_at=since_updated_at,
+        )
+
+        while True:
+            params: dict[str, Any] = {
+                "limit": self._page_size,
+                "offset": offset,
+                "order": "updatedAt",
+                "ascending": "false",
+            }
+            if include_closed:
+                params["closed"] = "true"
+
+            response = await gamma_client.get("/events", params=params)
+            page: list[dict[str, Any]] = response.json()
+
+            if not page:
+                self._logger.info(
+                    "Incremental events fetch complete (empty page)",
+                    collected=len(collected),
+                )
+                break
+
+            found_old = False
+            for record in page:
+                if record.get("updatedAt", "") > since_updated_at:
+                    collected.append(record)
+                    if record["updatedAt"] > max_updated_at:
+                        max_updated_at = record["updatedAt"]
+                else:
+                    found_old = True
+                    break
+
+            if found_old:
+                self._logger.info(
+                    "Incremental events fetch complete (reached cutoff)",
+                    collected=len(collected),
+                    max_updated_at=max_updated_at,
+                )
+                break
+
+            offset += self._page_size
+            self._logger.info(
+                "Incremental events pagination progress",
+                offset=offset,
+                collected=len(collected),
+            )
+
+        return collected, max_updated_at
+
     async def fetch_trades_page(
         self,
         *,

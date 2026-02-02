@@ -20,7 +20,7 @@
             "Return both the collected records and the max updatedAt value seen (for writing to manifest)",
             "Add unit tests: incremental fetch stops at cutoff, collects only newer records, handles empty result, handles all-new page followed by mixed page"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "incremental_ingestion",

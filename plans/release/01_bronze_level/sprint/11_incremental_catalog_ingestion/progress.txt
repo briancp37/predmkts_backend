@@ -4,3 +4,13 @@
 - Added 6 unit tests: delta type, snapshot type, invalid type rejection, backwards compat from dict, create_manifest with delta, create_manifest default
 - All 37 manifest tests pass, mypy clean, no regressions in existing tests
 - Pre-existing failures in test_order_filled_ingest.py (8) and silver tests (collection errors) are unrelated
+
+2026-02-02: incremental_fetch_client — COMPLETE
+- Added fetch_markets_incremental(since_updated_at) method to PolymarketClient
+- Added fetch_events_incremental(since_updated_at) method to PolymarketClient
+- Both methods paginate by updatedAt descending (order=updatedAt, ascending=false), stop when record updatedAt <= cutoff
+- Returns tuple of (collected_records, max_updated_at_seen); max_updated_at defaults to since_updated_at if no new records
+- Collects only records strictly newer than cutoff on mixed pages
+- Added 9 unit tests across TestFetchMarketsIncremental (5 tests) and TestFetchEventsIncremental (4 tests)
+- Tests cover: stops at cutoff, all-new then mixed page, empty result, no new records, correct API params
+- All 42 polymarket client tests pass, mypy clean

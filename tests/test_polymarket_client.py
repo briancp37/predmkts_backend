@@ -380,6 +380,218 @@ class TestFetchAllEvents:
             assert mock_gamma.get.call_count == 2
 
 
+class TestFetchMarketsIncremental:
+    """Tests for fetch_markets_incremental method."""
+
+    @pytest.mark.asyncio
+    async def test_stops_at_cutoff(self) -> None:
+        """Should collect only records newer than cutoff and stop."""
+        page = [
+            {"id": 1, "updatedAt": "2026-02-02T12:00:00Z"},
+            {"id": 2, "updatedAt": "2026-02-02T11:00:00Z"},
+            {"id": 3, "updatedAt": "2026-02-01T10:00:00Z"},  # at/below cutoff
+        ]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response(page))
+
+            async with PolymarketClient(page_size=100) as client:
+                records, max_ts = await client.fetch_markets_incremental(
+                    since_updated_at="2026-02-01T10:00:00Z"
+                )
+
+        assert len(records) == 2
+        assert records[0]["id"] == 1
+        assert records[1]["id"] == 2
+        assert max_ts == "2026-02-02T12:00:00Z"
+        assert mock_gamma.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_all_new_page_then_mixed(self) -> None:
+        """Should continue past all-new page and stop on mixed page."""
+        page1 = [
+            {"id": 1, "updatedAt": "2026-02-03T12:00:00Z"},
+            {"id": 2, "updatedAt": "2026-02-03T11:00:00Z"},
+        ]
+        page2 = [
+            {"id": 3, "updatedAt": "2026-02-02T12:00:00Z"},
+            {"id": 4, "updatedAt": "2026-02-01T00:00:00Z"},  # at/below cutoff
+        ]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(
+                side_effect=[
+                    _create_mock_response(page1),
+                    _create_mock_response(page2),
+                ]
+            )
+
+            async with PolymarketClient(page_size=2) as client:
+                records, max_ts = await client.fetch_markets_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        assert len(records) == 3
+        assert max_ts == "2026-02-03T12:00:00Z"
+        assert mock_gamma.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_result(self) -> None:
+        """Should handle empty result (no records at all)."""
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response([]))
+
+            async with PolymarketClient(page_size=100) as client:
+                records, max_ts = await client.fetch_markets_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        assert records == []
+        assert max_ts == "2026-02-01T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_no_new_records(self) -> None:
+        """Should return empty list when all records are at or before cutoff."""
+        page = [
+            {"id": 1, "updatedAt": "2026-02-01T00:00:00Z"},
+        ]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response(page))
+
+            async with PolymarketClient(page_size=100) as client:
+                records, max_ts = await client.fetch_markets_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        assert records == []
+        assert max_ts == "2026-02-01T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_order_params_sent(self) -> None:
+        """Should send order=updatedAt and ascending=false."""
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response([]))
+
+            async with PolymarketClient(page_size=100) as client:
+                await client.fetch_markets_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        call_args = mock_gamma.get.call_args
+        assert call_args[1]["params"]["order"] == "updatedAt"
+        assert call_args[1]["params"]["ascending"] == "false"
+
+
+class TestFetchEventsIncremental:
+    """Tests for fetch_events_incremental method."""
+
+    @pytest.mark.asyncio
+    async def test_stops_at_cutoff(self) -> None:
+        """Should collect only records newer than cutoff and stop."""
+        page = [
+            {"id": 1, "updatedAt": "2026-02-02T12:00:00Z"},
+            {"id": 2, "updatedAt": "2026-02-01T10:00:00Z"},  # at/below cutoff
+        ]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response(page))
+
+            async with PolymarketClient(page_size=100) as client:
+                records, max_ts = await client.fetch_events_incremental(
+                    since_updated_at="2026-02-01T10:00:00Z"
+                )
+
+        assert len(records) == 1
+        assert records[0]["id"] == 1
+        assert max_ts == "2026-02-02T12:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_all_new_page_then_mixed(self) -> None:
+        """Should continue past all-new page and stop on mixed page."""
+        page1 = [
+            {"id": 1, "updatedAt": "2026-02-03T12:00:00Z"},
+            {"id": 2, "updatedAt": "2026-02-03T11:00:00Z"},
+        ]
+        page2 = [
+            {"id": 3, "updatedAt": "2026-02-02T12:00:00Z"},
+            {"id": 4, "updatedAt": "2026-02-01T00:00:00Z"},
+        ]
+
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(
+                side_effect=[
+                    _create_mock_response(page1),
+                    _create_mock_response(page2),
+                ]
+            )
+
+            async with PolymarketClient(page_size=2) as client:
+                records, max_ts = await client.fetch_events_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        assert len(records) == 3
+        assert max_ts == "2026-02-03T12:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_empty_result(self) -> None:
+        """Should handle empty result."""
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response([]))
+
+            async with PolymarketClient(page_size=100) as client:
+                records, max_ts = await client.fetch_events_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        assert records == []
+        assert max_ts == "2026-02-01T00:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_uses_events_endpoint(self) -> None:
+        """Should hit /events endpoint with correct ordering params."""
+        with patch("prediction_data.bronze.polymarket.client.HttpClient") as mock_http:
+            mock_gamma = AsyncMock()
+            mock_data = AsyncMock()
+            mock_http.side_effect = [mock_gamma, mock_data]
+            mock_gamma.get = AsyncMock(return_value=_create_mock_response([]))
+
+            async with PolymarketClient(page_size=100) as client:
+                await client.fetch_events_incremental(
+                    since_updated_at="2026-02-01T00:00:00Z"
+                )
+
+        call_args = mock_gamma.get.call_args
+        assert call_args[0][0] == "/events"
+        assert call_args[1]["params"]["order"] == "updatedAt"
+        assert call_args[1]["params"]["ascending"] == "false"
+
+
 class TestFetchTradesPage:
     """Tests for fetch_trades_page method."""
 
