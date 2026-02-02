@@ -59,6 +59,6 @@
             "Add integration test marker for tests requiring Docker ClickHouse",
             "Verify test suite runs cleanly with `pytest -m 'not integration'`"
         ],
-        "passes": false
+        "passes": true
     }
 ]

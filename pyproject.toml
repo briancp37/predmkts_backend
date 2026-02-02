@@ -94,6 +94,7 @@ module = [
     "botocore.*",
     "pyarrow.*",
     "pyiceberg.*",
+    "clickhouse_connect.*",
 ]
 ignore_missing_imports = true
 

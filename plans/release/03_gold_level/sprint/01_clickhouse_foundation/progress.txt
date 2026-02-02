@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -38,6 +38,14 @@
 - Added `pyarrow.*` to mypy ignore_missing_imports overrides in `pyproject.toml`
 - Created `tests/gold/test_s3_writer.py` with 7 unit tests (mocked S3)
 - All 755 tests pass, mypy clean, ruff clean
+
+### testing (2026-02-02)
+- `tests/gold/conftest.py` already had fixtures for ClickHouse mock, S3 mock, Settings, and sample Arrow table
+- Fixed unused `patch` import in conftest.py (ruff F401)
+- Added `clickhouse_connect.*` to mypy `ignore_missing_imports` overrides in `pyproject.toml`
+- Integration test marker already configured in `pyproject.toml`
+- All 11 Gold tests pass, `pytest -m "not integration"` runs cleanly (720 passed, 9 pre-existing failures in order_filled unrelated to this sprint)
+- Ruff clean on all Gold files
 
 ## In Progress
 
