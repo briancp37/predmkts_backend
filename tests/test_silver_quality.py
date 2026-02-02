@@ -297,3 +297,53 @@ class TestChecksForEntity:
         )
         names = [c.name for c in checks]
         assert "referential" not in names
+
+
+# ---------------------------------------------------------------------------
+# Fixture-based tests for common quality violations
+# ---------------------------------------------------------------------------
+
+
+class TestNullViolationFixture:
+    def test_non_null_check_catches_nulls(self, null_violation_records: list[dict]) -> None:
+        check = NonNullCheck(["event_ts", "platform_trade_id", "platform_market_id"])
+        result = check.run(null_violation_records)
+        assert not result.passed
+        # rows 1 (null event_ts), 2 (null trade_id), 3 (missing market_id)
+        assert result.failed_count == 3
+
+    def test_non_null_sample_failures_contain_details(self, null_violation_records: list[dict]) -> None:
+        check = NonNullCheck(["event_ts", "platform_trade_id"])
+        result = check.run(null_violation_records)
+        assert not result.passed
+        for sample in result.sample_failures:
+            assert "row" in sample
+            assert "null_columns" in sample
+
+
+class TestDuplicateViolationFixture:
+    def test_uniqueness_check_catches_duplicates(self, duplicate_violation_records: list[dict]) -> None:
+        check = UniquenessCheck("platform_trade_id")
+        result = check.run(duplicate_violation_records)
+        assert not result.passed
+        assert result.failed_count == 2  # t1 and t2 each duplicated once
+
+
+class TestBadTimestampFixture:
+    def test_timestamp_range_catches_violations(self, bad_timestamp_records: list[dict]) -> None:
+        expected = datetime(2025, 6, 15, tzinfo=UTC)
+        check = TimestampRangeCheck(expected, tolerance_days=1)
+        result = check.run(bad_timestamp_records)
+        assert not result.passed
+        # out-of-range, future, and just-outside-tolerance
+        assert result.failed_count >= 2
+
+
+class TestRunQualityChecksWithViolations:
+    def test_fail_fast_on_null_violations(self, null_violation_records: list[dict]) -> None:
+        checks = [
+            NonNullCheck(["event_ts", "platform_trade_id", "platform_market_id"]),
+            UniquenessCheck("platform_trade_id"),
+        ]
+        with pytest.raises(QualityCheckError, match="non_null"):
+            run_quality_checks(checks, null_violation_records)

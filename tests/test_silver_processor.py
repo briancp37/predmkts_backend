@@ -290,6 +290,87 @@ class TestProcessManifestErrors:
 # ---------------------------------------------------------------------------
 
 
+class TestQualityLogging:
+    """Test that quality check results are logged with structured metrics."""
+
+    @pytest.mark.asyncio
+    async def test_quality_results_logged_on_success(self) -> None:
+        manifest = _make_manifest()
+        records = _raw_market_records(3)
+        read_result = ReadResult(
+            records=records, records_read=3, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+                return_value=write_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.logger",
+            ) as mock_logger,
+        ):
+            await process_manifest(manifest, MagicMock(), MagicMock())
+
+        # Find the processing_quality_done log call
+        quality_calls = [
+            call
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0] == "processing_quality_done"
+        ]
+        assert len(quality_calls) == 1
+        kwargs = quality_calls[0].kwargs
+        assert "checks_passed" in kwargs
+        assert kwargs["checks_passed"] >= 1
+        assert kwargs["platform"] == "polymarket"
+        assert kwargs["entity"] == "markets"
+
+    @pytest.mark.asyncio
+    async def test_quality_failure_logged_before_abort(self) -> None:
+        manifest = _make_manifest()
+        records = _raw_market_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.run_quality_checks",
+                side_effect=QualityCheckError("non_null failed"),
+            ),
+            patch(
+                "prediction_data.silver.processor.logger",
+            ) as mock_logger,
+        ):
+            with pytest.raises(ProcessingError):
+                await process_manifest(manifest, MagicMock(), MagicMock())
+
+        # Quality done log should NOT appear (failure aborts before it)
+        quality_done_calls = [
+            call
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0] == "processing_quality_done"
+        ]
+        assert len(quality_done_calls) == 0
+
+
 class TestProcessingResult:
     def test_fields(self) -> None:
         r = ProcessingResult(

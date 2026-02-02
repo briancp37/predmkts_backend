@@ -43,6 +43,6 @@
             "Test quality check results are logged with metrics",
             "Create fixtures for common quality violations (nulls, duplicates, bad timestamps)"
         ],
-        "passes": false
+        "passes": true
     }
 ]
