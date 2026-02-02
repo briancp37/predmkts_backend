@@ -14,3 +14,21 @@
 - Added 9 unit tests across TestFetchMarketsIncremental (5 tests) and TestFetchEventsIncremental (4 tests)
 - Tests cover: stops at cutoff, all-new then mixed page, empty result, no new records, correct API params
 - All 42 polymarket client tests pass, mypy clean
+
+2026-02-02: incremental_ingestion — COMPLETE
+- Added find_latest_manifest_source() helper to discovery.py — returns (latest_date, latest_timestamp) from most recent manifest
+- Exported find_latest_manifest_source from storage __init__.py
+- Added _iso_to_epoch() and _epoch_to_iso() conversion helpers to ingest.py
+- Modified ingest_markets() to accept optional since_updated_at parameter; calls fetch_markets_incremental() when provided
+- Modified ingest_events() similarly with since_updated_at parameter
+- Incremental runs write manifest with snapshot_type="delta" and latest_timestamp (epoch seconds converted from max updatedAt ISO string)
+- Full runs unchanged: snapshot_type="snapshot", no latest_timestamp — backwards compatible
+- Zero-change incremental runs preserve the original cursor as latest_timestamp and write empty delta
+- Updated run_ingest_markets() and run_ingest_events() sync wrappers to pass through since_updated_at
+- Added 14 unit tests in test_incremental_catalog_ingest.py:
+  - 3 ISO/epoch conversion tests (roundtrip, iso_to_epoch, epoch_to_iso)
+  - 5 markets incremental tests (calls incremental, delta manifest, full snapshot, snapshot manifest, zero-change)
+  - 3 events incremental tests (calls incremental, delta manifest, zero-change empty delta)
+  - 3 find_latest_manifest_source tests (no partitions, returns timestamp, returns None when absent)
+- All 594 non-integration tests pass (580 existing + 14 new), mypy clean, ruff clean
+- Pre-existing failures: 8 pyarrow-dependent tests in test_order_filled_ingest.py, 5 silver collection errors

@@ -34,7 +34,7 @@
             "Preserve backwards compatibility: without since_updated_at, existing full snapshot behavior is unchanged",
             "Add unit tests: incremental path stores delta manifest, full path stores snapshot manifest, latest_timestamp written correctly, zero-change incremental run writes empty delta or skips"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_integration",

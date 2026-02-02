@@ -127,6 +127,57 @@ async def find_latest_timestamp(
     return max_ts
 
 
+async def find_latest_manifest_source(
+    s3_client: S3Client,
+    platform: str,
+    entity: str,
+) -> tuple[str | None, int | None]:
+    """Find the latest manifest's date and latest_timestamp for a platform/entity.
+
+    Locates the most recent date partition, finds the newest manifest within it,
+    and extracts the ``latest_timestamp`` from the source metadata.
+
+    Args:
+        s3_client: Initialised S3Client.
+        platform: Platform identifier (e.g. ``"polymarket"``).
+        entity: Entity identifier (e.g. ``"markets"``).
+
+    Returns:
+        Tuple of (latest_date, latest_timestamp). Either or both may be None
+        if no data or no timestamp is recorded.
+    """
+    latest_date = await _find_latest_date_partition(s3_client, platform, entity)
+    if latest_date is None:
+        return None, None
+
+    date_prefix = f"bronze/{platform}/{entity}/dt={latest_date}/"
+    date_keys = await s3_client.list_keys(date_prefix)
+    manifest_keys = [k for k in date_keys if k.endswith("manifest.json")]
+
+    if not manifest_keys:
+        logger.warning("No manifests in latest date partition", latest_date=latest_date)
+        return latest_date, None
+
+    # Find the manifest with the latest generated_at (latest run)
+    latest_manifest = None
+    for mk in manifest_keys:
+        manifest = await s3_client.download_manifest(mk)
+        if latest_manifest is None or manifest.generated_at > latest_manifest.generated_at:
+            latest_manifest = manifest
+
+    assert latest_manifest is not None
+
+    source_dict = latest_manifest.source.model_dump()
+    ts = source_dict.get("latest_timestamp")
+    if ts is not None:
+        ts = int(ts)
+        logger.info(
+            "Found latest_timestamp in manifest source",
+            platform=platform, entity=entity, latest_date=latest_date, timestamp=ts,
+        )
+    return latest_date, ts
+
+
 async def find_latest_date(
     s3_client: S3Client,
     platform: str,

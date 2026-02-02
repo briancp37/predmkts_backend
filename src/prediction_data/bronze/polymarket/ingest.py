@@ -1,7 +1,9 @@
 """Polymarket data ingestion functions."""
 
 import asyncio
-from typing import Any
+import calendar
+from datetime import UTC, datetime
+from typing import Literal
 
 import structlog
 
@@ -135,8 +137,8 @@ async def ingest_trades_clob(
     Returns:
         The run_id for this ingestion run.
     """
-    from datetime import date as date_type
     import calendar
+    from datetime import date as date_type
     from datetime import datetime
 
     from prediction_data.bronze.polymarket.clob import (
@@ -267,21 +269,38 @@ def run_ingest_trades(
     )
 
 
+def _iso_to_epoch(iso_str: str) -> int:
+    """Convert ISO 8601 datetime string to Unix epoch seconds."""
+    # Handle Z suffix and parse
+    cleaned = iso_str.replace("Z", "+00:00")
+    dt_obj = datetime.fromisoformat(cleaned)
+    return calendar.timegm(dt_obj.utctimetuple())
+
+
+def _epoch_to_iso(epoch: int) -> str:
+    """Convert Unix epoch seconds to ISO 8601 datetime string."""
+    return datetime.fromtimestamp(epoch, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 async def ingest_markets(
     dt: str,
     *,
     bucket: str | None = None,
     include_closed: bool = True,
+    since_updated_at: str | None = None,
 ) -> str:
-    """Ingest Polymarket markets snapshot for a given date.
+    """Ingest Polymarket markets for a given date.
 
-    Fetches all markets from the Polymarket Gamma API and stores them
-    in the Bronze layer as gzip-compressed JSONL files.
+    When ``since_updated_at`` is provided, uses incremental mode — fetches only
+    markets updated after the cutoff and stores as a delta partition. Otherwise
+    fetches a full snapshot.
 
     Args:
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
         include_closed: Whether to include closed/resolved markets.
+        since_updated_at: ISO 8601 cutoff for incremental fetch. When provided,
+            only records with updatedAt > this value are fetched.
 
     Returns:
         The run_id for this ingestion run.
@@ -289,6 +308,9 @@ async def ingest_markets(
     settings = get_settings()
     bucket = bucket or settings.bronze_bucket
     logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    incremental = since_updated_at is not None
+    snapshot_type: Literal["snapshot", "delta"] = "delta" if incremental else "snapshot"
 
     # Create run context for tracking
     run_ctx = RunContext(platform="polymarket", entity="markets")
@@ -300,13 +322,36 @@ async def ingest_markets(
         dt=dt,
         bucket=bucket,
         include_closed=include_closed,
+        incremental=incremental,
+        since_updated_at=since_updated_at,
     )
 
     # Fetch markets from API
+    max_updated_at: str | None = None
     async with PolymarketClient() as client:
-        markets = await client.fetch_all_markets(include_closed=include_closed)
+        if incremental:
+            assert since_updated_at is not None
+            markets, max_updated_at = await client.fetch_markets_incremental(
+                since_updated_at=since_updated_at,
+                include_closed=include_closed,
+            )
+        else:
+            markets = await client.fetch_all_markets(include_closed=include_closed)
 
-    logger.info("Fetched markets from API", record_count=len(markets))
+    logger.info(
+        "Fetched markets from API",
+        record_count=len(markets),
+        incremental=incremental,
+        max_updated_at=max_updated_at,
+    )
+
+    # Compute latest_timestamp for manifest (epoch seconds)
+    latest_timestamp: int | None = None
+    if max_updated_at is not None and max_updated_at != since_updated_at:
+        latest_timestamp = _iso_to_epoch(max_updated_at)
+    elif since_updated_at is not None and not markets:
+        # Zero-change incremental: preserve the original cursor
+        latest_timestamp = _iso_to_epoch(since_updated_at)
 
     # Upload to S3
     async with S3Client(bucket=bucket) as s3_client:
@@ -336,7 +381,9 @@ async def ingest_markets(
             row_count=row_count,
             api_base_url=GAMMA_API_BASE_URL,
             pagination="offset",
-            cursor=None,  # Offset pagination doesn't use cursors
+            cursor=None,
+            snapshot_type=snapshot_type,
+            latest_timestamp=latest_timestamp,
         )
 
         manifest_key = await s3_client.upload_manifest(manifest)
@@ -354,16 +401,20 @@ async def ingest_events(
     *,
     bucket: str | None = None,
     include_closed: bool = True,
+    since_updated_at: str | None = None,
 ) -> str:
-    """Ingest Polymarket events snapshot for a given date.
+    """Ingest Polymarket events for a given date.
 
-    Fetches all events from the Polymarket Gamma API and stores them
-    in the Bronze layer as gzip-compressed JSONL files.
+    When ``since_updated_at`` is provided, uses incremental mode — fetches only
+    events updated after the cutoff and stores as a delta partition. Otherwise
+    fetches a full snapshot.
 
     Args:
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
         include_closed: Whether to include closed/resolved events.
+        since_updated_at: ISO 8601 cutoff for incremental fetch. When provided,
+            only records with updatedAt > this value are fetched.
 
     Returns:
         The run_id for this ingestion run.
@@ -371,6 +422,9 @@ async def ingest_events(
     settings = get_settings()
     bucket = bucket or settings.bronze_bucket
     logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    incremental = since_updated_at is not None
+    snapshot_type: Literal["snapshot", "delta"] = "delta" if incremental else "snapshot"
 
     # Create run context for tracking
     run_ctx = RunContext(platform="polymarket", entity="events")
@@ -382,13 +436,36 @@ async def ingest_events(
         dt=dt,
         bucket=bucket,
         include_closed=include_closed,
+        incremental=incremental,
+        since_updated_at=since_updated_at,
     )
 
     # Fetch events from API
+    max_updated_at: str | None = None
     async with PolymarketClient() as client:
-        events = await client.fetch_all_events(include_closed=include_closed)
+        if incremental:
+            assert since_updated_at is not None
+            events, max_updated_at = await client.fetch_events_incremental(
+                since_updated_at=since_updated_at,
+                include_closed=include_closed,
+            )
+        else:
+            events = await client.fetch_all_events(include_closed=include_closed)
 
-    logger.info("Fetched events from API", record_count=len(events))
+    logger.info(
+        "Fetched events from API",
+        record_count=len(events),
+        incremental=incremental,
+        max_updated_at=max_updated_at,
+    )
+
+    # Compute latest_timestamp for manifest (epoch seconds)
+    latest_timestamp: int | None = None
+    if max_updated_at is not None and max_updated_at != since_updated_at:
+        latest_timestamp = _iso_to_epoch(max_updated_at)
+    elif since_updated_at is not None and not events:
+        # Zero-change incremental: preserve the original cursor
+        latest_timestamp = _iso_to_epoch(since_updated_at)
 
     # Upload to S3
     async with S3Client(bucket=bucket) as s3_client:
@@ -418,7 +495,9 @@ async def ingest_events(
             row_count=row_count,
             api_base_url=GAMMA_API_BASE_URL,
             pagination="offset",
-            cursor=None,  # Offset pagination doesn't use cursors
+            cursor=None,
+            snapshot_type=snapshot_type,
+            latest_timestamp=latest_timestamp,
         )
 
         manifest_key = await s3_client.upload_manifest(manifest)
@@ -436,6 +515,7 @@ def run_ingest_events(
     *,
     bucket: str | None = None,
     include_closed: bool = True,
+    since_updated_at: str | None = None,
 ) -> str:
     """Synchronous wrapper for ingest_events.
 
@@ -445,6 +525,7 @@ def run_ingest_events(
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
         include_closed: Whether to include closed/resolved events.
+        since_updated_at: ISO 8601 cutoff for incremental fetch.
 
     Returns:
         The run_id for this ingestion run.
@@ -454,6 +535,7 @@ def run_ingest_events(
             dt,
             bucket=bucket,
             include_closed=include_closed,
+            since_updated_at=since_updated_at,
         )
     )
 
@@ -605,6 +687,7 @@ def run_ingest_markets(
     *,
     bucket: str | None = None,
     include_closed: bool = True,
+    since_updated_at: str | None = None,
 ) -> str:
     """Synchronous wrapper for ingest_markets.
 
@@ -614,6 +697,7 @@ def run_ingest_markets(
         dt: Data partition date in YYYY-MM-DD format.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
         include_closed: Whether to include closed/resolved markets.
+        since_updated_at: ISO 8601 cutoff for incremental fetch.
 
     Returns:
         The run_id for this ingestion run.
@@ -623,5 +707,6 @@ def run_ingest_markets(
             dt,
             bucket=bucket,
             include_closed=include_closed,
+            since_updated_at=since_updated_at,
         )
     )
