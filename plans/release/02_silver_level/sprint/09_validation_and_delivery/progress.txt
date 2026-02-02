@@ -11,9 +11,14 @@
   remove-orphans, and maintain commands with examples. Updated project overview to mention
   Silver layer. All types check clean (mypy), 744 tests pass.
 
+- [2026-02-02] Documentation: Created Silver operations runbook at docs/silver-operations-runbook.md.
+  Covers daily operations (processing, maintenance schedules), backfills, partition rebuilds,
+  troubleshooting (common issues, state inspection, late-arriving data, catalog entity logic),
+  table initialization, and environment requirements. All types check clean (mypy), 744 tests pass.
+
 ## In Progress
 
-- Documentation category: 3 remaining steps (operations runbook, schema evolution docs, quality check config docs)
+- Documentation category: 2 remaining steps (schema evolution docs, quality check config docs)
 
 ## Blockers/Issues
 
