@@ -12,6 +12,7 @@ from prediction_data.silver.maintenance import (
     SMALL_FILE_THRESHOLD_BYTES,
     CompactionResult,
     MaintenanceError,
+    MaintenanceRunResult,
     OrphanCleanupResult,
     SnapshotExpirationResult,
     _needs_compaction,
@@ -19,6 +20,7 @@ from prediction_data.silver.maintenance import (
     compact_table,
     expire_snapshots,
     remove_orphans,
+    run_all_maintenance,
 )
 
 # ---------------------------------------------------------------------------
@@ -442,3 +444,90 @@ class TestResultDataclasses:
             duration_seconds=2.0,
         )
         assert r.orphan_files_found == 3
+
+    def test_maintenance_run_result_fields(self) -> None:
+        r = MaintenanceRunResult(
+            tables_processed=6,
+            compaction_results=[],
+            expiration_results=[],
+            orphan_results=[],
+            errors=[],
+            duration_seconds=10.0,
+        )
+        assert r.tables_processed == 6
+        assert r.errors == []
+
+
+# ---------------------------------------------------------------------------
+# run_all_maintenance
+# ---------------------------------------------------------------------------
+
+class TestRunAllMaintenance:
+    """Tests for the unified maintenance runner."""
+
+    @patch("prediction_data.silver.maintenance.remove_orphans")
+    @patch("prediction_data.silver.maintenance.expire_snapshots")
+    @patch("prediction_data.silver.maintenance.compact_table")
+    def test_runs_all_operations_on_all_tables(
+        self,
+        mock_compact: MagicMock,
+        mock_expire: MagicMock,
+        mock_orphans: MagicMock,
+    ) -> None:
+        mock_compact.return_value = []
+        mock_expire.return_value = SnapshotExpirationResult(
+            namespace="ns", table_name="t",
+            snapshots_before=5, snapshots_after=5, snapshots_expired=0,
+            older_than=datetime.now(tz=UTC), duration_seconds=0.0,
+        )
+        mock_orphans.return_value = OrphanCleanupResult(
+            namespace="ns", table_name="t",
+            orphan_files_found=0, orphan_files_deleted=0,
+            orphan_bytes=0, duration_seconds=0.0,
+        )
+
+        catalog = MagicMock()
+        result = run_all_maintenance(catalog, dry_run=True)
+
+        # 6 tables in SILVER_TABLES
+        assert result.tables_processed == 6
+        assert mock_compact.call_count == 6
+        assert mock_expire.call_count == 6
+        assert mock_orphans.call_count == 6
+        assert result.errors == []
+
+    @patch("prediction_data.silver.maintenance.compact_table")
+    def test_single_operation(self, mock_compact: MagicMock) -> None:
+        mock_compact.return_value = []
+
+        catalog = MagicMock()
+        result = run_all_maintenance(
+            catalog, operations=frozenset({"compact"}), dry_run=True,
+        )
+
+        assert result.tables_processed == 6
+        assert mock_compact.call_count == 6
+        assert result.expiration_results == []
+        assert result.orphan_results == []
+
+    @patch("prediction_data.silver.maintenance.compact_table")
+    def test_error_captured_and_continues(self, mock_compact: MagicMock) -> None:
+        call_count = 0
+
+        def side_effect(*_args: object, **_kwargs: object) -> list[CompactionResult]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise MaintenanceError("test error")
+            return []
+
+        mock_compact.side_effect = side_effect
+
+        catalog = MagicMock()
+        result = run_all_maintenance(
+            catalog, operations=frozenset({"compact"}), dry_run=True,
+        )
+
+        assert result.tables_processed == 6
+        assert len(result.errors) == 1
+        assert "test error" in result.errors[0][1]

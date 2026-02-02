@@ -2,6 +2,7 @@
 
 Provides compaction to merge small data files into larger ones,
 snapshot expiration to control metadata size, and orphan file cleanup.
+Also provides a unified runner for scheduling all operations across tables.
 """
 
 from __future__ import annotations
@@ -557,5 +558,117 @@ def remove_orphans(
         orphan_files_found=len(orphans),
         orphan_files_deleted=deleted,
         orphan_bytes=orphan_bytes,
+        duration_seconds=duration,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Maintenance runner — runs all operations across all tables
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass(slots=True)
+class MaintenanceRunResult:
+    """Summary of a full maintenance run across all tables."""
+
+    tables_processed: int
+    compaction_results: list[CompactionResult]
+    expiration_results: list[SnapshotExpirationResult]
+    orphan_results: list[OrphanCleanupResult]
+    errors: list[tuple[str, str]]  # (table_name, error_message)
+    duration_seconds: float
+
+
+def run_all_maintenance(
+    catalog: Catalog,
+    *,
+    operations: frozenset[str] = frozenset({"compact", "expire", "orphans"}),
+    expire_older_than_days: int = DEFAULT_RETENTION_DAYS,
+    orphan_older_than_days: int = ORPHAN_MIN_AGE_DAYS,
+    dry_run: bool = False,
+) -> MaintenanceRunResult:
+    """Run maintenance operations across all Silver Iceberg tables.
+
+    Designed to be called from a scheduler (cron, EventBridge, etc.).
+    Operations are run sequentially per table: compact, then expire
+    snapshots, then remove orphans.
+
+    Args:
+        catalog: PyIceberg catalog instance.
+        operations: Set of operations to run. Valid values:
+            ``"compact"``, ``"expire"``, ``"orphans"``.
+        expire_older_than_days: Retention period for snapshot expiration.
+        orphan_older_than_days: Min age for orphan file deletion.
+        dry_run: If True, preview without making changes.
+
+    Returns:
+        MaintenanceRunResult with per-table results and errors.
+    """
+    t0 = time.monotonic()
+
+    compaction_results: list[CompactionResult] = []
+    expiration_results: list[SnapshotExpirationResult] = []
+    orphan_results: list[OrphanCleanupResult] = []
+    errors: list[tuple[str, str]] = []
+    tables_processed = 0
+
+    for namespace, table_name in sorted(SILVER_TABLES):
+        full_name = f"{namespace}.{table_name}"
+        logger.info("maintenance_run_table_start", table=full_name, dry_run=dry_run)
+
+        if "compact" in operations:
+            try:
+                results = compact_table(
+                    catalog, namespace, table_name, dry_run=dry_run,
+                )
+                compaction_results.extend(results)
+            except MaintenanceError as exc:
+                logger.warning("maintenance_compact_error", table=full_name, error=str(exc))
+                errors.append((full_name, f"compact: {exc}"))
+
+        if "expire" in operations:
+            try:
+                exp_result = expire_snapshots(
+                    catalog,
+                    namespace,
+                    table_name,
+                    older_than_days=expire_older_than_days,
+                    dry_run=dry_run,
+                )
+                expiration_results.append(exp_result)
+            except MaintenanceError as exc:
+                logger.warning("maintenance_expire_error", table=full_name, error=str(exc))
+                errors.append((full_name, f"expire: {exc}"))
+
+        if "orphans" in operations:
+            try:
+                orph_result = remove_orphans(
+                    catalog,
+                    namespace,
+                    table_name,
+                    older_than_days=orphan_older_than_days,
+                    dry_run=dry_run,
+                )
+                orphan_results.append(orph_result)
+            except MaintenanceError as exc:
+                logger.warning("maintenance_orphan_error", table=full_name, error=str(exc))
+                errors.append((full_name, f"orphans: {exc}"))
+
+        tables_processed += 1
+
+    duration = time.monotonic() - t0
+    logger.info(
+        "maintenance_run_done",
+        tables=tables_processed,
+        errors=len(errors),
+        duration_s=round(duration, 2),
+    )
+
+    return MaintenanceRunResult(
+        tables_processed=tables_processed,
+        compaction_results=compaction_results,
+        expiration_results=expiration_results,
+        orphan_results=orphan_results,
+        errors=errors,
         duration_seconds=duration,
     )

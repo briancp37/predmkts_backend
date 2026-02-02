@@ -12,6 +12,7 @@ import typer
 if TYPE_CHECKING:
     from prediction_data.silver.maintenance import (
         CompactionResult,
+        MaintenanceRunResult,
         OrphanCleanupResult,
         SnapshotExpirationResult,
     )
@@ -636,3 +637,136 @@ def _print_orphan_result(
 
     if not dry_run and result.duration_seconds > 0:
         typer.echo(f"Duration: {result.duration_seconds:.1f}s")
+
+
+_VALID_OPERATIONS = {"compact", "expire", "orphans"}
+
+
+@app.command(name="maintain")
+def maintain(
+    operations: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--op",
+            help=(
+                "Operations to run (compact, expire, orphans). "
+                "Repeatable. Defaults to all."
+            ),
+        ),
+    ] = None,
+    expire_older_than_days: Annotated[
+        int,
+        typer.Option(
+            "--expire-older-than-days",
+            help="Retention period for snapshot expiration (default 7).",
+        ),
+    ] = 7,
+    orphan_older_than_days: Annotated[
+        int,
+        typer.Option(
+            "--orphan-older-than-days",
+            help="Min age for orphan file deletion (default 7).",
+        ),
+    ] = 7,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview all operations without making changes.",
+        ),
+    ] = False,
+) -> None:
+    """Run maintenance across all Silver Iceberg tables.
+
+    Runs compaction, snapshot expiration, and orphan cleanup for every
+    registered Silver table. Designed to be invoked by cron or
+    EventBridge Scheduler.
+
+    \b
+    Recommended schedules:
+      - Daily:  prediction-data silver maintain --op compact
+      - Weekly: prediction-data silver maintain --op expire --op orphans
+      - All:    prediction-data silver maintain
+    """
+    from prediction_data.core.logging import configure_logging
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import run_all_maintenance
+
+    configure_logging()
+
+    # Resolve operations
+    ops = frozenset(operations) if operations else frozenset(_VALID_OPERATIONS)
+    invalid = ops - _VALID_OPERATIONS
+    if invalid:
+        typer.echo(
+            f"Error: Unknown operation(s): {', '.join(sorted(invalid))}. "
+            f"Valid: {', '.join(sorted(_VALID_OPERATIONS))}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if dry_run:
+        typer.echo("Dry run — no changes will be made.\n")
+
+    typer.echo(f"Running maintenance: {', '.join(sorted(ops))}")
+    typer.echo(f"Tables: {len(_VALID_TARGETS)}\n")
+
+    try:
+        catalog = get_catalog()
+        result = run_all_maintenance(
+            catalog,
+            operations=ops,
+            expire_older_than_days=expire_older_than_days,
+            orphan_older_than_days=orphan_older_than_days,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    _print_maintenance_summary(result, dry_run=dry_run)
+
+    if result.errors:
+        raise typer.Exit(code=1)
+
+
+def _print_maintenance_summary(
+    result: MaintenanceRunResult,
+    *,
+    dry_run: bool,
+) -> None:
+    """Print full maintenance run summary."""
+    typer.echo("\n--- Maintenance Summary ---")
+    typer.echo(f"Tables processed: {result.tables_processed}")
+    typer.echo(f"Duration: {result.duration_seconds:.1f}s")
+
+    # Compaction summary
+    compacted = [r for r in result.compaction_results if not r.skipped]
+    if compacted:
+        total_saved = sum(r.bytes_before - r.bytes_after for r in compacted)
+        action = "Would compact" if dry_run else "Compacted"
+        typer.echo(
+            f"\n{action} {len(compacted)} partition(s), "
+            f"saved {total_saved / 1024 / 1024:.1f} MB"
+        )
+
+    # Expiration summary
+    total_expired = sum(r.snapshots_expired for r in result.expiration_results)
+    if total_expired:
+        action = "Would expire" if dry_run else "Expired"
+        typer.echo(f"{action} {total_expired} snapshot(s)")
+
+    # Orphan summary
+    total_orphans = sum(r.orphan_files_found for r in result.orphan_results)
+    if total_orphans:
+        total_bytes = sum(r.orphan_bytes for r in result.orphan_results)
+        action = "Found" if dry_run else "Deleted"
+        typer.echo(f"{action} {total_orphans} orphan file(s) ({total_bytes / 1024 / 1024:.1f} MB)")
+
+    # Errors
+    if result.errors:
+        typer.echo(f"\nErrors ({len(result.errors)}):")
+        for table, msg in result.errors:
+            typer.echo(f"  {table}: {msg}")
+    else:
+        typer.echo("\nAll operations completed successfully.")

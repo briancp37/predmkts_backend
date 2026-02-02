@@ -44,7 +44,7 @@
             "Schedule orphan cleanup: weekly",
             "Integrate with EventBridge Scheduler or cron"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

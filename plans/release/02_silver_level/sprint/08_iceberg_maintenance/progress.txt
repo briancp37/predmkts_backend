@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -46,6 +46,17 @@
     deletes orphan files, recent orphans not deleted (safety threshold)
   - TestResultDataclasses: field defaults for all three result types
   - All mocked (no S3/Iceberg dependencies); mypy strict + ruff clean
+
+- [2026-02-02] Scheduler: Added `run_all_maintenance()` function and `maintain` CLI command
+  - `run_all_maintenance()` in `silver/maintenance.py` runs compact/expire/orphans across all 6 Silver tables
+  - Continues on per-table errors, collecting them for summary reporting
+  - Configurable operation selection via `operations` frozenset (`compact`, `expire`, `orphans`)
+  - Added CLI command: `prediction-data silver maintain [--op compact] [--op expire] [--op orphans] [--dry-run]`
+  - Recommended schedules documented: daily compaction, weekly expire+orphans
+  - Designed for external scheduling via cron or EventBridge Scheduler
+  - Returns `MaintenanceRunResult` dataclass with per-operation results and errors
+  - Added 4 new tests: all-ops run, single-op, error-capture-continues, result dataclass
+  - mypy strict + ruff clean on new code
 
 ## In Progress
 
