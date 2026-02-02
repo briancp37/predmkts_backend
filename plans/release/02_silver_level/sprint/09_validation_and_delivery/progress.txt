@@ -21,9 +21,15 @@
   referential), per-entity configuration tables, skip flag usage, failure output format, and
   extensibility guide. All types check clean (mypy), 744 tests pass.
 
+- [2026-02-02] Documentation: Documented schema evolution procedures in docs/silver-operations-runbook.md.
+  Added comprehensive section covering supported changes (add column, widen type, make optional),
+  step-by-step column addition procedure, field ID rules, breaking changes (remove/rename/incompatible
+  type change), table recreation procedure, and current schema versioning approach. Documentation
+  category is now complete (all 4 steps done).
+
 ## In Progress
 
-- Documentation category: 1 remaining step (schema evolution procedures docs)
+- None. Documentation category complete. Remaining categories (e2e_validation, historical_backfill, exit_criteria) require live AWS infrastructure.
 
 ## Blockers/Issues
 

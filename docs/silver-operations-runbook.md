@@ -227,6 +227,100 @@ class MyCustomCheck(QualityCheck):
 
 Then add it to the `checks_for_entity()` function to include it in the pipeline.
 
+## Schema Evolution Procedures
+
+Silver schemas are defined in `src/prediction_data/silver/tables.py` as PyIceberg `Schema` objects. Each field has a unique numeric ID that Iceberg uses for column tracking across evolution.
+
+### Supported Changes (Backward-Compatible)
+
+Iceberg supports these schema changes without rewriting data:
+
+| Change | Impact | Existing data behavior |
+|--------|--------|----------------------|
+| Add optional column | None | Existing rows return `null` for new column |
+| Widen type (e.g., `int` → `long`) | None | Existing data read as wider type |
+| Make required column optional | None | Existing non-null values unchanged |
+
+### Adding a Column
+
+1. **Update the schema definition** in `tables.py`. Assign the next unused field ID and set `required=False`:
+
+   ```python
+   # Before
+   _POLYMARKET_TRADES_SCHEMA = Schema(
+       NestedField(1, "event_ts", TimestamptzType(), required=True),
+       ...
+       NestedField(14, "silver_ingestion_ts", TimestamptzType(), required=False),
+   )
+
+   # After — add field 15
+   _POLYMARKET_TRADES_SCHEMA = Schema(
+       NestedField(1, "event_ts", TimestamptzType(), required=True),
+       ...
+       NestedField(14, "silver_ingestion_ts", TimestamptzType(), required=False),
+       NestedField(15, "fee_rate", DoubleType(), required=False),
+   )
+   ```
+
+2. **Update the normalizer** in `normalize.py` to populate the new field from Bronze data.
+
+3. **Apply the schema change** to the live Iceberg table using PyIceberg:
+
+   ```python
+   from pyiceberg.catalog import load_catalog
+
+   catalog = load_catalog("glue", **{"type": "glue"})
+   table = catalog.load_table(("silver_polymarket", "trades"))
+
+   with table.update_schema() as update:
+       update.add_column("fee_rate", DoubleType())
+   ```
+
+4. **Verify** the table schema matches:
+
+   ```python
+   table = catalog.load_table(("silver_polymarket", "trades"))
+   print(table.schema())
+   ```
+
+5. **Reprocess affected partitions** if the new column should be populated for historical data:
+
+   ```bash
+   prediction-data silver process --platform polymarket --entity trades \
+       --start-date 2024-01-01 --end-date 2024-06-30 --force-reprocess
+   ```
+
+### Field ID Rules
+
+- Field IDs are permanent. Never reuse an ID from a deleted column.
+- Always assign the next sequential ID when adding columns.
+- IDs are independent per table (polymarket/trades field 15 is unrelated to polymarket/markets field 15).
+
+### Breaking Changes (Not Supported In-Place)
+
+These changes require table recreation:
+
+- **Removing a column**: Drop the field from the schema, then recreate and reprocess.
+- **Renaming a column**: Iceberg tracks by field ID, not name. Renaming in the schema definition is safe, but the Glue Catalog table must also be updated via `update_schema().rename_column()`.
+- **Changing a column type incompatibly** (e.g., `string` → `long`): Requires table recreation.
+
+### Table Recreation Procedure
+
+For breaking changes that cannot be applied in-place:
+
+1. Create a new table with the updated schema (use a temporary name or namespace).
+2. Reprocess all Bronze data into the new table.
+3. Verify data integrity and row counts.
+4. Drop the old table and rename the new table (or update references).
+5. Clear the processed-manifest state to allow full reprocessing:
+   ```bash
+   aws s3 rm s3://$BRONZE_BUCKET/silver/_state/{platform}/{entity}/processed.jsonl
+   ```
+
+### Current Schema Versions
+
+All schemas are defined statically in `tables.py` with no versioning mechanism. The field IDs in the `NestedField` definitions serve as the implicit schema contract. Any schema change should be committed to version control with a clear commit message describing the change.
+
 ## Environment Requirements
 
 | Variable | Required | Description |

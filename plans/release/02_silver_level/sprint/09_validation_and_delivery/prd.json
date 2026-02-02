@@ -8,7 +8,8 @@
             "Run full pipeline for Polymarket events (1 week)",
             "Run full pipeline for Kalshi entities (scaffold verification only)",
             "Verify Iceberg tables in Glue Catalog",
-            "Query Silver tables using PyIceberg and verify data quality"
+            "Query Silver tables using PyIceberg and verify data quality",
+            "Verify pipeline correctly processes both snapshot and delta Bronze manifests for catalog entities (markets, events)"
         ],
         "passes": false
     },
@@ -49,6 +50,6 @@
             "Document schema evolution procedures",
             "Document quality check configuration"
         ],
-        "passes": false
+        "passes": true
     }
 ]
