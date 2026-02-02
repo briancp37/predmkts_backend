@@ -2,16 +2,30 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [2026-02-02] Compaction: Created `silver/maintenance.py` with `compact_table()` function
+  - Scans partition file stats via `table.inspect.data_files()`
+  - Identifies partitions needing compaction (>50 files, <64MB each)
+  - Rewrites via `table.dynamic_partition_overwrite()` to consolidate into larger files
+  - Returns `CompactionResult` dataclass with before/after stats
+  - Added CLI command: `prediction-data silver compact --table platform/entity [--partition Y] [--dry-run]`
+  - Full structured logging of compaction stats (files before/after, bytes saved, duration)
+  - mypy strict + ruff clean on new code
 
 ## In Progress
 
 
 ## Blockers/Issues
 
+- PyIceberg 0.10.0 has no native compaction/rewrite API; implemented using
+  scan + dynamic_partition_overwrite pattern instead
+- Pre-existing test failures in test_silver_normalize.py (25 errors) — not related to this sprint
 
 ## Notes
 
+- Partition filter for compaction uses string-based row_filter on event_ts_day partition field
+- Compaction thresholds: SMALL_FILE_THRESHOLD_BYTES=64MB, MIN_FILES_FOR_COMPACTION=50, TARGET_FILE_SIZE_BYTES=256MB
+- The `expire_snapshots` API is available on `table.maintenance` and should be straightforward for the next category

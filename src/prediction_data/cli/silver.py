@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
+
+if TYPE_CHECKING:
+    from prediction_data.silver.maintenance import CompactionResult
 
 app = typer.Typer(
     help="Silver layer processing and Iceberg table management.",
@@ -314,3 +317,120 @@ async def _run_process(
         raise typer.Exit(code=1)
     else:
         typer.echo("All manifests processed successfully.")
+
+
+def _resolve_namespace(platform: str) -> str:
+    """Map platform name to Iceberg namespace."""
+    return f"silver_{platform}"
+
+
+@app.command(name="compact")
+def compact(
+    table: Annotated[
+        str,
+        typer.Option(
+            "--table",
+            help="Table to compact as 'platform/entity' (e.g. polymarket/trades).",
+        ),
+    ],
+    partition: Annotated[
+        str | None,
+        typer.Option(
+            "--partition",
+            help="Specific partition to compact (e.g. '2024-06-15').",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview compaction targets without rewriting files.",
+        ),
+    ] = False,
+) -> None:
+    """Compact small files in a Silver Iceberg table.
+
+    Identifies partitions with excessive small files (>50 files, <64MB each)
+    and rewrites them to target 256MB files.
+    """
+    from prediction_data.core.logging import configure_logging
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import compact_table
+
+    configure_logging()
+
+    # Parse table argument
+    parts = table.split("/")
+    if len(parts) != 2:
+        typer.echo(
+            "Error: --table must be 'platform/entity' (e.g. polymarket/trades).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    platform, entity = parts
+    _validate_platform_entity(platform, entity)
+
+    namespace = _resolve_namespace(platform)
+
+    if dry_run:
+        typer.echo("Dry run — no files will be rewritten.\n")
+
+    typer.echo(f"Scanning {namespace}.{entity} for compaction targets...")
+
+    try:
+        catalog = get_catalog()
+        results = compact_table(
+            catalog,
+            namespace,
+            entity,
+            partition=partition,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    _print_compaction_results(results, dry_run=dry_run)
+
+
+def _print_compaction_results(
+    results: list[CompactionResult],
+    *,
+    dry_run: bool,
+) -> None:
+    """Print compaction results summary."""
+
+    compacted = [r for r in results if not r.skipped]
+    skipped = [r for r in results if r.skipped]
+
+    if not compacted and not skipped:
+        typer.echo("No partitions found.")
+        return
+
+    if skipped:
+        typer.echo(f"\nSkipped {len(skipped)} partition(s) (below threshold).")
+
+    if not compacted:
+        typer.echo("No partitions need compaction.")
+        return
+
+    typer.echo(f"\n{'Would compact' if dry_run else 'Compacted'} {len(compacted)} partition(s):")
+    total_bytes_saved = 0
+    for r in compacted:
+        saved = r.bytes_before - r.bytes_after
+        total_bytes_saved += saved
+        if dry_run:
+            typer.echo(
+                f"  {r.partition}: {r.files_before} files, "
+                f"{r.bytes_before / 1024 / 1024:.1f} MB"
+            )
+        else:
+            typer.echo(
+                f"  {r.partition}: {r.files_before} -> {r.files_after} files, "
+                f"saved {saved / 1024 / 1024:.1f} MB, "
+                f"{r.duration_seconds:.1f}s"
+            )
+
+    if not dry_run and total_bytes_saved > 0:
+        typer.echo(f"\nTotal space saved: {total_bytes_saved / 1024 / 1024:.1f} MB")

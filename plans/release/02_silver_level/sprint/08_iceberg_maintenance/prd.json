@@ -10,7 +10,7 @@
             "Add CLI: `prediction-data silver compact --table X [--partition Y]`",
             "Log compaction stats: files before/after, bytes saved"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "snapshot_expiration",
