@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python data pipeline for ingesting prediction market data (Polymarket, Kalshi) into S3 bronze layer.
+Python data pipeline for ingesting prediction market data (Polymarket, Kalshi) into S3 bronze layer and normalizing it into Silver Iceberg tables (Glue Catalog, Parquet/ZSTD, day-partitioned).
 
 ## Release & Sprint Plans
 
@@ -200,6 +200,54 @@ prediction-data status validate --start-date 2024-06-01 --end-date 2024-06-30 \
     --platform polymarket --entity trades
 ```
 
+## Silver CLI
+
+```bash
+# Initialize all Silver Iceberg tables in Glue Catalog
+prediction-data silver init-tables
+prediction-data silver init-tables --dry-run
+
+# Process Bronze manifests into Silver Iceberg tables
+prediction-data silver process --platform polymarket --entity trades --dt 2024-06-15
+prediction-data silver process --platform polymarket --entity markets \
+    --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data silver process --platform polymarket --entity trades \
+    --start-date 2024-06-01 --end-date 2024-06-30 --dry-run
+prediction-data silver process --platform polymarket --entity trades \
+    --dt 2024-06-15 --force-reprocess --skip-quality-checks
+
+# Compact small files in an Iceberg table
+prediction-data silver compact --table polymarket/trades
+prediction-data silver compact --table polymarket/trades --partition 2024-06-15
+prediction-data silver compact --table polymarket/trades --dry-run
+
+# Expire old snapshots (default: older than 7 days)
+prediction-data silver expire-snapshots --table polymarket/trades
+prediction-data silver expire-snapshots --table polymarket/trades --older-than-days 14
+
+# Remove orphaned data files
+prediction-data silver remove-orphans --table polymarket/trades
+prediction-data silver remove-orphans --table polymarket/trades --dry-run
+
+# Run all maintenance operations across all Silver tables
+prediction-data silver maintain
+prediction-data silver maintain --op compact              # compaction only
+prediction-data silver maintain --op expire --op orphans  # expiration + orphan cleanup
+prediction-data silver maintain --dry-run
+```
+
+**Recommended maintenance schedules:**
+- **Daily:** `prediction-data silver maintain --op compact`
+- **Weekly:** `prediction-data silver maintain --op expire --op orphans`
+
+**Valid platform/entity targets:** polymarket/trades, polymarket/markets, polymarket/events, kalshi/trades, kalshi/markets, kalshi/events.
+
+**Processing features:**
+- Manifest-driven: discovers Bronze manifests and processes them into Iceberg tables.
+- Idempotent: tracks processed manifests in S3 state store; use `--force-reprocess` to override.
+- Snapshot-supersedes-deltas: for catalog entities (markets, events), a snapshot manifest supersedes earlier delta manifests for the same day.
+- Quality checks: non-null, uniqueness, timestamp range checks run by default; use `--skip-quality-checks` to bypass.
+
 ## S3 Key Structure
 
 ```
@@ -213,6 +261,6 @@ bronze/{platform}/{entity}/dt={YYYY-MM-DD}/run_id={uuid}/
 
 - **Polymarket trades:** ~5,000-50,000 trades/day (varies with market activity). At 500/page, expect 10-100 API calls per day.
 - **Kalshi trades:** ~1,000-10,000 trades/day.
-- **Polymarket markets catalog:** ~360,000 records (~163 MB gzipped). Full fetch takes ~48 min at 100/page.
-- **Polymarket events catalog:** ~176,000 records (~165 MB gzipped). Full fetch takes ~19 min at 100/page.
+- **Polymarket markets catalog:** ~360,000 records (~163 MB gzipped). Full fetch takes ~10 min at 500/page.
+- **Polymarket events catalog:** ~176,000 records (~165 MB gzipped). Full fetch takes ~4 min at 500/page.
 - **Full historical trades backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.

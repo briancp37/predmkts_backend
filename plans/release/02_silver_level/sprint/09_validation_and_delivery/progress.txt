@@ -2,16 +2,25 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [2026-02-02] Documentation: Updated CLAUDE.md with Silver CLI reference and commands.
+  Added full Silver CLI section covering init-tables, process, compact, expire-snapshots,
+  remove-orphans, and maintain commands with examples. Updated project overview to mention
+  Silver layer. All types check clean (mypy), 744 tests pass.
 
 ## In Progress
 
+- Documentation category: 3 remaining steps (operations runbook, schema evolution docs, quality check config docs)
 
 ## Blockers/Issues
 
+- e2e_validation and historical_backfill categories require live AWS infrastructure (S3, Glue Catalog)
 
 ## Notes
+
+- Prioritized documentation category first since it can be done without live infrastructure.
+- The e2e_validation, historical_backfill, and exit_criteria categories all require AWS access to run pipelines and verify Iceberg tables.
 
