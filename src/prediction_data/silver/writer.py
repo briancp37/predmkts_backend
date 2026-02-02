@@ -1,9 +1,12 @@
 """Iceberg writer for Silver processing pipeline.
 
-Converts normalized Python dicts to PyArrow RecordBatches and appends them
-to Iceberg tables via PyIceberg.  Write properties (ZSTD compression,
-256 MB target file size) are configured at table creation time in
-``silver.tables`` — no per-write overrides are needed.
+Supports both append and upsert (merge) writes to Iceberg tables via
+PyIceberg.  Upsert uses ``Table.upsert()`` with entity-specific join keys
+to deduplicate across writes — existing rows matching on join keys are
+updated, new rows are inserted.
+
+Write properties (ZSTD compression, 256 MB target file size) are configured
+at table creation time in ``silver.tables``.
 """
 
 from __future__ import annotations
@@ -39,6 +42,8 @@ class WriteResult:
     rows_written: int
     snapshot_id: int
     duration_seconds: float
+    rows_inserted: int = 0
+    rows_updated: int = 0
 
 
 def _to_arrow_table(
@@ -154,4 +159,84 @@ def write_to_iceberg(
         rows_written=len(records),
         snapshot_id=snapshot_id,
         duration_seconds=duration,
+    )
+
+
+def merge_to_iceberg(
+    records: list[dict[str, Any]],
+    catalog: Catalog,
+    namespace: str,
+    table_name: str,
+    join_cols: list[str],
+) -> WriteResult:
+    """Upsert normalized records into an Iceberg table.
+
+    Uses PyIceberg's ``Table.upsert()`` to merge records: rows matching
+    on *join_cols* are updated, new rows are inserted.  This provides
+    cross-write deduplication — the same logical record written by
+    different Bronze runs will be merged rather than duplicated.
+
+    Args:
+        records: Normalized Silver dicts ready for writing.
+        catalog: PyIceberg catalog instance.
+        namespace: Iceberg namespace (e.g. ``"silver_polymarket"``).
+        table_name: Iceberg table name (e.g. ``"trades"``).
+        join_cols: Column names to match on for upsert (entity merge keys).
+
+    Returns:
+        A :class:`WriteResult` with write and merge metadata.
+
+    Raises:
+        IcebergWriteError: On empty input, schema mismatch, or write failure.
+        KeyError: If ``(namespace, table_name)`` is not in ``SILVER_TABLES``.
+    """
+    if not records:
+        msg = "Cannot merge empty record batch"
+        raise IcebergWriteError(msg)
+
+    schema, _sort_order = SILVER_TABLES[(namespace, table_name)]
+
+    logger.info(
+        "iceberg_merge_start",
+        namespace=namespace,
+        table=table_name,
+        rows=len(records),
+        join_cols=join_cols,
+    )
+
+    t0 = time.monotonic()
+
+    arrow_table = _to_arrow_table(records, schema)
+    table = _resolve_table(catalog, namespace, table_name)
+
+    try:
+        upsert_result = table.upsert(arrow_table, join_cols=join_cols)
+    except Exception as exc:
+        msg = f"Iceberg merge failed for {namespace}.{table_name}: {exc}"
+        raise IcebergWriteError(msg) from exc
+
+    snapshot = table.current_snapshot()
+    snapshot_id = snapshot.snapshot_id if snapshot else -1
+
+    duration = time.monotonic() - t0
+
+    logger.info(
+        "iceberg_merge_done",
+        namespace=namespace,
+        table=table_name,
+        rows=len(records),
+        rows_inserted=upsert_result.rows_inserted,
+        rows_updated=upsert_result.rows_updated,
+        snapshot_id=snapshot_id,
+        duration_s=round(duration, 2),
+    )
+
+    return WriteResult(
+        namespace=namespace,
+        table_name=table_name,
+        rows_written=len(records),
+        snapshot_id=snapshot_id,
+        duration_seconds=duration,
+        rows_inserted=upsert_result.rows_inserted,
+        rows_updated=upsert_result.rows_updated,
     )

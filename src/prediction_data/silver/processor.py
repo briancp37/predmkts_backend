@@ -21,7 +21,7 @@ from prediction_data.silver.quality import (
     checks_for_entity,
     run_quality_checks,
 )
-from prediction_data.silver.writer import IcebergWriteError, WriteResult, write_to_iceberg
+from prediction_data.silver.writer import IcebergWriteError, WriteResult, merge_to_iceberg
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -49,6 +49,8 @@ class ProcessingResult:
     duplicates_dropped: int
     rows_normalized: int
     rows_written: int
+    rows_inserted: int
+    rows_updated: int
     snapshot_id: int
     quality_checks_passed: int
     duration_seconds: float
@@ -177,14 +179,16 @@ async def process_manifest(
         checks_passed=len(quality_results),
     )
 
-    # --- Write ---
+    # --- Merge (upsert) ---
     namespace = _build_namespace(platform)
+    join_cols = normalizer.merge_keys()
     try:
-        write_result: WriteResult = write_to_iceberg(
+        write_result: WriteResult = merge_to_iceberg(
             normalized,
             catalog,
             namespace,
             entity,
+            join_cols=join_cols,
         )
     except (IcebergWriteError, KeyError) as exc:
         msg = f"Failed to write Silver for manifest {run_id}: {exc}"
@@ -200,6 +204,8 @@ async def process_manifest(
         run_id=run_id,
         rows_read=read_result.records_read,
         rows_written=write_result.rows_written,
+        rows_inserted=write_result.rows_inserted,
+        rows_updated=write_result.rows_updated,
         duplicates_dropped=dedup_stats.duplicates_dropped,
         snapshot_id=write_result.snapshot_id,
         quality_checks_passed=len(quality_results),
@@ -216,6 +222,8 @@ async def process_manifest(
         duplicates_dropped=dedup_stats.duplicates_dropped,
         rows_normalized=len(normalized),
         rows_written=write_result.rows_written,
+        rows_inserted=write_result.rows_inserted,
+        rows_updated=write_result.rows_updated,
         snapshot_id=write_result.snapshot_id,
         quality_checks_passed=len(quality_results),
         duration_seconds=duration,

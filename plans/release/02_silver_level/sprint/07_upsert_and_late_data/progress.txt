@@ -2,10 +2,23 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### upsert_implementation (2026-02-02)
+- Added `merge_to_iceberg()` to `silver/writer.py` using PyIceberg's native `Table.upsert()` API
+- Added `merge_keys()` abstract method to `Normalizer` base class; implemented on all 6 concrete normalizers
+  - trades: `["platform_trade_id"]`
+  - markets: `["platform_market_id"]`
+  - events: `["platform_event_id"]`
+- Replaced `write_to_iceberg` (append) with `merge_to_iceberg` (upsert) in `processor.py`
+- `WriteResult` now includes `rows_inserted` and `rows_updated` merge statistics
+- `ProcessingResult` also surfaces merge stats from the write
+- Kept `write_to_iceberg` (append path) available for backward compatibility
+- 7 new tests in `test_silver_writer.py` covering insert path, update path, empty input, unknown table, table not found, upsert failure, and markets schema
+- Updated all pipeline integration tests to mock `table.upsert()` instead of `table.append()`
+- All 211 silver tests pass; mypy clean on changed files
 
 ## In Progress
 
@@ -14,4 +27,6 @@
 
 
 ## Notes
-
+- PyIceberg 0.10.0 has native `Table.upsert(df, join_cols=...)` returning `UpsertResult(rows_inserted, rows_updated)` — no need for custom merge logic
+- Conflict resolution for catalog entities (markets/events) is naturally "latest wins" since in-batch dedup already selects the latest `updated_at` before writing
+- The old append path (`write_to_iceberg`) is still importable and used by the direct-write integration test

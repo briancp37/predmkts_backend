@@ -128,17 +128,22 @@ def _mock_s3_with_compressed(data_by_key: dict[str, list[dict]]) -> MagicMock:
 
 
 def _mock_catalog_with_capture() -> tuple[MagicMock, list[pa.Table]]:
-    """Build a mock catalog that captures appended PyArrow tables."""
+    """Build a mock catalog that captures upserted PyArrow tables."""
     captured: list[pa.Table] = []
     catalog = MagicMock()
     mock_table = MagicMock()
     mock_snapshot = MagicMock()
     mock_snapshot.snapshot_id = 77777
 
-    def _capture_append(arrow_table: pa.Table) -> None:
+    def _capture(arrow_table: pa.Table, **kwargs: object) -> MagicMock:
         captured.append(arrow_table)
+        result = MagicMock()
+        result.rows_inserted = arrow_table.num_rows
+        result.rows_updated = 0
+        return result
 
-    mock_table.append = MagicMock(side_effect=_capture_append)
+    mock_table.append = MagicMock(side_effect=lambda t: captured.append(t))
+    mock_table.upsert = MagicMock(side_effect=_capture)
     mock_table.current_snapshot.return_value = mock_snapshot
     catalog.load_table.return_value = mock_table
     return catalog, captured
@@ -420,8 +425,8 @@ class TestErrorHandling:
             _to_arrow_table(bad_records, schema)
 
     @pytest.mark.asyncio
-    async def test_iceberg_append_failure_raises_processing_error(self) -> None:
-        """Catalog append failure propagates as ProcessingError."""
+    async def test_iceberg_merge_failure_raises_processing_error(self) -> None:
+        """Catalog upsert failure propagates as ProcessingError."""
         records = _raw_market_records(2)
         manifest = _make_discovered_manifest(entity="markets", row_count=2)
         key = manifest.manifest.files[0].key
@@ -429,7 +434,7 @@ class TestErrorHandling:
 
         catalog = MagicMock()
         mock_table = MagicMock()
-        mock_table.append.side_effect = RuntimeError("Iceberg down")
+        mock_table.upsert.side_effect = RuntimeError("Iceberg down")
         catalog.load_table.return_value = mock_table
 
         with pytest.raises(ProcessingError, match="Failed to write"):

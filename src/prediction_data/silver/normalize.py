@@ -74,6 +74,14 @@ class Normalizer(ABC):
         Used for deduplication before or during Silver writes.
         """
 
+    @abstractmethod
+    def merge_keys(self) -> list[str]:
+        """Return Silver column names used as join keys for Iceberg upsert.
+
+        These define the natural identity of the entity — records matching
+        on these columns will be updated rather than inserted.
+        """
+
     # Convenience: normalize a batch
     def normalize_batch(
         self,
@@ -195,6 +203,9 @@ class PolymarketMarketsNormalizer(Normalizer):
         updated = record.get("updated_at", "")
         return f"polymarket:{market_id}:{updated}"
 
+    def merge_keys(self) -> list[str]:
+        return ["platform_market_id"]
+
     def normalize(
         self,
         record: dict[str, Any],
@@ -258,6 +269,9 @@ class PolymarketEventsNormalizer(Normalizer):
         updated = record.get("updated_at", "")
         return f"polymarket:{event_id}:{updated}"
 
+    def merge_keys(self) -> list[str]:
+        return ["platform_event_id"]
+
     def normalize(
         self,
         record: dict[str, Any],
@@ -311,6 +325,9 @@ class KalshiTradesNormalizer(Normalizer):
         trade_id = record.get("trade_id", "")
         return f"kalshi:{trade_id}"
 
+    def merge_keys(self) -> list[str]:
+        return ["platform_trade_id"]
+
     def normalize(
         self,
         record: dict[str, Any],
@@ -356,6 +373,9 @@ class KalshiMarketsNormalizer(Normalizer):
         ticker = record.get("ticker", "")
         updated = record.get("updated_at", "")
         return f"kalshi:{ticker}:{updated}"
+
+    def merge_keys(self) -> list[str]:
+        return ["platform_market_id"]
 
     def normalize(
         self,
@@ -406,6 +426,9 @@ class KalshiEventsNormalizer(Normalizer):
         ticker = record.get("ticker", "")
         updated = record.get("updated_at", "")
         return f"kalshi:{ticker}:{updated}"
+
+    def merge_keys(self) -> list[str]:
+        return ["platform_event_id"]
 
     def normalize(
         self,
@@ -484,6 +507,9 @@ class PolymarketTradesNormalizer(Normalizer):
         taker = record.get("taker", "")
         maker_asset = record.get("makerAssetId", "")
         return f"polymarket:{tx_hash}:{maker}:{taker}:{maker_asset}"
+
+    def merge_keys(self) -> list[str]:
+        return ["platform_trade_id"]
 
     def normalize(
         self,

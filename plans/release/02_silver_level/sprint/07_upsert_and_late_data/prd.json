@@ -9,7 +9,7 @@
             "Replace simple append with merge-based writes where appropriate",
             "Capture merge statistics (inserts, updates)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "late_arrival_handling",
@@ -30,7 +30,8 @@
             "Handle multiple Bronze manifests for same (platform, entity, dt)",
             "Use Iceberg merge to deduplicate records from different run_ids",
             "Track which run_id contributed each final record (metadata field)",
-            "Ensure reprocessing same manifest is idempotent"
+            "Ensure reprocessing same manifest is idempotent",
+            "When a snapshot manifest exists for a (platform, entity, dt), it supersedes all prior delta manifests for that same key — skip deltas that precede the latest snapshot"
         ],
         "passes": false
     },

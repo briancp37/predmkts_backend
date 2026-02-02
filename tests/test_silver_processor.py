@@ -101,7 +101,7 @@ class TestProcessManifestHappyPath:
                 return_value=read_result,
             ) as mock_read,
             patch(
-                "prediction_data.silver.processor.write_to_iceberg",
+                "prediction_data.silver.processor.merge_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
         ):
@@ -150,7 +150,7 @@ class TestProcessManifestHappyPath:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.write_to_iceberg",
+                "prediction_data.silver.processor.merge_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
         ):
@@ -209,7 +209,7 @@ class TestProcessManifestErrors:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.write_to_iceberg",
+                "prediction_data.silver.processor.merge_to_iceberg",
                 side_effect=IcebergWriteError("schema mismatch"),
             ),
         ):
@@ -257,7 +257,7 @@ class TestProcessManifestErrors:
                 side_effect=QualityCheckError("non_null failed"),
             ),
             patch(
-                "prediction_data.silver.processor.write_to_iceberg",
+                "prediction_data.silver.processor.merge_to_iceberg",
             ) as mock_write,
         ):
             with pytest.raises(ProcessingError):
@@ -315,7 +315,7 @@ class TestQualityLogging:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.write_to_iceberg",
+                "prediction_data.silver.processor.merge_to_iceberg",
                 return_value=write_result,
             ),
             patch(
@@ -383,6 +383,8 @@ class TestProcessingResult:
             duplicates_dropped=5,
             rows_normalized=95,
             rows_written=95,
+            rows_inserted=90,
+            rows_updated=5,
             snapshot_id=42,
             quality_checks_passed=3,
             duration_seconds=1.5,
