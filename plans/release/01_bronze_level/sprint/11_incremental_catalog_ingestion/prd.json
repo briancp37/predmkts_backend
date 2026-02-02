@@ -46,7 +46,7 @@
             "Handle first-run case: if no previous manifest exists, fall back to full snapshot automatically",
             "Add unit tests: catchup uses incremental by default, --full forces full snapshot, first-run falls back to full, dry-run shows correct mode"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing_and_docs",

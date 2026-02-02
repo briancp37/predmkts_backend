@@ -743,6 +743,7 @@ class TestCatchupCLI:
         assert "already up to date" in result.output
 
     def test_skip_already_up_to_date_catalog(self) -> None:
+        """Catalog with --full skips when today's snapshot exists."""
         from prediction_data.cli.main import app
 
         with (
@@ -756,7 +757,7 @@ class TestCatchupCLI:
             mock_dt.return_value = "2025-06-20"
             result = runner.invoke(
                 app,
-                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--bucket", "test-bucket"],
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--full", "--bucket", "test-bucket"],
             )
         assert result.exit_code == 0
         assert "already up to date" in result.output
@@ -800,3 +801,97 @@ class TestCatchupCLI:
         # Should have failures but still process all entities
         assert result.exit_code == 1
         assert "failure" in result.output
+
+    def test_catalog_incremental_by_default_dry_run(self) -> None:
+        """Catchup uses incremental mode for catalog entities by default."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_src.return_value = ("2026-01-30", 1769947200)  # epoch for 2026-02-01T12:00:00Z
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "incrementally" in result.output
+        assert "since_updated_at=" in result.output
+
+    def test_catalog_full_flag_forces_snapshot_dry_run(self) -> None:
+        """--full flag forces full snapshot mode for catalog entities."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_dt.return_value = "2026-01-30"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--dry-run", "--full", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "full catalog snapshot" in result.output
+
+    def test_catalog_first_run_falls_back_to_full(self) -> None:
+        """When no previous data exists, incremental falls back to full snapshot."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_src.return_value = (None, None)
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "first run" in result.output
+
+    def test_catalog_no_cursor_falls_back_to_full(self) -> None:
+        """When manifest has no latest_timestamp, falls back to full snapshot."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_src.return_value = ("2026-01-30", None)
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "no cursor" in result.output
+
+    def test_catalog_incremental_executes(self) -> None:
+        """Catchup incremental mode calls ingest with since_updated_at."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.bronze.polymarket.ingest.ingest_markets", new_callable=AsyncMock) as mock_ingest,
+        ):
+            mock_src.return_value = ("2026-01-30", 1769947200)
+            mock_ingest.return_value = "test-run-id"
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "markets", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "test-run-id" in result.output
+        mock_ingest.assert_called_once()
+        call_kwargs = mock_ingest.call_args
+        assert call_kwargs.kwargs.get("since_updated_at") is not None

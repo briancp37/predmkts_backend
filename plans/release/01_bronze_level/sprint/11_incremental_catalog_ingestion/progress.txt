@@ -32,3 +32,20 @@
   - 3 find_latest_manifest_source tests (no partitions, returns timestamp, returns None when absent)
 - All 594 non-integration tests pass (580 existing + 14 new), mypy clean, ruff clean
 - Pre-existing failures: 8 pyarrow-dependent tests in test_order_filled_ingest.py, 5 silver collection errors
+
+2026-02-02: cli_integration — COMPLETE
+- Added --full flag to catchup command (forces full snapshot for catalog entities)
+- Changed catalog branch default from full snapshot to incremental mode using find_latest_manifest_source()
+- Incremental flow: extract latest_timestamp from manifest → convert to ISO via _epoch_to_iso() → pass since_updated_at to ingest_markets/ingest_events
+- Fallback to full snapshot when: no previous data (first run), no latest_timestamp in manifest, or --full flag set
+- Kalshi catalog entities fall back to full snapshot (no incremental support yet)
+- Dry-run output distinguishes: incremental (shows since_updated_at + epoch), full snapshot, first-run, no-cursor
+- Updated existing test_skip_already_up_to_date_catalog to use --full flag (now tests the full-snapshot path)
+- Added 6 new unit tests in TestCatchupCLI:
+  - test_catalog_incremental_by_default_dry_run: verifies incremental is default
+  - test_catalog_full_flag_forces_snapshot_dry_run: verifies --full forces snapshot
+  - test_catalog_first_run_falls_back_to_full: no previous data → full snapshot
+  - test_catalog_no_cursor_falls_back_to_full: manifest without timestamp → full snapshot
+  - test_catalog_incremental_executes: verifies since_updated_at passed to ingest
+- All 600 non-integration tests pass (585 existing + 6 new + updated 1), mypy clean, ruff clean
+- Pre-existing failures unchanged: 8 pyarrow tests, 5 silver collection errors

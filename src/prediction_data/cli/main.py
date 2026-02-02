@@ -700,6 +700,13 @@ def backfill_catchup(
             help="Preview what would be fetched without executing.",
         ),
     ] = False,
+    full: Annotated[
+        bool,
+        typer.Option(
+            "--full",
+            help="Force full snapshot for catalog entities (markets, events) instead of incremental.",
+        ),
+    ] = False,
 ) -> None:
     """Auto-detect latest data and catch up to present."""
     from prediction_data.core.logging import configure_logging
@@ -724,7 +731,11 @@ def backfill_catchup(
         import os
 
         from prediction_data.storage import S3Client
-        from prediction_data.storage.discovery import find_latest_date, find_latest_timestamp
+        from prediction_data.storage.discovery import (
+            find_latest_date,
+            find_latest_manifest_source,
+            find_latest_timestamp,
+        )
 
         resolved_bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
         if not resolved_bucket:
@@ -806,37 +817,125 @@ def backfill_catchup(
                         all_failures.extend(failures)
 
                     else:
-                        # Catalog: check if today's snapshot exists, run if not
-                        latest = await find_latest_date(s3, p, e)
+                        # Catalog: use incremental mode by default, --full for snapshot
                         today_str = today.isoformat()
 
-                        if latest == today_str:
-                            typer.echo(f"SKIP {label}: already up to date (latest={latest})")
-                            continue
-
-                        if latest is None:
-                            typer.echo(
-                                f"SKIP {label}: no existing data found "
-                                "(run initial backfill first)"
+                        if full:
+                            # Full snapshot mode
+                            latest = await find_latest_date(s3, p, e)
+                            if latest == today_str:
+                                typer.echo(f"SKIP {label}: already up to date (latest={latest})")
+                                continue
+                            if latest is None:
+                                typer.echo(
+                                    f"SKIP {label}: no existing data found "
+                                    "(run initial backfill first)"
+                                )
+                                continue
+                            if dry_run:
+                                typer.echo(
+                                    f"[dry-run] Would ingest {label} "
+                                    f"(full catalog snapshot for {today_str})"
+                                )
+                                continue
+                            failures = await _run_backfill(
+                                platform=p,
+                                entity=e,
+                                start_date=today,
+                                end_date=today,
+                                bucket=bucket,
+                                dry_run=False,
                             )
-                            continue
-
-                        if dry_run:
-                            typer.echo(
-                                f"[dry-run] Would ingest {label} "
-                                f"(fresh catalog snapshot for {today_str})"
+                            all_failures.extend(failures)
+                        else:
+                            # Incremental mode (default)
+                            latest_date, latest_ts = await find_latest_manifest_source(
+                                s3, p, e
                             )
-                            continue
 
-                        failures = await _run_backfill(
-                            platform=p,
-                            entity=e,
-                            start_date=today,
-                            end_date=today,
-                            bucket=bucket,
-                            dry_run=False,
-                        )
-                        all_failures.extend(failures)
+                            if latest_date is None:
+                                # No previous data — fall back to full snapshot
+                                if dry_run:
+                                    typer.echo(
+                                        f"[dry-run] Would ingest {label} "
+                                        f"(full catalog snapshot for {today_str}, first run)"
+                                    )
+                                    continue
+                                failures = await _run_backfill(
+                                    platform=p,
+                                    entity=e,
+                                    start_date=today,
+                                    end_date=today,
+                                    bucket=bucket,
+                                    dry_run=False,
+                                )
+                                all_failures.extend(failures)
+                                continue
+
+                            if latest_ts is None:
+                                # Previous data exists but no timestamp — full snapshot
+                                if dry_run:
+                                    typer.echo(
+                                        f"[dry-run] Would ingest {label} "
+                                        f"(full catalog snapshot for {today_str}, "
+                                        f"no cursor in latest manifest)"
+                                    )
+                                    continue
+                                failures = await _run_backfill(
+                                    platform=p,
+                                    entity=e,
+                                    start_date=today,
+                                    end_date=today,
+                                    bucket=bucket,
+                                    dry_run=False,
+                                )
+                                all_failures.extend(failures)
+                                continue
+
+                            # Have a cursor — run incremental
+                            from prediction_data.bronze.polymarket.ingest import (
+                                _epoch_to_iso,
+                            )
+
+                            since_updated_at = _epoch_to_iso(latest_ts)
+
+                            if dry_run:
+                                typer.echo(
+                                    f"[dry-run] Would incrementally ingest {label} "
+                                    f"since_updated_at={since_updated_at} "
+                                    f"(epoch={latest_ts})"
+                                )
+                                continue
+
+                            if p == "polymarket":
+                                from prediction_data.bronze.polymarket import (
+                                    ingest as pm_ingest,
+                                )
+
+                                if e == "markets":
+                                    run_id = await pm_ingest.ingest_markets(
+                                        today_str,
+                                        bucket=bucket,
+                                        since_updated_at=since_updated_at,
+                                    )
+                                else:
+                                    run_id = await pm_ingest.ingest_events(
+                                        today_str,
+                                        bucket=bucket,
+                                        since_updated_at=since_updated_at,
+                                    )
+                                typer.echo(f"OK {label} run_id={run_id}")
+                            else:
+                                # Kalshi doesn't support incremental catalog yet — full snapshot
+                                failures = await _run_backfill(
+                                    platform=p,
+                                    entity=e,
+                                    start_date=today,
+                                    end_date=today,
+                                    bucket=bucket,
+                                    dry_run=False,
+                                )
+                                all_failures.extend(failures)
 
                 except Exception as exc:
                     all_failures.append((label, str(exc)))
