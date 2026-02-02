@@ -22,7 +22,7 @@
             "Add config entries to src/prediction_data/core/config.py for ClickHouse settings",
             "Write unit tests for connection factory with mocked client"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "gold_s3_writer",

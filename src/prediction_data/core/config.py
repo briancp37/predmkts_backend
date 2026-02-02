@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     polymarket_builder_secret: str | None = None
     polymarket_builder_passphrase: str | None = None
 
+    # ClickHouse settings (optional - only required for Gold layer)
+    clickhouse_host: str = "localhost"
+    clickhouse_port: int = 8123
+    clickhouse_user: str = "default"
+    clickhouse_password: str = ""
+    clickhouse_database: str = "prediction_gold"
+
     # Kalshi API settings (optional - only required for Kalshi ingestion)
     kalshi_api_key_id: str | None = None
     kalshi_private_key_path: str | None = None

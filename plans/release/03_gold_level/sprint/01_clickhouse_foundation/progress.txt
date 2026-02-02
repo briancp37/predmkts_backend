@@ -15,6 +15,13 @@
 - Updated `tests/test_exit_criteria.py`: narrowed the "no gold references" test to bronze-only scope (was blocking gold module creation)
 - All 744 tests pass, mypy clean, ruff clean
 
+### python_client (2026-02-02)
+- Added `clickhouse-connect>=0.7.0` to pyproject.toml dependencies
+- Created `src/prediction_data/gold/clickhouse.py` with `get_client()` factory and `ping()` health check
+- Added ClickHouse config fields to `src/prediction_data/core/config.py` (CLICKHOUSE_HOST, CLICKHOUSE_PORT, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, CLICKHOUSE_DATABASE)
+- Created `tests/gold/` directory with `test_clickhouse.py` (4 unit tests using mocked client)
+- All 748 tests pass, mypy clean, ruff clean on new files
+
 ## In Progress
 
 
