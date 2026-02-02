@@ -210,7 +210,10 @@ async def _run_process(
 ) -> None:
     """Discover and process Bronze manifests for the given scope."""
     from prediction_data.silver.catalog import get_catalog
-    from prediction_data.silver.discovery import discover_manifests
+    from prediction_data.silver.discovery import (
+        discover_manifests,
+        select_snapshot_and_deltas,
+    )
     from prediction_data.silver.processor import ProcessingError, process_manifest
     from prediction_data.storage import S3Client
 
@@ -259,9 +262,12 @@ async def _run_process(
     if dry_run:
         typer.echo(f"\nDry run — {len(manifests)} manifest(s) across {total_days} day(s):")
         for dt, day_manifests in days:
-            typer.echo(f"  {dt}: {len(day_manifests)} manifest(s)")
-            for m in day_manifests:
-                typer.echo(f"    run_id={m.run_id}")
+            selected = select_snapshot_and_deltas(day_manifests)
+            skipped = len(day_manifests) - len(selected)
+            suffix = f" ({skipped} delta(s) superseded by snapshot)" if skipped else ""
+            typer.echo(f"  {dt}: {len(selected)} manifest(s){suffix}")
+            for m in selected:
+                typer.echo(f"    run_id={m.run_id} [{m.snapshot_type}]")
         return
 
     catalog = get_catalog()
@@ -271,6 +277,16 @@ async def _run_process(
     day_failures: list[tuple[str, list[tuple[str, str]]]] = []
 
     for day_idx, (dt, day_manifests) in enumerate(days, 1):
+        # Apply snapshot-supersedes-deltas selection per day.
+        before_selection = len(day_manifests)
+        day_manifests = select_snapshot_and_deltas(day_manifests)
+        skipped_by_snapshot = before_selection - len(day_manifests)
+        if skipped_by_snapshot:
+            typer.echo(
+                f"  Skipped {skipped_by_snapshot} delta(s) superseded by snapshot "
+                f"for {dt}."
+            )
+
         typer.echo(
             f"\n=== Day {day_idx}/{total_days}: {dt} "
             f"({len(day_manifests)} manifest(s)) ==="

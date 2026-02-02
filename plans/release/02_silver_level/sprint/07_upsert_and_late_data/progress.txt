@@ -20,6 +20,21 @@
 - Updated all pipeline integration tests to mock `table.upsert()` instead of `table.append()`
 - All 211 silver tests pass; mypy clean on changed files
 
+### cross_run_dedup (2026-02-02)
+- Integrated `select_snapshot_and_deltas()` into the Silver CLI `_run_process` loop
+  - Applied per-day: within each day's manifests, the latest snapshot supersedes all prior deltas
+  - Dry-run output also reflects snapshot/delta selection with `[snapshot]`/`[delta]` labels
+- Cross-run dedup was already handled at Iceberg level by `merge_to_iceberg()` (upsert on merge keys)
+- `bronze_run_id` metadata field already tracks which run contributed each record
+- State tracking (`SilverStateStore`) already ensures idempotent reprocessing
+- 4 new tests in `test_silver_cli.py`:
+  - `test_snapshot_supersedes_prior_deltas` — delta before snapshot is skipped
+  - `test_all_snapshots_no_deltas_skipped` — only latest snapshot processed
+  - `test_reprocessing_same_manifest_is_idempotent` — second run skips via state
+  - `test_dry_run_shows_snapshot_selection` — dry-run reflects filtering
+- Updated `FakeDiscoveredManifest` test helper with `snapshot_type` and `manifest.generated_at`
+- All 62 silver tests pass; mypy clean
+
 ## In Progress
 
 

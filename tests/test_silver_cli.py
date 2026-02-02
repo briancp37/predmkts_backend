@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,11 +20,22 @@ runner = CliRunner()
 
 
 @dataclass
+class FakeManifestInner:
+    generated_at: datetime
+
+
+@dataclass
 class FakeDiscoveredManifest:
     run_id: str
     platform: str
     entity: str
     dt: str
+    snapshot_type: str = "snapshot"
+    manifest: FakeManifestInner | None = None
+
+    def __post_init__(self) -> None:
+        if self.manifest is None:
+            self.manifest = FakeManifestInner(generated_at=datetime.now(UTC))
 
 
 def _manifest(
@@ -31,8 +43,14 @@ def _manifest(
     platform: str = "polymarket",
     entity: str = "trades",
     dt: str = "2024-06-15",
+    snapshot_type: str = "snapshot",
+    generated_at: datetime | None = None,
 ) -> FakeDiscoveredManifest:
-    return FakeDiscoveredManifest(run_id=run_id, platform=platform, entity=entity, dt=dt)
+    inner = FakeManifestInner(generated_at=generated_at or datetime.now(UTC))
+    return FakeDiscoveredManifest(
+        run_id=run_id, platform=platform, entity=entity, dt=dt,
+        snapshot_type=snapshot_type, manifest=inner,
+    )
 
 
 @dataclass
@@ -340,3 +358,157 @@ class TestForceReprocess:
         # Should NOT see "Skipping" message
         assert "Skipping" not in result.output
         mock_process.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Test: cross-run dedup — snapshot supersedes prior deltas
+# ---------------------------------------------------------------------------
+
+
+class TestCrossRunDedup:
+    def test_snapshot_supersedes_prior_deltas(self) -> None:
+        """When a snapshot exists, deltas generated before it are skipped."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        manifests = [
+            _manifest(run_id="delta-1", dt="2024-06-15", snapshot_type="delta", generated_at=t0),
+            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+            _manifest(run_id="delta-2", dt="2024-06-15", snapshot_type="delta", generated_at=t0 + timedelta(hours=2)),
+        ]
+        fake_state = FakeStateStore()
+
+        processed_run_ids: list[str] = []
+
+        async def track_process(m: object, s3: object, catalog: object) -> FakeProcessingResult:
+            processed_run_ids.append(getattr(m, "run_id"))
+            return FakeProcessingResult()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(_PROCESS, new_callable=AsyncMock, side_effect=track_process),
+        ):
+            result = runner.invoke(
+                app,
+                ["process", "--platform", "polymarket", "--entity", "trades", "--dt", "2024-06-15"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        # delta-1 should be skipped (precedes snapshot), snap-1 and delta-2 processed
+        assert "delta-1" not in processed_run_ids
+        assert "snap-1" in processed_run_ids
+        assert "delta-2" in processed_run_ids
+        assert "superseded by snapshot" in result.output
+
+    def test_all_snapshots_no_deltas_skipped(self) -> None:
+        """Multiple snapshots for same day — only latest is processed."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        manifests = [
+            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0),
+            _manifest(run_id="snap-2", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+        ]
+        fake_state = FakeStateStore()
+
+        processed_run_ids: list[str] = []
+
+        async def track_process(m: object, s3: object, catalog: object) -> FakeProcessingResult:
+            processed_run_ids.append(getattr(m, "run_id"))
+            return FakeProcessingResult()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(_PROCESS, new_callable=AsyncMock, side_effect=track_process),
+        ):
+            result = runner.invoke(
+                app,
+                ["process", "--platform", "polymarket", "--entity", "trades", "--dt", "2024-06-15"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        # select_snapshot_and_deltas keeps only the latest snapshot
+        assert processed_run_ids == ["snap-2"]
+
+    def test_reprocessing_same_manifest_is_idempotent(self) -> None:
+        """Processing the same manifest twice is prevented by state tracking."""
+        manifests = [_manifest(run_id="run-1", dt="2024-06-15")]
+        fake_state = FakeStateStore()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(
+                _PROCESS,
+                new_callable=AsyncMock,
+                return_value=FakeProcessingResult(),
+            ),
+        ):
+            # First run
+            result1 = runner.invoke(
+                app,
+                ["process", "--platform", "polymarket", "--entity", "trades", "--dt", "2024-06-15"],
+                env=_base_env(),
+            )
+
+        assert result1.exit_code == 0
+        assert fake_state.is_processed("run-1")
+
+        # Second run — same manifests discovered but already processed
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_PROCESS, new_callable=AsyncMock) as mock_process,
+        ):
+            result2 = runner.invoke(
+                app,
+                ["process", "--platform", "polymarket", "--entity", "trades", "--dt", "2024-06-15"],
+                env=_base_env(),
+            )
+
+        assert result2.exit_code == 0
+        assert "No unprocessed manifests remaining" in result2.output
+        mock_process.assert_not_awaited()
+
+    def test_dry_run_shows_snapshot_selection(self) -> None:
+        """Dry run output reflects snapshot/delta selection."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        manifests = [
+            _manifest(run_id="delta-1", dt="2024-06-15", snapshot_type="delta", generated_at=t0),
+            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+        ]
+        fake_state = FakeStateStore()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "process",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--dt", "2024-06-15",
+                    "--dry-run",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        assert "1 delta(s) superseded by snapshot" in result.output
+        assert "snap-1" in result.output
+        assert "[snapshot]" in result.output

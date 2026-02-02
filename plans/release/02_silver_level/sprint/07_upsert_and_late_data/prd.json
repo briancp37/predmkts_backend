@@ -33,7 +33,7 @@
             "Ensure reprocessing same manifest is idempotent",
             "When a snapshot manifest exists for a (platform, entity, dt), it supersedes all prior delta manifests for that same key — skip deltas that precede the latest snapshot"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",
