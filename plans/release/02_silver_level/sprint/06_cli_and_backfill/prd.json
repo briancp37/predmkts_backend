@@ -34,7 +34,7 @@
             "Print failure summary at end of backfill",
             "Add progress indicator for long backfills"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

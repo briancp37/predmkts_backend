@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 from typing import Annotated
 
@@ -241,49 +242,75 @@ async def _run_process(
         typer.echo("No unprocessed manifests remaining.")
         return
 
+    # Group manifests by day for day-level progress and error resilience.
+    days = [
+        (dt, list(group))
+        for dt, group in itertools.groupby(manifests, key=lambda m: m.dt)
+    ]
+    total_days = len(days)
+
     if dry_run:
-        typer.echo("\nDry run — manifests that would be processed:")
-        for m in manifests:
-            typer.echo(f"  {m.platform}/{m.entity} dt={m.dt} run_id={m.run_id}")
-        typer.echo(f"\n{len(manifests)} manifest(s) would be processed.")
+        typer.echo(f"\nDry run — {len(manifests)} manifest(s) across {total_days} day(s):")
+        for dt, day_manifests in days:
+            typer.echo(f"  {dt}: {len(day_manifests)} manifest(s)")
+            for m in day_manifests:
+                typer.echo(f"    run_id={m.run_id}")
         return
 
     catalog = get_catalog()
 
-    processed = 0
-    failures: list[tuple[str, str]] = []
+    total_processed = 0
+    total_manifests = len(manifests)
+    day_failures: list[tuple[str, list[tuple[str, str]]]] = []
 
-    for i, m in enumerate(manifests, 1):
-        label = f"[{i}/{len(manifests)}] {m.platform}/{m.entity} dt={m.dt}"
-        typer.echo(f"\nProcessing {label} ...")
+    for day_idx, (dt, day_manifests) in enumerate(days, 1):
+        typer.echo(
+            f"\n=== Day {day_idx}/{total_days}: {dt} "
+            f"({len(day_manifests)} manifest(s)) ==="
+        )
 
-        try:
-            result = await process_manifest(m, s3, catalog)
-            processed += 1
-            typer.echo(
-                f"  OK: {result.rows_written} rows written, "
-                f"snapshot_id={result.snapshot_id}, "
-                f"{result.duplicates_dropped} dupes dropped, "
-                f"{result.duration_seconds:.1f}s"
-            )
-            # Mark as processed in state log
-            await state_store.mark_processed(
-                run_id=m.run_id,
-                platform=m.platform,
-                entity=m.entity,
-                dt=m.dt,
-            )
-        except ProcessingError as exc:
-            failures.append((m.run_id, str(exc)))
-            typer.echo(f"  FAILED: {exc}", err=True)
+        day_errors: list[tuple[str, str]] = []
+
+        for m in day_manifests:
+            total_processed_so_far = total_processed + len(day_errors)
+            progress = total_processed_so_far + 1
+            label = f"[{progress}/{total_manifests}] {m.platform}/{m.entity} dt={m.dt}"
+            typer.echo(f"  Processing {label} ...")
+
+            try:
+                result = await process_manifest(m, s3, catalog)
+                total_processed += 1
+                typer.echo(
+                    f"    OK: {result.rows_written} rows written, "
+                    f"snapshot_id={result.snapshot_id}, "
+                    f"{result.duplicates_dropped} dupes dropped, "
+                    f"{result.duration_seconds:.1f}s"
+                )
+                await state_store.mark_processed(
+                    run_id=m.run_id,
+                    platform=m.platform,
+                    entity=m.entity,
+                    dt=m.dt,
+                )
+            except ProcessingError as exc:
+                day_errors.append((m.run_id, str(exc)))
+                typer.echo(f"    FAILED: {exc}", err=True)
+
+        if day_errors:
+            day_failures.append((dt, day_errors))
+            typer.echo(f"  Day {dt}: {len(day_errors)} failure(s), continuing...")
 
     # Summary
+    all_errors = [err for _, errs in day_failures for err in errs]
     typer.echo(f"\n--- Summary ---")
-    typer.echo(f"Processed: {processed}/{len(manifests)}")
-    if failures:
-        typer.echo(f"Failures:  {len(failures)}")
-        for run_id, err in failures:
-            typer.echo(f"  {run_id}: {err}")
+    typer.echo(f"Days:      {total_days}")
+    typer.echo(f"Processed: {total_processed}/{total_manifests}")
+    if day_failures:
+        typer.echo(f"Failed days: {len(day_failures)}")
+        for dt, errs in day_failures:
+            typer.echo(f"  {dt}:")
+            for run_id, err in errs:
+                typer.echo(f"    {run_id}: {err}")
         raise typer.Exit(code=1)
     else:
         typer.echo("All manifests processed successfully.")

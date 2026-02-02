@@ -24,6 +24,14 @@
   - State is marked only after successful processing (no partial state)
   - 6 unit tests in test_silver_state.py, mypy clean, 692 tests passing
 
+- [2026-02-02] backfill_workflow: Added day-level grouping and progress for date-range backfills
+  - Manifests grouped by day with per-day headers (`Day 1/5: 2024-01-01 (3 manifests)`)
+  - Sequential processing within each day, continues to next day on failure
+  - Per-day failure tracking with day-level failure summary
+  - Overall progress indicator (`[3/15]`) across all manifests
+  - Dry-run output now shows day-level grouping with manifest counts
+  - mypy clean, 692 tests passing
+
 ## In Progress
 
 
