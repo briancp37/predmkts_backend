@@ -72,87 +72,20 @@ Full reference: https://docs.polymarket.com/quickstart/introduction/rate-limits
 
 **Data API** (`data-api.polymarket.com`): 1,000 req/10s overall. `/trades`: 200/10s.
 
-## Polymarket CLOB API
+## API References
 
-- **Base URL:** `https://clob.polymarket.com`
-- **Trades endpoint:** `GET /data/trades`
-- **Auth:** L2 HMAC-SHA256 — signs `timestamp + method + path` (query params excluded from signature)
-- **Headers:** `POLY_ADDRESS`, `POLY_SIGNATURE`, `POLY_TIMESTAMP`, `POLY_API_KEY`, `POLY_PASSPHRASE`
-- **Pagination:** Cursor-based (`next_cursor` field). End sentinel: `LTE=`. No offset limit.
-- **Page size:** Default 500 trades per page.
+Detailed endpoint parameters, response schemas, and pagination details are in `docs/api/`:
 
-### CLOB Authentication Details
+**Polymarket:**
+- [`docs/api/polymarket-gamma.md`](docs/api/polymarket-gamma.md) — Gamma API (markets, events). Supports `start_date_min` for incremental fetch. No `updated_since` filter.
+- [`docs/api/polymarket-clob.md`](docs/api/polymarket-clob.md) — CLOB API (trades, auth, orders). L2 HMAC-SHA256 auth. Cursor-based pagination.
+- [`docs/api/polymarket-data.md`](docs/api/polymarket-data.md) — Data API (trades, positions). Offset-based with 10k limit.
+- [`docs/api/polymarket-goldsky.md`](docs/api/polymarket-goldsky.md) — Goldsky subgraph (OrderFilledEvents). GraphQL, cursor-based via `id_gt`.
 
-Two-tier auth system (L1 = wallet key, L2 = API credentials):
+**Kalshi:**
+- [`docs/api/kalshi.md`](docs/api/kalshi.md) — Full API (trades, markets, events, series). RSA-PSS auth. Cursor-based pagination. Supports `min_updated_ts` for true incremental market ingestion.
 
-- **L1 (Private Key):** Signs EIP-712 messages. Used to create/derive API credentials.
-- **L2 (API Credentials):** HMAC-SHA256 signing with `apiKey`, `secret`, `passphrase`.
-
-**Generating/Deriving API Credentials:**
-
-- **Create new:** `POST https://clob.polymarket.com/auth/api-key` (L1-authenticated)
-- **Derive existing:** `GET https://clob.polymarket.com/auth/derive-api-key` (L1-authenticated)
-- Response: `{ "apiKey": "...", "secret": "base64...", "passphrase": "..." }`
-
-**Wallet/Signature Types (set during L2 init):**
-
-| Type | Value | Description |
-|---|---|---|
-| EOA | 0 | Standard Ethereum wallet |
-| POLY_PROXY | 1 | Magic Link / Google login proxy |
-| GNOSIS_SAFE | 2 | Multisig proxy (most common for new users) |
-
-The **funder address** (shown on polymarket.com profile) holds trading funds and must match the configured wallet type.
-
-**To regenerate credentials:** Use the `py-clob-client` Python SDK or call the auth endpoints directly with L1 headers (`POLY_ADDRESS`, `POLY_SIGNATURE`, `POLY_TIMESTAMP`, `POLY_NONCE=0`).
-
-### Polymarket Gamma API
-
-- **Base URL:** `https://gamma-api.polymarket.com`
-- **Used for:** Markets and events snapshot ingestion.
-- **Endpoints:** `GET /markets`, `GET /events`
-- **Pagination:** Offset-based, no hard record limit (can return 100k+ records).
-
-### Polymarket Data API (non-CLOB)
-
-- **Base URL:** `https://data-api.polymarket.com`
-- **Used for:** Non-backfill trades ingestion.
-- **Pagination:** Offset-based with 10,000 record limit.
-
-### Goldsky Subgraph API (OrderFilledEvents)
-
-- **Endpoint:** `https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn`
-- **Used for:** OrderFilledEvent ingestion (on-chain order fill data).
-- **Auth:** None (public subgraph).
-- **Pagination:** Cursor-based using `id_gt` (standard subgraph pattern: `first:1000, orderBy:id, where:{id_gt:$cursor}`).
-- **Filtering:** `timestamp_gte` / `timestamp_lte` for day boundaries (Unix epoch seconds).
-- **Rate limits:** No documented hard limit; use configurable `page_delay` between requests.
-- **Client:** `GoldskyClient` in `src/prediction_data/bronze/polymarket/goldsky.py`.
-
-**OrderFilledEvent Schema (11 fields):**
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string | Subgraph entity ID |
-| `transactionHash` | string | On-chain tx hash |
-| `orderHash` | string | Order identifier |
-| `timestamp` | int | Unix epoch seconds |
-| `maker` | string | Maker address |
-| `taker` | string | Taker address |
-| `makerAssetId` | string | Maker asset token ID |
-| `takerAssetId` | string | Taker asset token ID |
-| `makerAmountFilled` | int | Base units (divide by 1e6 for USDC) |
-| `takerAmountFilled` | int | Base units (divide by 1e6 for USDC) |
-| `fee` | int | Fee in base units |
-
-**Schema note:** Historical parquet-backfilled records are missing `orderHash`, `fee`, and `id` (set to null). Amounts in parquet source are scaled floats (e.g., 4.45 USDC) multiplied by 1e6 to match subgraph base units.
-
-## Kalshi API
-
-- **Base URL:** `https://api.elections.kalshi.com/trade-api/v2`
-- **Auth:** RSA signature over timestamp + method + path.
-- **Rate limits:** 10 requests/second per endpoint.
-- **Trades pagination:** Cursor-based with `min_ts`/`max_ts` Unix timestamp filtering for date-scoped backfill.
+**Consult these files before making claims about what API parameters are or aren't available.**
 
 ## Required Environment Variables
 
@@ -203,11 +136,17 @@ prediction-data backfill catchup
 # Catch up only Polymarket order_filled (incremental — fetches only new records)
 prediction-data backfill catchup --platform polymarket --entity order_filled
 
+# Force full snapshot for catalog entities (markets/events) instead of incremental
+prediction-data backfill catchup --full
+
 # Preview what would be fetched
 prediction-data backfill catchup --dry-run
 ```
 
-For `order_filled`, catchup uses **incremental ingestion**: it finds the latest timestamp in existing data and fetches only newer records from the Goldsky subgraph. For other entities, it finds the latest date and backfills missing days.
+**Incremental modes by entity type:**
+- **Catalog entities (markets, events):** Catchup uses incremental ingestion by default — finds the latest manifest, extracts the `updatedAt` cursor, and fetches only records changed since then via Gamma API (`order=updatedAt&ascending=false`). Writes delta partitions with `snapshot_type="delta"`. Use `--full` to force a full snapshot instead. Falls back to full snapshot automatically on first run or if no cursor exists.
+- **order_filled:** Incremental via Goldsky subgraph — finds the latest timestamp and fetches only newer records.
+- **trades:** Finds the latest date and backfills missing days.
 
 ### Parquet-to-Bronze Backfill (order_filled)
 

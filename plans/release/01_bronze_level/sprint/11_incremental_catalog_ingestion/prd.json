@@ -58,6 +58,6 @@
             "Update CLAUDE.md: document incremental catalog ingestion in Backfill CLI section, add --full flag to catchup examples",
             "Update FORBRIAN.md: add Sprint 11 section with design rationale (updatedAt ordering trick, delta vs snapshot partitions, backwards compatibility)"
         ],
-        "passes": false
+        "passes": true
     }
 ]

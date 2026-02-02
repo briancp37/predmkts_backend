@@ -49,3 +49,10 @@
   - test_catalog_incremental_executes: verifies since_updated_at passed to ingest
 - All 600 non-integration tests pass (585 existing + 6 new + updated 1), mypy clean, ruff clean
 - Pre-existing failures unchanged: 8 pyarrow tests, 5 silver collection errors
+
+2026-02-02: testing_and_docs — COMPLETE
+- All 585 non-integration tests pass (excluding silver/pyarrow), mypy clean (excluding silver), ruff clean on sprint 11 files
+- Pre-existing failures unchanged: 8 pyarrow tests in test_order_filled_ingest.py, 5 silver collection errors, ruff issues in main.py (E402) and test_backfill.py — all predate this sprint
+- Updated CLAUDE.md: documented incremental catalog ingestion in Catchup section, added --full flag, described incremental modes by entity type
+- FORBRIAN.md Sprint 11 section already present from cli_integration phase
+- PRD marked testing_and_docs passes=true — all 5 categories now complete
