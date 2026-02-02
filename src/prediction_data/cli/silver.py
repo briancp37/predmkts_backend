@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 if TYPE_CHECKING:
-    from prediction_data.silver.maintenance import CompactionResult, SnapshotExpirationResult
+    from prediction_data.silver.maintenance import (
+        CompactionResult,
+        OrphanCleanupResult,
+        SnapshotExpirationResult,
+    )
 
 app = typer.Typer(
     help="Silver layer processing and Iceberg table management.",
@@ -521,5 +525,98 @@ def _print_expiration_result(
     )
     typer.echo(f"Snapshots before: {result.snapshots_before}")
     typer.echo(f"Snapshots after:  {result.snapshots_after}")
+    if not dry_run and result.duration_seconds > 0:
+        typer.echo(f"Duration: {result.duration_seconds:.1f}s")
+
+
+@app.command(name="remove-orphans")
+def remove_orphans_cmd(
+    table: Annotated[
+        str,
+        typer.Option(
+            "--table",
+            help="Table as 'platform/entity' (e.g. polymarket/trades).",
+        ),
+    ],
+    older_than_days: Annotated[
+        int,
+        typer.Option(
+            "--older-than-days",
+            help="Only delete orphans older than this many days (default 7).",
+        ),
+    ] = 7,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Report orphan files without deleting them.",
+        ),
+    ] = False,
+) -> None:
+    """Detect and remove orphaned data files from a Silver Iceberg table.
+
+    Orphan files are Parquet files in the table's data directory that are
+    not referenced by any snapshot. Only files older than the safety
+    threshold are deleted.
+    """
+    from prediction_data.core.logging import configure_logging
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import remove_orphans
+
+    configure_logging()
+
+    parts = table.split("/")
+    if len(parts) != 2:
+        typer.echo(
+            "Error: --table must be 'platform/entity' (e.g. polymarket/trades).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    platform, entity = parts
+    _validate_platform_entity(platform, entity)
+
+    namespace = _resolve_namespace(platform)
+
+    if dry_run:
+        typer.echo("Dry run — no files will be deleted.\n")
+
+    typer.echo(
+        f"Scanning {namespace}.{entity} for orphaned data files "
+        f"(older than {older_than_days} day(s))..."
+    )
+
+    try:
+        catalog = get_catalog()
+        result = remove_orphans(
+            catalog,
+            namespace,
+            entity,
+            older_than_days=older_than_days,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    _print_orphan_result(result, dry_run=dry_run)
+
+
+def _print_orphan_result(
+    result: OrphanCleanupResult,
+    *,
+    dry_run: bool,
+) -> None:
+    """Print orphan cleanup results."""
+    if result.orphan_files_found == 0:
+        typer.echo("\nNo orphan files found.")
+        return
+
+    action = "Found" if dry_run else "Deleted"
+    count = result.orphan_files_found if dry_run else result.orphan_files_deleted
+    mb = result.orphan_bytes / 1024 / 1024
+
+    typer.echo(f"\n{action} {count} orphan file(s) ({mb:.1f} MB).")
+
     if not dry_run and result.duration_seconds > 0:
         typer.echo(f"Duration: {result.duration_seconds:.1f}s")

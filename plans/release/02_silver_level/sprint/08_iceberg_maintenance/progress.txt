@@ -25,6 +25,16 @@
   - Structured logging of expiration stats
   - mypy strict + ruff clean on new code
 
+- [2026-02-02] Orphan Cleanup: Added `remove_orphans()` function to `silver/maintenance.py`
+  - Lists all .parquet files under `{table_location}/data/` via S3 paginated listing
+  - Compares against tracked files from `table.inspect.data_files()` metadata
+  - Safety check: only deletes orphan files older than configurable threshold (default 7 days)
+  - Returns `OrphanCleanupResult` dataclass with found/deleted counts and bytes
+  - Added CLI command: `prediction-data silver remove-orphans --table platform/entity [--older-than-days 7] [--dry-run]`
+  - Dry-run mode reports orphans without deleting
+  - Structured logging of scan and cleanup stats
+  - mypy strict + ruff clean on new code
+
 ## In Progress
 
 

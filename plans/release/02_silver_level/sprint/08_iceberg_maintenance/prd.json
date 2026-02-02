@@ -32,7 +32,7 @@
             "Add CLI: `prediction-data silver remove-orphans --table X --dry-run`",
             "Log orphan files found and deleted"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "scheduler",

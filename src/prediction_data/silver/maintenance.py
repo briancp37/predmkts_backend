@@ -1,7 +1,7 @@
 """Iceberg table maintenance operations for Silver layer.
 
 Provides compaction to merge small data files into larger ones,
-and snapshot expiration to control metadata size.
+snapshot expiration to control metadata size, and orphan file cleanup.
 """
 
 from __future__ import annotations
@@ -392,5 +392,170 @@ def expire_snapshots(
         snapshots_after=snapshots_after,
         snapshots_expired=expired,
         older_than=cutoff,
+        duration_seconds=duration,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Orphan file cleanup
+# ---------------------------------------------------------------------------
+
+ORPHAN_MIN_AGE_DAYS = 7
+
+
+@dataclasses.dataclass(slots=True)
+class OrphanCleanupResult:
+    """Metadata returned after an orphan file cleanup operation."""
+
+    namespace: str
+    table_name: str
+    orphan_files_found: int
+    orphan_files_deleted: int
+    orphan_bytes: int
+    duration_seconds: float
+
+
+def _parse_s3_url(url: str) -> tuple[str, str]:
+    """Parse ``s3://bucket/key`` into (bucket, key)."""
+    if not url.startswith("s3://"):
+        msg = f"Not an S3 URL: {url}"
+        raise MaintenanceError(msg)
+    without_scheme = url[5:]
+    bucket, _, key = without_scheme.partition("/")
+    return bucket, key
+
+
+def _list_s3_data_files(
+    bucket: str,
+    prefix: str,
+) -> list[tuple[str, int, datetime]]:
+    """List all .parquet files under an S3 prefix.
+
+    Returns list of (s3_url, size_bytes, last_modified).
+    """
+    import boto3
+
+    s3 = boto3.client("s3")
+    paginator = s3.get_paginator("list_objects_v2")
+
+    files: list[tuple[str, int, datetime]] = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key: str = obj["Key"]
+            if key.endswith(".parquet"):
+                s3_url = f"s3://{bucket}/{key}"
+                files.append((s3_url, obj["Size"], obj["LastModified"]))
+
+    return files
+
+
+def remove_orphans(
+    catalog: Catalog,
+    namespace: str,
+    table_name: str,
+    *,
+    older_than_days: int = ORPHAN_MIN_AGE_DAYS,
+    dry_run: bool = False,
+) -> OrphanCleanupResult:
+    """Detect and remove orphaned data files from an Iceberg table.
+
+    Orphan files are Parquet files in the table's data directory that are
+    not referenced by any snapshot in the table metadata. Only files older
+    than ``older_than_days`` are eligible for deletion as a safety measure.
+
+    Args:
+        catalog: PyIceberg catalog instance.
+        namespace: Iceberg namespace (e.g. ``"silver_polymarket"``).
+        table_name: Iceberg table name (e.g. ``"trades"``).
+        older_than_days: Only delete orphans older than this many days (default 7).
+        dry_run: If True, report orphans without deleting them.
+
+    Returns:
+        OrphanCleanupResult with counts of files found and deleted.
+    """
+    import boto3
+
+    if (namespace, table_name) not in SILVER_TABLES:
+        msg = f"Unknown table: {namespace}.{table_name}"
+        raise MaintenanceError(msg)
+
+    table = _load_table(catalog, namespace, table_name)
+    full_name = f"{namespace}.{table_name}"
+
+    logger.info("orphan_cleanup_start", table=full_name, dry_run=dry_run)
+
+    t0 = time.monotonic()
+
+    # Collect all data file paths tracked across all snapshots
+    tracked_files: set[str] = set()
+    files_table = table.inspect.data_files()
+    if "file_path" in files_table.column_names:
+        tracked_files = set(files_table.column("file_path").to_pylist())
+
+    # List all parquet files on S3 under the table location
+    table_location = table.location()
+    bucket, prefix = _parse_s3_url(table_location)
+    # Ensure prefix ends with /data/ to only scan data directory
+    data_prefix = prefix.rstrip("/") + "/data/"
+
+    all_s3_files = _list_s3_data_files(bucket, data_prefix)
+
+    # Identify orphans: on S3 but not in metadata, older than safety threshold
+    cutoff = datetime.now(tz=UTC) - timedelta(days=older_than_days)
+    orphans: list[tuple[str, int]] = []  # (s3_url, size)
+
+    for s3_url, size, last_modified in all_s3_files:
+        if s3_url not in tracked_files and last_modified.replace(tzinfo=UTC) < cutoff:
+            orphans.append((s3_url, size))
+
+    orphan_bytes = sum(s for _, s in orphans)
+
+    logger.info(
+        "orphan_cleanup_scan_done",
+        table=full_name,
+        tracked_files=len(tracked_files),
+        s3_files=len(all_s3_files),
+        orphans_found=len(orphans),
+        orphan_bytes=orphan_bytes,
+    )
+
+    if not orphans or dry_run:
+        duration = time.monotonic() - t0
+        return OrphanCleanupResult(
+            namespace=namespace,
+            table_name=table_name,
+            orphan_files_found=len(orphans),
+            orphan_files_deleted=0,
+            orphan_bytes=orphan_bytes,
+            duration_seconds=duration,
+        )
+
+    # Delete orphan files
+    s3 = boto3.client("s3")
+    deleted = 0
+    for s3_url, _size in orphans:
+        _, key = _parse_s3_url(s3_url)
+        try:
+            s3.delete_object(Bucket=bucket, Key=key)
+            deleted += 1
+        except Exception:
+            logger.warning("orphan_delete_failed", file=s3_url)
+
+    duration = time.monotonic() - t0
+
+    logger.info(
+        "orphan_cleanup_done",
+        table=full_name,
+        orphans_deleted=deleted,
+        orphan_bytes=orphan_bytes,
+        duration_s=round(duration, 2),
+    )
+
+    return OrphanCleanupResult(
+        namespace=namespace,
+        table_name=table_name,
+        orphan_files_found=len(orphans),
+        orphan_files_deleted=deleted,
+        orphan_bytes=orphan_bytes,
         duration_seconds=duration,
     )
