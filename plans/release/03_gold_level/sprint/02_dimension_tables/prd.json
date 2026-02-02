@@ -20,7 +20,7 @@
             "Write loader in src/prediction_data/gold/dimensions.py",
             "Add to Gold CLI: `prediction-data gold load-dims --table dim_platform`"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dim_market",

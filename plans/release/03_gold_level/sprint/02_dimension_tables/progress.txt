@@ -14,6 +14,16 @@
   - Added pyyaml>=6.0.0 to project dependencies, types-PyYAML>=6.0.0 to dev dependencies
   - All 762 tests pass, mypy clean on new code (2 pre-existing warnings in silver/)
 
+- [2026-02-02] dim_platform: Static platform dimension table
+  - Created ClickHouse DDL: docker/clickhouse/init/002_dim_platform.sql (ReplacingMergeTree, ORDER BY platform_id)
+  - Created src/prediction_data/gold/dimensions.py with load_dim_platform() loader
+  - Static data: polymarket, kalshi (platform_id, platform_name, url)
+  - Writes to S3 Gold Parquet (idempotent partition overwrite) + inserts into ClickHouse
+  - Supports --dry-run, optional S3 bucket (skips S3 if not configured)
+  - Added `prediction-data gold load-dims` CLI command (--table dim_platform, --dry-run)
+  - 8 unit tests in tests/gold/test_dimensions.py (arrow conversion, S3+CH write, dry-run, skip-S3)
+  - All 770 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -24,4 +34,6 @@
 - The default YAML path resolves relative to canonical.py's location (3 parents up = repo root).
   This works for installed and editable installs but would need adjustment if the package
   were distributed as a standalone wheel without the mappings/ directory.
-- Next priority: dim_platform (static dimension, unblocks dim_market which depends on canonical resolver).
+- Next priority: dim_market (depends on canonical resolver + dim_platform pattern established here).
+- The load-dims CLI is extensible: LOADABLE_DIMS tuple in gold.py controls which tables are available.
+  Add new loaders to dimensions.py and register them in the CLI dispatch.
