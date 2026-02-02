@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from prediction_data.core.logging import get_logger
@@ -158,6 +158,27 @@ async def process_manifest(
         rows_normalized=len(normalized),
         rows_skipped=len(deduped) - len(normalized),
     )
+
+    # --- Late-arrival detection ---
+    now = datetime.now(UTC)
+    late_threshold = now - timedelta(days=7)
+    late_records = [
+        r for r in normalized
+        if isinstance(r.get("event_ts"), datetime) and r["event_ts"] < late_threshold
+    ]
+    if late_records:
+        oldest_ts = min(r["event_ts"] for r in late_records)
+        logger.warning(
+            "late_arriving_data",
+            platform=platform,
+            entity=entity,
+            dt=dt,
+            run_id=run_id,
+            late_record_count=len(late_records),
+            total_records=len(normalized),
+            oldest_event_ts=str(oldest_ts),
+            days_old=(now - oldest_ts).days,
+        )
 
     # --- Quality checks ---
     expected_date = datetime.strptime(dt, "%Y-%m-%d").replace(tzinfo=UTC)

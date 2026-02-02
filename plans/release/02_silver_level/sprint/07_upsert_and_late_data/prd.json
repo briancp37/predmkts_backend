@@ -21,7 +21,7 @@
             "Verify late data lands in correct event_ts partition",
             "Document late-arrival tolerance window"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cross_run_dedup",

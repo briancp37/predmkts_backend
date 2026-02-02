@@ -35,6 +35,16 @@
 - Updated `FakeDiscoveredManifest` test helper with `snapshot_type` and `manifest.generated_at`
 - All 62 silver tests pass; mypy clean
 
+### late_arrival_handling (2026-02-02)
+- Iceberg already supports writing to old `event_ts` partitions natively via `DayTransform` partitioning — no changes needed
+- Added late-arrival detection in `processor.py`: after normalization, scans for records with `event_ts` >7 days old and emits a `late_arriving_data` structured warning log with count, oldest timestamp, and age in days
+- Warning is non-blocking — late data is still written successfully to the correct partition
+- Late-arrival tolerance window: quality checks allow `expected_date ±1 day`; the >7 day warning is informational only
+- 2 new tests in `test_silver_processor.py`:
+  - `test_late_data_logs_warning` — verifies warning emitted for data >7 days old
+  - `test_late_data_still_written_successfully` — verifies late data is written (not blocked)
+- All 242 silver tests pass; mypy clean
+
 ## In Progress
 
 

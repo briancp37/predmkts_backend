@@ -371,6 +371,118 @@ class TestQualityLogging:
         assert len(quality_done_calls) == 0
 
 
+# ---------------------------------------------------------------------------
+# Late-arriving data
+# ---------------------------------------------------------------------------
+
+
+class TestLateArrivingData:
+    """Test that late-arriving data (>7 days old) triggers a warning log."""
+
+    @pytest.mark.asyncio
+    async def test_late_data_logs_warning(self) -> None:
+        """Data with event_ts >7 days old should emit a late_arriving_data warning."""
+        manifest = _make_manifest(dt="2024-01-10")
+        # Records with old updated_at so event_ts will be old
+        records = [
+            {
+                "id": "market-old",
+                "condition_id": "cond-old",
+                "question": "Old market?",
+                "description": "desc",
+                "market_slug": "slug-old",
+                "active": True,
+                "closed": False,
+                "tokens": [{"token_id": "t1-old", "outcome": "Yes"}],
+                "updated_at": "2024-01-10T12:00:00Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            }
+        ]
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=1,
+            snapshot_id=55,
+            duration_seconds=0.05,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.logger",
+            ) as mock_logger,
+        ):
+            result = await process_manifest(manifest, MagicMock(), MagicMock())
+
+        # Should have logged a late_arriving_data warning
+        late_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args and call.args[0] == "late_arriving_data"
+        ]
+        assert len(late_calls) == 1
+        kwargs = late_calls[0].kwargs
+        assert kwargs["late_record_count"] == 1
+        assert kwargs["days_old"] > 7
+
+    @pytest.mark.asyncio
+    async def test_late_data_still_written_successfully(self) -> None:
+        """Late-arriving data should still be written (warning only, not a blocker)."""
+        manifest = _make_manifest(dt="2024-01-10")
+        records = [
+            {
+                "id": "market-late",
+                "condition_id": "cond-late",
+                "question": "Late market?",
+                "description": "desc",
+                "market_slug": "slug-late",
+                "active": True,
+                "closed": False,
+                "tokens": [{"token_id": "t1-late", "outcome": "Yes"}],
+                "updated_at": "2024-01-10T12:00:00Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            }
+        ]
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=1,
+            snapshot_id=57,
+            duration_seconds=0.05,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_write,
+        ):
+            result = await process_manifest(manifest, MagicMock(), MagicMock())
+
+        # Data should still be written despite being late
+        assert result.rows_written == 1
+        mock_write.assert_called_once()
+
+
 class TestProcessingResult:
     def test_fields(self) -> None:
         r = ProcessingResult(
