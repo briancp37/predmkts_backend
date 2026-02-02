@@ -1,13 +1,14 @@
 """Iceberg table maintenance operations for Silver layer.
 
 Provides compaction to merge small data files into larger ones,
-improving query performance and reducing metadata overhead.
+and snapshot expiration to control metadata size.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import time
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pyarrow as pa  # type: ignore[import-untyped]
@@ -285,3 +286,111 @@ def compact_table(
         )
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Snapshot expiration
+# ---------------------------------------------------------------------------
+
+DEFAULT_RETENTION_DAYS = 7
+
+
+@dataclasses.dataclass(slots=True)
+class SnapshotExpirationResult:
+    """Metadata returned after a snapshot expiration operation."""
+
+    namespace: str
+    table_name: str
+    snapshots_before: int
+    snapshots_after: int
+    snapshots_expired: int
+    older_than: datetime
+    duration_seconds: float
+
+
+def expire_snapshots(
+    catalog: Catalog,
+    namespace: str,
+    table_name: str,
+    *,
+    older_than_days: int = DEFAULT_RETENTION_DAYS,
+    dry_run: bool = False,
+) -> SnapshotExpirationResult:
+    """Expire old snapshots from an Iceberg table.
+
+    Removes snapshots older than the specified retention period to reduce
+    metadata size. Protected snapshots (branch/tag heads) are never expired.
+
+    Args:
+        catalog: PyIceberg catalog instance.
+        namespace: Iceberg namespace (e.g. ``"silver_polymarket"``).
+        table_name: Iceberg table name (e.g. ``"trades"``).
+        older_than_days: Expire snapshots older than this many days (default 7).
+        dry_run: If True, report what would be expired without committing.
+
+    Returns:
+        SnapshotExpirationResult with before/after counts.
+    """
+    if (namespace, table_name) not in SILVER_TABLES:
+        msg = f"Unknown table: {namespace}.{table_name}"
+        raise MaintenanceError(msg)
+
+    table = _load_table(catalog, namespace, table_name)
+    full_name = f"{namespace}.{table_name}"
+
+    cutoff = datetime.now(tz=UTC) - timedelta(days=older_than_days)
+    snapshots_before = len(table.metadata.snapshots)
+
+    logger.info(
+        "expire_snapshots_start",
+        table=full_name,
+        older_than=cutoff.isoformat(),
+        snapshots_before=snapshots_before,
+        dry_run=dry_run,
+    )
+
+    if dry_run:
+        # Count how many would be expired without committing
+        expire_builder = table.maintenance.expire_snapshots().older_than(cutoff)
+        would_expire = len(expire_builder._snapshot_ids_to_expire)
+        return SnapshotExpirationResult(
+            namespace=namespace,
+            table_name=table_name,
+            snapshots_before=snapshots_before,
+            snapshots_after=snapshots_before - would_expire,
+            snapshots_expired=would_expire,
+            older_than=cutoff,
+            duration_seconds=0.0,
+        )
+
+    t0 = time.monotonic()
+
+    try:
+        table.maintenance.expire_snapshots().older_than(cutoff).commit()
+        table.refresh()
+    except Exception as exc:
+        msg = f"Snapshot expiration failed for {full_name}: {exc}"
+        raise MaintenanceError(msg) from exc
+
+    duration = time.monotonic() - t0
+    snapshots_after = len(table.metadata.snapshots)
+    expired = snapshots_before - snapshots_after
+
+    logger.info(
+        "expire_snapshots_done",
+        table=full_name,
+        snapshots_before=snapshots_before,
+        snapshots_after=snapshots_after,
+        snapshots_expired=expired,
+        duration_s=round(duration, 2),
+    )
+
+    return SnapshotExpirationResult(
+        namespace=namespace,
+        table_name=table_name,
+        snapshots_before=snapshots_before,
+        snapshots_after=snapshots_after,
+        snapshots_expired=expired,
+        older_than=cutoff,
+        duration_seconds=duration,
+    )

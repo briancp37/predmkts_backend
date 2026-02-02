@@ -15,6 +15,16 @@
   - Full structured logging of compaction stats (files before/after, bytes saved, duration)
   - mypy strict + ruff clean on new code
 
+- [2026-02-02] Snapshot Expiration: Added `expire_snapshots()` function to `silver/maintenance.py`
+  - Uses PyIceberg `table.maintenance.expire_snapshots().older_than(cutoff).commit()` API
+  - Configurable retention period via `older_than_days` param (default 7 days)
+  - Protected snapshots (branch/tag heads) are never expired (handled by PyIceberg)
+  - Returns `SnapshotExpirationResult` dataclass with before/after counts
+  - Added CLI command: `prediction-data silver expire-snapshots --table platform/entity [--older-than-days 7] [--dry-run]`
+  - Dry-run mode counts snapshots that would be expired without committing
+  - Structured logging of expiration stats
+  - mypy strict + ruff clean on new code
+
 ## In Progress
 
 

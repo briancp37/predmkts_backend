@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 if TYPE_CHECKING:
-    from prediction_data.silver.maintenance import CompactionResult
+    from prediction_data.silver.maintenance import CompactionResult, SnapshotExpirationResult
 
 app = typer.Typer(
     help="Silver layer processing and Iceberg table management.",
@@ -434,3 +434,92 @@ def _print_compaction_results(
 
     if not dry_run and total_bytes_saved > 0:
         typer.echo(f"\nTotal space saved: {total_bytes_saved / 1024 / 1024:.1f} MB")
+
+
+@app.command(name="expire-snapshots")
+def expire_snapshots_cmd(
+    table: Annotated[
+        str,
+        typer.Option(
+            "--table",
+            help="Table as 'platform/entity' (e.g. polymarket/trades).",
+        ),
+    ],
+    older_than_days: Annotated[
+        int,
+        typer.Option(
+            "--older-than-days",
+            help="Expire snapshots older than this many days (default 7).",
+        ),
+    ] = 7,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview which snapshots would be expired without committing.",
+        ),
+    ] = False,
+) -> None:
+    """Expire old snapshots from a Silver Iceberg table.
+
+    Removes snapshots older than the retention period to control metadata size.
+    Protected snapshots (branch/tag heads) are never expired.
+    """
+    from prediction_data.core.logging import configure_logging
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import expire_snapshots
+
+    configure_logging()
+
+    parts = table.split("/")
+    if len(parts) != 2:
+        typer.echo(
+            "Error: --table must be 'platform/entity' (e.g. polymarket/trades).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    platform, entity = parts
+    _validate_platform_entity(platform, entity)
+
+    namespace = _resolve_namespace(platform)
+
+    if dry_run:
+        typer.echo("Dry run — no snapshots will be expired.\n")
+
+    typer.echo(
+        f"Expiring snapshots older than {older_than_days} day(s) "
+        f"from {namespace}.{entity}..."
+    )
+
+    try:
+        catalog = get_catalog()
+        result = expire_snapshots(
+            catalog,
+            namespace,
+            entity,
+            older_than_days=older_than_days,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    _print_expiration_result(result, dry_run=dry_run)
+
+
+def _print_expiration_result(
+    result: SnapshotExpirationResult,
+    *,
+    dry_run: bool,
+) -> None:
+    """Print snapshot expiration results."""
+    action = "Would expire" if dry_run else "Expired"
+    typer.echo(
+        f"\n{action} {result.snapshots_expired} snapshot(s) "
+        f"(cutoff: {result.older_than.strftime('%Y-%m-%d %H:%M:%S UTC')})."
+    )
+    typer.echo(f"Snapshots before: {result.snapshots_before}")
+    typer.echo(f"Snapshots after:  {result.snapshots_after}")
+    if not dry_run and result.duration_seconds > 0:
+        typer.echo(f"Duration: {result.duration_seconds:.1f}s")

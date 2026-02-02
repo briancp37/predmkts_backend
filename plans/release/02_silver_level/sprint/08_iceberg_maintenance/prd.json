@@ -21,7 +21,7 @@
             "Add CLI: `prediction-data silver expire-snapshots --table X --older-than-days 7`",
             "Verify old snapshots are removed from metadata"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "orphan_cleanup",
