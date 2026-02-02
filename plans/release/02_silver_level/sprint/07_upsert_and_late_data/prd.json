@@ -45,6 +45,6 @@
             "Test late-arriving data writes to correct partition",
             "Test cross-run dedup produces correct final state"
         ],
-        "passes": false
+        "passes": true
     }
 ]

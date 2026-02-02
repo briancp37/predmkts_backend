@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -44,6 +44,16 @@
   - `test_late_data_logs_warning` — verifies warning emitted for data >7 days old
   - `test_late_data_still_written_successfully` — verifies late data is written (not blocked)
 - All 242 silver tests pass; mypy clean
+
+### testing (2026-02-02)
+- All 5 PRD test steps were already covered by tests written during the implementation phases:
+  - Upsert insert path: `TestMergeToIceberg.test_merge_inserts_new_records` in `test_silver_writer.py`
+  - Upsert update path: `TestMergeToIceberg.test_merge_updates_existing_records` in `test_silver_writer.py`
+  - Conflict resolution: `TestDedupBatch.test_latest_wins_by_updated_at` + `test_latest_wins_by_event_ts` in `test_silver_dedup.py`
+  - Late-arriving data: `TestLateArrivingData.test_late_data_still_written_successfully` in `test_silver_processor.py`
+  - Cross-run dedup: `TestCrossRunDedup.test_snapshot_supersedes_prior_deltas` + 3 more in `test_silver_cli.py`
+- 718 tests pass; mypy clean
+- Marked testing category as passes: true — sprint is now complete
 
 ## In Progress
 
