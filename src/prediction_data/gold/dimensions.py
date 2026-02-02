@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import structlog
 
+from prediction_data.gold.canonical import CanonicalResolver
 from prediction_data.gold.clickhouse import get_client
 from prediction_data.gold.s3_writer import write_gold_parquet
+
+if TYPE_CHECKING:
+    from pyiceberg.catalog import Catalog
 
 logger = structlog.stdlib.get_logger(__name__)
 
@@ -95,4 +99,118 @@ def load_dim_platform(
     )
 
     logger.info("loaded_dim_platform", rows=num_rows, day=day)
+    return num_rows
+
+
+# ---------------------------------------------------------------------------
+# dim_market
+# ---------------------------------------------------------------------------
+
+DIM_MARKET_SCHEMA = pa.schema(
+    [
+        pa.field("platform", pa.string()),
+        pa.field("platform_market_id", pa.string()),
+        pa.field("canonical_market_id", pa.string()),
+        pa.field("question", pa.string()),
+        pa.field("description", pa.string()),
+        pa.field("market_slug", pa.string()),
+        pa.field("status", pa.string()),
+        pa.field("event_id", pa.string()),
+        pa.field("tokens", pa.string()),
+    ]
+)
+
+DIM_MARKET_COLUMNS = [f.name for f in DIM_MARKET_SCHEMA]
+
+
+def _read_silver_markets(
+    platform: str,
+    catalog: Catalog | None = None,
+) -> pa.Table:
+    """Read the Silver markets table for *platform* via PyIceberg."""
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "markets"))
+    return table.scan().to_arrow()
+
+
+def _silver_to_dim_market(
+    arrow: pa.Table,
+    platform: str,
+    resolver: CanonicalResolver,
+) -> pa.Table:
+    """Transform Silver markets Arrow table into dim_market rows."""
+    records = arrow.to_pylist()
+
+    rows: dict[str, list[Any]] = {col: [] for col in DIM_MARKET_COLUMNS}
+
+    for rec in records:
+        pid = str(rec.get("platform_market_id", "") or "")
+        rows["platform"].append(platform)
+        rows["platform_market_id"].append(pid)
+        rows["canonical_market_id"].append(resolver.resolve(platform, pid))
+        rows["question"].append(str(rec.get("question", "") or ""))
+        rows["description"].append(str(rec.get("description", "") or ""))
+        rows["market_slug"].append(str(rec.get("market_slug", "") or ""))
+        rows["status"].append(str(rec.get("status", "") or ""))
+        rows["event_id"].append(str(rec.get("event_id", "") or ""))
+        rows["tokens"].append(str(rec.get("tokens", "") or ""))
+
+    return pa.table(rows, schema=DIM_MARKET_SCHEMA)
+
+
+def load_dim_market(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    resolver: CanonicalResolver | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Load the dim_market dimension table.
+
+    Reads Silver polymarket.markets, applies canonical ID resolution,
+    and writes to S3 Gold Parquet + ClickHouse.
+
+    Returns:
+        Number of rows loaded.
+    """
+    resolver = resolver or CanonicalResolver()
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Read and transform Polymarket markets.
+    silver_arrow = _read_silver_markets("polymarket", catalog=catalog)
+    dim_table = _silver_to_dim_market(silver_arrow, "polymarket", resolver)
+
+    num_rows: int = dim_table.num_rows
+    logger.info("dim_market_transformed", platform="polymarket", rows=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_market", rows=num_rows, day=day)
+        return num_rows
+
+    # Write to S3 if bucket configured.
+    if gold_bucket:
+        write_gold_parquet(
+            dim_table,
+            gold_bucket,
+            "dim_market",
+            day,
+            s3_client=s3_client,
+        )
+
+    # Insert into ClickHouse.
+    ch = clickhouse_client or get_client()
+    ch.insert(
+        "dim_market",
+        data=dim_table.to_pylist(),
+        column_names=DIM_MARKET_COLUMNS,
+    )
+
+    logger.info("loaded_dim_market", rows=num_rows, day=day)
     return num_rows

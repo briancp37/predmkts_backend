@@ -24,6 +24,19 @@
   - 8 unit tests in tests/gold/test_dimensions.py (arrow conversion, S3+CH write, dry-run, skip-S3)
   - All 770 tests pass, mypy clean
 
+- [2026-02-02] dim_market: Market dimension table from Silver markets with canonical IDs
+  - Created ClickHouse DDL: docker/clickhouse/init/003_dim_market.sql (ReplacingMergeTree(updated_at), ORDER BY (platform, platform_market_id))
+  - Schema: platform, platform_market_id, canonical_market_id, question, description, market_slug, status, event_id, tokens
+  - Added load_dim_market() to src/prediction_data/gold/dimensions.py
+  - Reads Silver polymarket.markets via PyIceberg, transforms to dim_market rows
+  - Applies CanonicalResolver for canonical_market_id resolution (fallback to platform-native ID)
+  - Writes to S3 Gold Parquet (idempotent partition overwrite) + inserts into ClickHouse
+  - Supports --dry-run, optional S3 bucket, injectable catalog/resolver for testing
+  - Kalshi scaffolded: DDL supports any platform, _read_silver_markets("kalshi") ready when data exists
+  - Registered dim_market in CLI: `prediction-data gold load-dims --table dim_market`
+  - 9 new unit tests in tests/gold/test_dimensions.py (schema, transform, canonical mapping, nulls, dry-run, S3+CH write)
+  - All 779 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -34,6 +47,10 @@
 - The default YAML path resolves relative to canonical.py's location (3 parents up = repo root).
   This works for installed and editable installs but would need adjustment if the package
   were distributed as a standalone wheel without the mappings/ directory.
-- Next priority: dim_market (depends on canonical resolver + dim_platform pattern established here).
+- Next priority: dim_outcome (parse tokens field from Silver markets into separate outcome rows).
 - The load-dims CLI is extensible: LOADABLE_DIMS tuple in gold.py controls which tables are available.
   Add new loaders to dimensions.py and register them in the CLI dispatch.
+- dim_market uses CanonicalResolver — ensure mappings/market_links.yaml is populated before
+  production runs if cross-platform canonical IDs are needed.
+- The ClickHouse insert for dim_market passes dicts via to_pylist(). For very large market catalogs
+  (~360k rows), consider batching the insert if memory becomes an issue.

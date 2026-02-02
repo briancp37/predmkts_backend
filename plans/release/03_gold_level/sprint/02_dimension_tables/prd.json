@@ -34,7 +34,7 @@
             "Scaffold Kalshi dim_market (DDL created, loader stubbed, no data)",
             "Write integration test: Silver markets → dim_market round-trip"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dim_outcome",
