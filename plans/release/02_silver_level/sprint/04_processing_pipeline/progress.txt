@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -53,6 +53,16 @@
   - 9 unit tests in `tests/test_silver_processor.py` (all passing)
   - mypy clean, 585 total tests passing
 
+- [2026-02-02] testing: Created `tests/test_silver_pipeline_integration.py` with 22 integration tests.
+  - End-to-end pipeline tests for markets and events entities (read → dedup → normalize → write)
+  - Multi-part file concatenation test
+  - Deduplication tests using real normalizers (not mocks): duplicate markets, events, conflict resolution
+  - Iceberg write tests: Arrow conversion from normalizer output, snapshot ID capture
+  - Error handling: malformed records (all fail / partial fail), S3 read failure, Iceberg append failure, schema violation
+  - Schema consistency: normalizer output fields match Iceberg schema, event_ts first field in all tables
+  - Uses mock S3 (compressed JSONL) and mock catalog (captures appended Arrow tables)
+  - mypy clean, 607 total tests passing
+
 ## In Progress
 
 
@@ -62,4 +72,4 @@
 ## Notes
 
 - Discovery reuses existing `S3Client.list_prefixes()` (delimiter trick) and `download_manifest()` — no new S3 primitives needed.
-- Next priority: integration tests for the full processing pipeline.
+- All 6 PRD categories complete. Sprint finished.

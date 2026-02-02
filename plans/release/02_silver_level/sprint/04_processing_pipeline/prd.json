@@ -70,6 +70,6 @@
             "Test error handling (malformed JSON, schema violations)",
             "Verify PyArrow schema matches Iceberg schema"
         ],
-        "passes": false
+        "passes": true
     }
 ]
