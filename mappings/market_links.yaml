@@ -1,0 +1,19 @@
+# Cross-platform canonical market ID mappings.
+#
+# Maps platform-specific market IDs to a shared canonical_market_id so the
+# same real-world question can be joined across Polymarket and Kalshi.
+#
+# Structure:
+#   canonical_market_id:
+#     polymarket: <polymarket condition_id or slug>
+#     kalshi: <kalshi ticker>
+#
+# Example:
+#   us_presidential_2024:
+#     polymarket: "will-donald-trump-win-the-2024-us-presidential-election"
+#     kalshi: "PRES-2024-DJT"
+#
+# Markets without an entry here will use their platform-native ID as the
+# canonical_market_id (passthrough fallback).
+
+mappings: {}

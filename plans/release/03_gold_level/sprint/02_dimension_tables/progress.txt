@@ -2,10 +2,17 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
-
+- [2026-02-02] canonical_id_mapping: Implemented cross-platform canonical market ID resolution
+  - Created mappings/ directory at project root
+  - Created mappings/market_links.yaml with initial structure (empty mappings, documented format)
+  - Created src/prediction_data/gold/canonical.py with CanonicalResolver class (YAML loader + lookup)
+  - Fallback: unmapped (platform, id) pairs return the platform-native ID as canonical_market_id
+  - 7 unit tests in tests/gold/test_canonical.py (mapped, unmapped, multi-platform, empty, missing file)
+  - Added pyyaml>=6.0.0 to project dependencies, types-PyYAML>=6.0.0 to dev dependencies
+  - All 762 tests pass, mypy clean on new code (2 pre-existing warnings in silver/)
 
 ## In Progress
 
@@ -14,3 +21,7 @@
 
 
 ## Notes
+- The default YAML path resolves relative to canonical.py's location (3 parents up = repo root).
+  This works for installed and editable installs but would need adjustment if the package
+  were distributed as a standalone wheel without the mappings/ directory.
+- Next priority: dim_platform (static dimension, unblocks dim_market which depends on canonical resolver).

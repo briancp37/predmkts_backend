@@ -9,7 +9,7 @@
             "Implement fallback: if no canonical mapping exists, use platform-native ID as canonical_market_id",
             "Write unit tests for canonical resolution (mapped, unmapped, multi-platform)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dim_platform",
