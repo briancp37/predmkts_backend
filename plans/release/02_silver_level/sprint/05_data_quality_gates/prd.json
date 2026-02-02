@@ -21,7 +21,7 @@
             "Implement `ReferentialCheck`: trade market_id exists in markets (optional, warn-only mode)",
             "Define per-entity check configurations (which checks apply to which entity)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "integration",

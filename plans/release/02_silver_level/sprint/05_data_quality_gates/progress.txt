@@ -7,6 +7,8 @@
 ## Completed Tasks
 - [2026-02-02] quality_framework: Created `silver/quality.py` with `QualityCheck` ABC, `QualityCheckResult` dataclass, `QualityCheckError` exception, and `run_quality_checks` sequential runner with fail-fast semantics. 8 unit tests passing, mypy clean.
 
+- [2026-02-02] checks: Implemented `NonNullCheck`, `UniquenessCheck`, `TimestampRangeCheck`, and `ReferentialCheck` (warn-only mode by default). Added per-entity check configurations (`ENTITY_NON_NULL_COLUMNS`, `ENTITY_UNIQUENESS_KEY`) and `checks_for_entity()` factory function. 20 new unit tests (28 total), mypy clean, 635 tests passing.
+
 ## In Progress
 
 
@@ -15,4 +17,5 @@
 
 ## Notes
 - The framework is intentionally minimal: ABC + result + runner + exception. Concrete checks (NonNull, Uniqueness, TimestampRange, Referential) and pipeline integration are separate PRD categories.
+- All four concrete checks are now implemented in `silver/quality.py` alongside the framework. `checks_for_entity()` is the main entry point for getting the right checks for a given platform/entity combo. ReferentialCheck defaults to warn-only mode per PRD. Next up: wire checks into the processor pipeline (integration category).
 

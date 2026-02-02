@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 
 from prediction_data.silver.quality import (
+    NonNullCheck,
     QualityCheck,
     QualityCheckError,
     QualityCheckResult,
+    ReferentialCheck,
+    TimestampRangeCheck,
+    UniquenessCheck,
+    checks_for_entity,
     run_quality_checks,
 )
 
@@ -126,3 +132,168 @@ class TestRunQualityChecks:
         results = run_quality_checks([AlwaysPassCheck()], [])
         assert len(results) == 1
         assert results[0].passed
+
+
+# ---------------------------------------------------------------------------
+# NonNullCheck
+# ---------------------------------------------------------------------------
+
+class TestNonNullCheck:
+    def test_all_present(self) -> None:
+        check = NonNullCheck(["a", "b"])
+        result = check.run([{"a": 1, "b": 2}, {"a": 3, "b": 4}])
+        assert result.passed
+        assert result.failed_count == 0
+
+    def test_null_detected(self) -> None:
+        check = NonNullCheck(["a", "b"])
+        result = check.run([{"a": 1, "b": None}, {"a": None, "b": 2}])
+        assert not result.passed
+        assert result.failed_count == 2
+
+    def test_missing_key_treated_as_null(self) -> None:
+        check = NonNullCheck(["a", "b"])
+        result = check.run([{"a": 1}])
+        assert not result.passed
+        assert result.sample_failures[0]["null_columns"] == ["b"]
+
+    def test_empty_records(self) -> None:
+        check = NonNullCheck(["a"])
+        result = check.run([])
+        assert result.passed
+
+
+# ---------------------------------------------------------------------------
+# UniquenessCheck
+# ---------------------------------------------------------------------------
+
+class TestUniquenessCheck:
+    def test_all_unique(self) -> None:
+        check = UniquenessCheck("id")
+        result = check.run([{"id": "a"}, {"id": "b"}, {"id": "c"}])
+        assert result.passed
+
+    def test_duplicates_detected(self) -> None:
+        check = UniquenessCheck("id")
+        result = check.run([{"id": "a"}, {"id": "b"}, {"id": "a"}])
+        assert not result.passed
+        assert result.failed_count == 1
+        assert result.sample_failures[0]["key"] == "a"
+
+    def test_null_keys_skipped(self) -> None:
+        check = UniquenessCheck("id")
+        result = check.run([{"id": None}, {"id": None}])
+        assert result.passed
+
+    def test_empty_records(self) -> None:
+        check = UniquenessCheck("id")
+        result = check.run([])
+        assert result.passed
+
+
+# ---------------------------------------------------------------------------
+# TimestampRangeCheck
+# ---------------------------------------------------------------------------
+
+class TestTimestampRangeCheck:
+    def test_within_range(self) -> None:
+        expected = datetime(2025, 6, 15, tzinfo=UTC)
+        check = TimestampRangeCheck(expected, tolerance_days=1)
+        records = [
+            {"event_ts": datetime(2025, 6, 15, 12, 0, tzinfo=UTC)},
+            {"event_ts": datetime(2025, 6, 14, 1, 0, tzinfo=UTC)},
+        ]
+        result = check.run(records)
+        assert result.passed
+
+    def test_out_of_range(self) -> None:
+        expected = datetime(2025, 6, 15, tzinfo=UTC)
+        check = TimestampRangeCheck(expected, tolerance_days=1)
+        records = [
+            {"event_ts": datetime(2025, 6, 15, 12, 0, tzinfo=UTC)},
+            {"event_ts": datetime(2025, 1, 1, tzinfo=UTC)},
+        ]
+        result = check.run(records)
+        assert not result.passed
+        assert result.failed_count == 1
+
+    def test_future_timestamp(self) -> None:
+        now = datetime.now(UTC)
+        expected = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        check = TimestampRangeCheck(expected, tolerance_days=1)
+        future = now + timedelta(hours=2)
+        records = [{"event_ts": future}]
+        result = check.run(records)
+        assert not result.passed
+        assert "future" in result.sample_failures[0]["reason"]
+
+    def test_none_timestamps_skipped(self) -> None:
+        expected = datetime(2025, 6, 15, tzinfo=UTC)
+        check = TimestampRangeCheck(expected)
+        result = check.run([{"event_ts": None}])
+        assert result.passed
+
+
+# ---------------------------------------------------------------------------
+# ReferentialCheck
+# ---------------------------------------------------------------------------
+
+class TestReferentialCheck:
+    def test_all_found(self) -> None:
+        check = ReferentialCheck("market_id", {"m1", "m2"})
+        result = check.run([{"market_id": "m1"}, {"market_id": "m2"}])
+        assert result.passed
+        assert result.failed_count == 0
+
+    def test_orphan_warn_only(self) -> None:
+        check = ReferentialCheck("market_id", {"m1"}, warn_only=True)
+        result = check.run([{"market_id": "m1"}, {"market_id": "m999"}])
+        assert result.passed  # warn-only still passes
+        assert result.failed_count == 1
+
+    def test_orphan_hard_fail(self) -> None:
+        check = ReferentialCheck("market_id", {"m1"}, warn_only=False)
+        result = check.run([{"market_id": "m999"}])
+        assert not result.passed
+        assert result.failed_count == 1
+
+    def test_null_values_skipped(self) -> None:
+        check = ReferentialCheck("market_id", {"m1"}, warn_only=False)
+        result = check.run([{"market_id": None}])
+        assert result.passed
+
+
+# ---------------------------------------------------------------------------
+# checks_for_entity
+# ---------------------------------------------------------------------------
+
+class TestChecksForEntity:
+    def test_polymarket_trades_basic(self) -> None:
+        checks = checks_for_entity("polymarket", "trades")
+        names = [c.name for c in checks]
+        assert "non_null" in names
+        assert "uniqueness" in names
+
+    def test_with_expected_date(self) -> None:
+        checks = checks_for_entity(
+            "polymarket", "trades",
+            expected_date=datetime(2025, 6, 15, tzinfo=UTC),
+        )
+        names = [c.name for c in checks]
+        assert "timestamp_range" in names
+
+    def test_with_market_ids(self) -> None:
+        checks = checks_for_entity(
+            "polymarket", "trades",
+            market_ids={"m1", "m2"},
+        )
+        names = [c.name for c in checks]
+        assert "referential" in names
+
+    def test_markets_no_referential(self) -> None:
+        checks = checks_for_entity(
+            "polymarket", "markets",
+            market_ids={"m1"},
+        )
+        names = [c.name for c in checks]
+        assert "referential" not in names
