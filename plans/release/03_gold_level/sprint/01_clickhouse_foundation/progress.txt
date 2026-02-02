@@ -29,6 +29,16 @@
 - ClickHouse starts via `docker compose up -d clickhouse` and auto-creates the database on first run
 - All 748 tests pass, mypy clean
 
+### gold_s3_writer (2026-02-02)
+- Created `src/prediction_data/gold/s3_writer.py` with `write_gold_parquet()` function using PyArrow
+- Implements S3 Gold path convention: `gold/<table_name>/day=YYYY-MM-DD/part-NNN.parquet`
+- ZSTD compression by default (configurable via `compression` parameter)
+- Added `gold_bucket` field to `Settings` in `src/prediction_data/core/config.py` (env var: `GOLD_BUCKET`)
+- Idempotent partition overwrite: deletes all existing files under partition prefix before writing
+- Added `pyarrow.*` to mypy ignore_missing_imports overrides in `pyproject.toml`
+- Created `tests/gold/test_s3_writer.py` with 7 unit tests (mocked S3)
+- All 755 tests pass, mypy clean, ruff clean
+
 ## In Progress
 
 

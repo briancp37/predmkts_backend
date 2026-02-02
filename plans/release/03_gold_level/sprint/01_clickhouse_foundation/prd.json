@@ -35,7 +35,7 @@
             "Add idempotent partition overwrite (delete existing partition files before writing)",
             "Write unit tests with mocked S3"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "gold_module_structure",

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     polymarket_builder_secret: str | None = None
     polymarket_builder_passphrase: str | None = None
 
+    # Gold layer settings
+    gold_bucket: str = ""
+
     # ClickHouse settings (optional - only required for Gold layer)
     clickhouse_host: str = "localhost"
     clickhouse_port: int = 8123
