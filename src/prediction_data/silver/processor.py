@@ -1,7 +1,7 @@
 """End-to-end Silver processing orchestrator.
 
 Orchestrates the full Bronze → Silver pipeline for a single manifest:
-discover → read → dedup → normalize → write.
+discover → read → dedup → normalize → quality checks → write.
 """
 
 from __future__ import annotations
@@ -15,6 +15,12 @@ from prediction_data.core.logging import get_logger
 from prediction_data.silver.dedup import dedup_batch
 from prediction_data.silver.normalize import get_normalizer
 from prediction_data.silver.reader import ReadResult, read_manifest_data
+from prediction_data.silver.quality import (
+    QualityCheckError,
+    QualityCheckResult,
+    checks_for_entity,
+    run_quality_checks,
+)
 from prediction_data.silver.writer import IcebergWriteError, WriteResult, write_to_iceberg
 
 if TYPE_CHECKING:
@@ -44,6 +50,7 @@ class ProcessingResult:
     rows_normalized: int
     rows_written: int
     snapshot_id: int
+    quality_checks_passed: int
     duration_seconds: float
 
 
@@ -63,7 +70,8 @@ async def process_manifest(
         1. Read Bronze JSONL.gz data from S3.
         2. Dedup raw records using entity-specific dedup key.
         3. Normalize records to Silver schema.
-        4. Write to Iceberg table.
+        4. Run quality checks (abort on failure).
+        5. Write to Iceberg table.
 
     Args:
         manifest: Discovered Bronze manifest to process.
@@ -149,6 +157,26 @@ async def process_manifest(
         rows_skipped=len(deduped) - len(normalized),
     )
 
+    # --- Quality checks ---
+    expected_date = datetime.strptime(dt, "%Y-%m-%d").replace(tzinfo=UTC)
+    quality_checks = checks_for_entity(platform, entity, expected_date=expected_date)
+
+    try:
+        quality_results: list[QualityCheckResult] = run_quality_checks(
+            quality_checks, normalized
+        )
+    except QualityCheckError as exc:
+        msg = f"Quality check failed for manifest {run_id}: {exc}"
+        raise ProcessingError(msg) from exc
+
+    logger.info(
+        "processing_quality_done",
+        platform=platform,
+        entity=entity,
+        run_id=run_id,
+        checks_passed=len(quality_results),
+    )
+
     # --- Write ---
     namespace = _build_namespace(platform)
     try:
@@ -174,6 +202,7 @@ async def process_manifest(
         rows_written=write_result.rows_written,
         duplicates_dropped=dedup_stats.duplicates_dropped,
         snapshot_id=write_result.snapshot_id,
+        quality_checks_passed=len(quality_results),
         duration_s=round(duration, 2),
     )
 
@@ -188,5 +217,6 @@ async def process_manifest(
         rows_normalized=len(normalized),
         rows_written=write_result.rows_written,
         snapshot_id=write_result.snapshot_id,
+        quality_checks_passed=len(quality_results),
         duration_seconds=duration,
     )

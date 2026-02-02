@@ -14,6 +14,7 @@ from prediction_data.silver.processor import (
     process_manifest,
 )
 from prediction_data.silver.reader import ReadResult
+from prediction_data.silver.quality import QualityCheckError
 from prediction_data.silver.writer import IcebergWriteError, WriteResult
 
 
@@ -114,6 +115,7 @@ class TestProcessManifestHappyPath:
         assert result.rows_read == 3
         assert result.rows_written == 3
         assert result.snapshot_id == 42
+        assert result.quality_checks_passed >= 1
 
         mock_read.assert_awaited_once_with(mock_s3, manifest)
         mock_write.assert_called_once()
@@ -215,6 +217,55 @@ class TestProcessManifestErrors:
                 await process_manifest(manifest, MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
+    async def test_quality_check_failure_raises_processing_error(self) -> None:
+        manifest = _make_manifest()
+        records = _raw_market_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.run_quality_checks",
+                side_effect=QualityCheckError("non_null failed"),
+            ),
+        ):
+            with pytest.raises(ProcessingError, match="Quality check failed"):
+                await process_manifest(manifest, MagicMock(), MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_quality_check_failure_prevents_write(self) -> None:
+        manifest = _make_manifest()
+        records = _raw_market_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.run_quality_checks",
+                side_effect=QualityCheckError("non_null failed"),
+            ),
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+            ) as mock_write,
+        ):
+            with pytest.raises(ProcessingError):
+                await process_manifest(manifest, MagicMock(), MagicMock())
+
+        mock_write.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_all_normalization_failures_raises(self) -> None:
         manifest = _make_manifest()
         # Records that will fail normalization (missing required fields)
@@ -252,6 +303,7 @@ class TestProcessingResult:
             rows_normalized=95,
             rows_written=95,
             snapshot_id=42,
+            quality_checks_passed=3,
             duration_seconds=1.5,
         )
         assert r.platform == "polymarket"

@@ -32,7 +32,7 @@
             "On failure: log details, abort processing, do not write to Iceberg",
             "On success: include quality summary in processing metadata"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

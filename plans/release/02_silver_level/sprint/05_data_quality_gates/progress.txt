@@ -9,6 +9,8 @@
 
 - [2026-02-02] checks: Implemented `NonNullCheck`, `UniquenessCheck`, `TimestampRangeCheck`, and `ReferentialCheck` (warn-only mode by default). Added per-entity check configurations (`ENTITY_NON_NULL_COLUMNS`, `ENTITY_UNIQUENESS_KEY`) and `checks_for_entity()` factory function. 20 new unit tests (28 total), mypy clean, 635 tests passing.
 
+- [2026-02-02] integration: Wired quality checks into `processor.py` between normalization and Iceberg write. Quality checks use `checks_for_entity()` with expected_date derived from manifest dt. On failure, `QualityCheckError` is caught and re-raised as `ProcessingError`, preventing any Iceberg write. Added `quality_checks_passed` field to `ProcessingResult` and structured logging for quality results. Two new tests: quality failure raises `ProcessingError`, and quality failure prevents write. 637 tests passing, mypy clean.
+
 ## In Progress
 
 
@@ -17,5 +19,6 @@
 
 ## Notes
 - The framework is intentionally minimal: ABC + result + runner + exception. Concrete checks (NonNull, Uniqueness, TimestampRange, Referential) and pipeline integration are separate PRD categories.
-- All four concrete checks are now implemented in `silver/quality.py` alongside the framework. `checks_for_entity()` is the main entry point for getting the right checks for a given platform/entity combo. ReferentialCheck defaults to warn-only mode per PRD. Next up: wire checks into the processor pipeline (integration category).
+- All four concrete checks are now implemented in `silver/quality.py` alongside the framework. `checks_for_entity()` is the main entry point for getting the right checks for a given platform/entity combo. ReferentialCheck defaults to warn-only mode per PRD.
+- Quality checks are now wired into `processor.py`. The pipeline is: read → dedup → normalize → quality checks → write. Quality failure aborts before any Iceberg write. Next up: testing category (dedicated tests for quality check failure behavior, fixtures for common violations).
 
