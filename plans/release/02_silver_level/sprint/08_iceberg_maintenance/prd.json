@@ -55,6 +55,6 @@
             "Test orphan cleanup detects untracked files",
             "Test dry-run modes for all operations"
         ],
-        "passes": false
+        "passes": true
     }
 ]
