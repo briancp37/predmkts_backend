@@ -14,13 +14,17 @@ from prediction_data.gold.dimensions import (
     DIM_OUTCOME_COLUMNS,
     DIM_OUTCOME_SCHEMA,
     DIM_PLATFORM_SCHEMA,
+    DIM_WALLET_COLUMNS,
+    DIM_WALLET_SCHEMA,
     PLATFORMS,
     _platforms_to_arrow,
     _silver_to_dim_market,
     _silver_to_dim_outcome,
+    _silver_trades_to_dim_wallet,
     load_dim_market,
     load_dim_outcome,
     load_dim_platform,
+    load_dim_wallet,
     parse_tokens,
 )
 
@@ -437,6 +441,177 @@ class TestLoadDimOutcome:
             "prediction_data.gold.dimensions.write_gold_parquet"
         ) as mock_write:
             load_dim_outcome(
+                gold_bucket=None,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        mock_write.assert_not_called()
+        mock_ch.insert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# dim_wallet tests
+# ---------------------------------------------------------------------------
+
+
+def _fake_silver_trades() -> pa.Table:
+    """Build a small Arrow table mimicking Silver polymarket.trades."""
+    return pa.table(
+        {
+            "event_ts": pa.array(
+                [1_700_000_000, 1_700_100_000, 1_700_200_000],
+                type=pa.timestamp("us", tz="UTC"),
+            ),
+            "platform_market_id": ["mkt-1", "mkt-1", "mkt-2"],
+            "platform_trade_id": ["t1", "t2", "t3"],
+            "maker": ["wallet-a", "wallet-b", "wallet-a"],
+            "taker": ["wallet-b", "wallet-a", "wallet-c"],
+            "nonusdc_side": ["buy", "sell", "buy"],
+            "maker_direction": ["buy", "sell", "buy"],
+            "taker_direction": ["sell", "buy", "sell"],
+            "price": [0.5, 0.6, 0.7],
+            "usd_amount": [100.0, 200.0, 300.0],
+            "token_amount": [200.0, 333.33, 428.57],
+            "transaction_hash": ["0xabc", "0xdef", "0x123"],
+            "bronze_run_id": ["run1", "run1", "run2"],
+            "silver_ingestion_ts": pa.array(
+                [1_700_000_000, 1_700_000_000, 1_700_000_000],
+                type=pa.timestamp("us", tz="UTC"),
+            ),
+        }
+    )
+
+
+class TestSilverTradesToDimWallet:
+    def test_schema_matches(self) -> None:
+        result = _silver_trades_to_dim_wallet(_fake_silver_trades(), "polymarket")
+        assert result.schema.equals(DIM_WALLET_SCHEMA)
+
+    def test_unique_wallets(self) -> None:
+        result = _silver_trades_to_dim_wallet(_fake_silver_trades(), "polymarket")
+        addresses = sorted(result.column("wallet_address").to_pylist())
+        assert addresses == ["wallet-a", "wallet-b", "wallet-c"]
+
+    def test_trade_count(self) -> None:
+        result = _silver_trades_to_dim_wallet(_fake_silver_trades(), "polymarket")
+        rows = {r["wallet_address"]: r for r in result.to_pylist()}
+        # wallet-a: maker in t1, taker in t2, maker in t3 = 3
+        assert rows["wallet-a"]["trade_count"] == 3
+        # wallet-b: taker in t1, maker in t2 = 2
+        assert rows["wallet-b"]["trade_count"] == 2
+        # wallet-c: taker in t3 = 1
+        assert rows["wallet-c"]["trade_count"] == 1
+
+    def test_first_last_trade_ts(self) -> None:
+        result = _silver_trades_to_dim_wallet(_fake_silver_trades(), "polymarket")
+        rows = {r["wallet_address"]: r for r in result.to_pylist()}
+        # wallet-a appears in trades at ts 1_700_000_000, 1_700_100_000, 1_700_200_000
+        a = rows["wallet-a"]
+        assert a["first_trade_ts"] < a["last_trade_ts"]
+
+    def test_platform_column(self) -> None:
+        result = _silver_trades_to_dim_wallet(_fake_silver_trades(), "polymarket")
+        platforms = result.column("platform").to_pylist()
+        assert all(p == "polymarket" for p in platforms)
+
+    def test_empty_trades(self) -> None:
+        empty = pa.table(
+            {
+                "event_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "platform_market_id": pa.array([], type=pa.string()),
+                "platform_trade_id": pa.array([], type=pa.string()),
+                "maker": pa.array([], type=pa.string()),
+                "taker": pa.array([], type=pa.string()),
+                "nonusdc_side": pa.array([], type=pa.string()),
+                "maker_direction": pa.array([], type=pa.string()),
+                "taker_direction": pa.array([], type=pa.string()),
+                "price": pa.array([], type=pa.float64()),
+                "usd_amount": pa.array([], type=pa.float64()),
+                "token_amount": pa.array([], type=pa.float64()),
+                "transaction_hash": pa.array([], type=pa.string()),
+                "bronze_run_id": pa.array([], type=pa.string()),
+                "silver_ingestion_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+            }
+        )
+        result = _silver_trades_to_dim_wallet(empty, "polymarket")
+        assert result.num_rows == 0
+        assert result.schema.equals(DIM_WALLET_SCHEMA)
+
+    def test_null_address_skipped(self) -> None:
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_market_id": ["mkt-1"],
+                "platform_trade_id": ["t1"],
+                "maker": [None],
+                "taker": ["wallet-x"],
+                "nonusdc_side": ["buy"],
+                "maker_direction": ["buy"],
+                "taker_direction": ["sell"],
+                "price": [0.5],
+                "usd_amount": [100.0],
+                "token_amount": [200.0],
+                "transaction_hash": ["0xabc"],
+                "bronze_run_id": ["run1"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_trades_to_dim_wallet(arrow, "polymarket")
+        assert result.num_rows == 1
+        assert result.column("wallet_address").to_pylist() == ["wallet-x"]
+
+
+class TestLoadDimWallet:
+    def test_dry_run_returns_count(self) -> None:
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+
+        rows = load_dim_wallet(catalog=mock_catalog, dry_run=True)
+        assert rows == 3  # 3 unique wallets
+
+    def test_writes_to_s3_and_clickhouse(self, mock_s3_gold: MagicMock) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            rows = load_dim_wallet(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        assert rows == 3
+        mock_write.assert_called_once()
+        mock_ch.insert.assert_called_once()
+
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_wallet"
+        assert len(call_args[1]["data"]) == 3
+
+    def test_skips_s3_when_no_bucket(self) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            load_dim_wallet(
                 gold_bucket=None,
                 clickhouse_client=mock_ch,
                 catalog=mock_catalog,

@@ -58,7 +58,7 @@
             "Write to S3 Gold Parquet + load into ClickHouse",
             "Design for incremental updates (new wallets discovered on each run)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_and_testing",

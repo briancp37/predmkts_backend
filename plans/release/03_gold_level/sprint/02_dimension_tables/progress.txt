@@ -50,6 +50,18 @@
   - 16 new unit tests (6 parse_tokens, 7 transform, 3 loader) in tests/gold/test_dimensions.py
   - All 795 tests pass, mypy clean
 
+- [2026-02-02] dim_wallet: Wallet dimension discovered from Silver trades
+  - Created ClickHouse DDL: docker/clickhouse/init/005_dim_wallet.sql (ReplacingMergeTree(updated_at), ORDER BY (platform, wallet_address))
+  - Schema: platform, wallet_address, first_trade_ts, last_trade_ts, trade_count
+  - Added _read_silver_trades() to read Silver polymarket.trades via PyIceberg
+  - Added _silver_trades_to_dim_wallet() transform: scans maker+taker columns, deduplicates wallets, aggregates first/last trade timestamps and trade counts
+  - Null/empty wallet addresses are skipped gracefully
+  - Added load_dim_wallet() loader: reads Silver → transforms → writes S3 Gold Parquet + ClickHouse
+  - Supports --dry-run, optional S3 bucket, injectable catalog for testing
+  - Registered dim_wallet in CLI: `prediction-data gold load-dims --table dim_wallet`
+  - 10 new unit tests (7 transform, 3 loader) in tests/gold/test_dimensions.py
+  - All 805 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -60,7 +72,7 @@
 - The default YAML path resolves relative to canonical.py's location (3 parents up = repo root).
   This works for installed and editable installs but would need adjustment if the package
   were distributed as a standalone wheel without the mappings/ directory.
-- Next priority: dim_wallet (scan Silver trades for distinct wallet addresses).
+- Next priority: cli_and_testing (--dry-run support already exists; need integration tests and full pipeline verification).
 - The load-dims CLI is extensible: LOADABLE_DIMS tuple in gold.py controls which tables are available.
   Add new loaders to dimensions.py and register them in the CLI dispatch.
 - dim_market uses CanonicalResolver — ensure mappings/market_links.yaml is populated before

@@ -13,7 +13,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome")
+LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome", "dim_wallet")
 
 
 @app.command(name="status")
@@ -36,6 +36,7 @@ def load_dims(
         load_dim_market,
         load_dim_outcome,
         load_dim_platform,
+        load_dim_wallet,
     )
 
     settings = get_settings()
@@ -65,3 +66,9 @@ def load_dims(
                 dry_run=dry_run,
             )
             typer.echo(f"dim_outcome: {rows} rows loaded.")
+        elif tbl == "dim_wallet":
+            rows = load_dim_wallet(
+                gold_bucket=settings.gold_bucket or None,
+                dry_run=dry_run,
+            )
+            typer.echo(f"dim_wallet: {rows} rows loaded.")

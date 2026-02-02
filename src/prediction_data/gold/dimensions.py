@@ -334,3 +334,132 @@ def load_dim_outcome(
 
     logger.info("loaded_dim_outcome", rows=num_rows, day=day)
     return num_rows
+
+
+# ---------------------------------------------------------------------------
+# dim_wallet
+# ---------------------------------------------------------------------------
+
+DIM_WALLET_SCHEMA = pa.schema(
+    [
+        pa.field("platform", pa.string()),
+        pa.field("wallet_address", pa.string()),
+        pa.field("first_trade_ts", pa.timestamp("us", tz="UTC")),
+        pa.field("last_trade_ts", pa.timestamp("us", tz="UTC")),
+        pa.field("trade_count", pa.uint64()),
+    ]
+)
+
+DIM_WALLET_COLUMNS = [f.name for f in DIM_WALLET_SCHEMA]
+
+
+def _read_silver_trades(
+    platform: str,
+    catalog: Catalog | None = None,
+) -> pa.Table:
+    """Read the Silver trades table for *platform* via PyIceberg."""
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "trades"))
+    return table.scan().to_arrow()
+
+
+def _silver_trades_to_dim_wallet(
+    arrow: pa.Table,
+    platform: str,
+) -> pa.Table:
+    """Extract unique wallets from Silver trades maker/taker columns.
+
+    Each distinct wallet address produces one row with aggregated stats:
+    first_trade_ts, last_trade_ts, and trade_count.
+    """
+    records = arrow.to_pylist()
+
+    # Accumulate per-wallet stats.
+    wallets: dict[str, dict[str, Any]] = {}
+
+    for rec in records:
+        ts = rec.get("event_ts")
+        for addr_field in ("maker", "taker"):
+            addr = rec.get(addr_field)
+            if not addr:
+                continue
+            addr = str(addr)
+            if addr in wallets:
+                w = wallets[addr]
+                w["trade_count"] += 1
+                if ts is not None:
+                    if w["first_trade_ts"] is None or ts < w["first_trade_ts"]:
+                        w["first_trade_ts"] = ts
+                    if w["last_trade_ts"] is None or ts > w["last_trade_ts"]:
+                        w["last_trade_ts"] = ts
+            else:
+                wallets[addr] = {
+                    "first_trade_ts": ts,
+                    "last_trade_ts": ts,
+                    "trade_count": 1,
+                }
+
+    rows: dict[str, list[Any]] = {col: [] for col in DIM_WALLET_COLUMNS}
+    for addr, stats in wallets.items():
+        rows["platform"].append(platform)
+        rows["wallet_address"].append(addr)
+        rows["first_trade_ts"].append(stats["first_trade_ts"])
+        rows["last_trade_ts"].append(stats["last_trade_ts"])
+        rows["trade_count"].append(stats["trade_count"])
+
+    return pa.table(rows, schema=DIM_WALLET_SCHEMA)
+
+
+def load_dim_wallet(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Load the dim_wallet dimension table.
+
+    Reads Silver polymarket.trades, extracts unique wallets from maker/taker,
+    aggregates trade statistics, and writes to S3 Gold Parquet + ClickHouse.
+
+    Returns:
+        Number of rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    silver_arrow = _read_silver_trades("polymarket", catalog=catalog)
+    dim_table = _silver_trades_to_dim_wallet(silver_arrow, "polymarket")
+
+    num_rows: int = dim_table.num_rows
+    logger.info("dim_wallet_transformed", platform="polymarket", rows=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_wallet", rows=num_rows, day=day)
+        return num_rows
+
+    # Write to S3 if bucket configured.
+    if gold_bucket:
+        write_gold_parquet(
+            dim_table,
+            gold_bucket,
+            "dim_wallet",
+            day,
+            s3_client=s3_client,
+        )
+
+    # Insert into ClickHouse.
+    ch = clickhouse_client or get_client()
+    ch.insert(
+        "dim_wallet",
+        data=dim_table.to_pylist(),
+        column_names=DIM_WALLET_COLUMNS,
+    )
+
+    logger.info("loaded_dim_wallet", rows=num_rows, day=day)
+    return num_rows
