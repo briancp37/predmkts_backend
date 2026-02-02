@@ -22,6 +22,13 @@
 - Created `tests/gold/` directory with `test_clickhouse.py` (4 unit tests using mocked client)
 - All 748 tests pass, mypy clean, ruff clean on new files
 
+### docker_setup (2026-02-02)
+- Created `docker-compose.yml` with ClickHouse 24.3 LTS (alpine), persistent volume, health check, ports 8123/9000
+- Created `docker/clickhouse/init/001_create_database.sql` for `prediction_gold` database creation
+- Added docker-compose instructions to CLAUDE.md Quick Reference section
+- ClickHouse starts via `docker compose up -d clickhouse` and auto-creates the database on first run
+- All 748 tests pass, mypy clean
+
 ## In Progress
 
 

@@ -46,6 +46,11 @@ mypy src/
 # Lint
 ruff check src/ tests/
 
+# Start local ClickHouse (for Gold layer development)
+docker compose up -d clickhouse
+# Verify: docker compose exec clickhouse clickhouse-client --query "SELECT 1"
+# Stop: docker compose down
+
 # CLI entry point
 prediction-data --help
 ```

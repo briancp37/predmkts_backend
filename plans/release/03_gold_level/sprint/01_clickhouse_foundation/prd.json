@@ -9,7 +9,7 @@
             "Add docker-compose instructions to project README or CLAUDE.md",
             "Verify ClickHouse starts cleanly and accepts queries via clickhouse-client"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "python_client",
