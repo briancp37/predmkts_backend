@@ -1,0 +1,6 @@
+2026-02-02: manifest_schema_update — COMPLETE
+- Added snapshot_type: Literal["snapshot", "delta"] field to Source model with default "snapshot"
+- Added snapshot_type parameter to create_manifest() helper
+- Added 6 unit tests: delta type, snapshot type, invalid type rejection, backwards compat from dict, create_manifest with delta, create_manifest default
+- All 37 manifest tests pass, mypy clean, no regressions in existing tests
+- Pre-existing failures in test_order_filled_ingest.py (8) and silver tests (collection errors) are unrelated

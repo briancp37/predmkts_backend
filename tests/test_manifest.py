@@ -61,6 +61,35 @@ class TestSource:
         )
         assert source.cursor == "abc123"
 
+    def test_snapshot_type_defaults_to_snapshot(self) -> None:
+        """Source should default snapshot_type to 'snapshot'."""
+        source = Source(api_base_url="https://api.example.com", pagination="offset")
+        assert source.snapshot_type == "snapshot"
+
+    def test_snapshot_type_delta(self) -> None:
+        """Source should accept snapshot_type='delta'."""
+        source = Source(
+            api_base_url="https://api.example.com",
+            pagination="offset",
+            snapshot_type="delta",
+        )
+        assert source.snapshot_type == "delta"
+
+    def test_snapshot_type_rejects_invalid(self) -> None:
+        """Source should reject invalid snapshot_type values."""
+        with pytest.raises(ValidationError):
+            Source(
+                api_base_url="https://api.example.com",
+                pagination="offset",
+                snapshot_type="invalid",  # type: ignore[arg-type]
+            )
+
+    def test_snapshot_type_backwards_compat_from_dict(self) -> None:
+        """Source without snapshot_type in dict should default to 'snapshot'."""
+        data = {"api_base_url": "https://api.example.com", "pagination": "offset"}
+        source = Source.model_validate(data)
+        assert source.snapshot_type == "snapshot"
+
     def test_is_immutable(self) -> None:
         """Source should be immutable (frozen)."""
         source = Source(api_base_url="https://api.example.com", pagination="cursor")
@@ -352,6 +381,36 @@ class TestCreateManifest:
             generated_at=custom_time,
         )
         assert manifest.generated_at == custom_time
+
+    def test_creates_manifest_with_snapshot_type_delta(self) -> None:
+        """create_manifest should accept snapshot_type='delta'."""
+        manifest = create_manifest(
+            run_id="test-run-delta",
+            platform="polymarket",
+            entity="markets",
+            dt="2024-01-15",
+            bucket="bucket",
+            key="key",
+            row_count=50,
+            api_base_url="https://gamma-api.polymarket.com",
+            pagination="offset",
+            snapshot_type="delta",
+        )
+        assert manifest.source.snapshot_type == "delta"
+
+    def test_creates_manifest_defaults_snapshot_type_to_snapshot(self) -> None:
+        """create_manifest should default snapshot_type to 'snapshot'."""
+        manifest = create_manifest(
+            run_id="test-run",
+            platform="polymarket",
+            entity="markets",
+            dt="2024-01-15",
+            bucket="bucket",
+            key="key",
+            row_count=100,
+            api_base_url="https://api.example.com",
+        )
+        assert manifest.source.snapshot_type == "snapshot"
 
     def test_defaults_pagination_to_none(self) -> None:
         """create_manifest should default pagination to 'none'."""

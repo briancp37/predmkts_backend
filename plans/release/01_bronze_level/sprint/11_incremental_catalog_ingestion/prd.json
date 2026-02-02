@@ -1,0 +1,63 @@
+[
+    {
+        "category": "manifest_schema_update",
+        "description": "Add snapshot_type field to the Source model in manifest.py to distinguish full snapshots from delta partitions. Existing manifests without the field default to 'snapshot' for backwards compatibility.",
+        "steps": [
+            "Add optional snapshot_type field to Source pydantic model with literal type 'snapshot' | 'delta', defaulting to 'snapshot'",
+            "Add snapshot_type parameter to create_manifest() helper function",
+            "Add unit tests: manifest with snapshot_type='delta', manifest with snapshot_type='snapshot', manifest without snapshot_type field (backwards compat default)",
+            "Verify existing tests still pass — no existing manifest fixtures should break"
+        ],
+        "passes": true
+    },
+    {
+        "category": "incremental_fetch_client",
+        "description": "Add incremental fetch methods to the Polymarket Gamma client that paginate by updatedAt descending and stop when reaching a cutoff timestamp, returning only changed/new records",
+        "steps": [
+            "Add fetch_markets_incremental(since_updated_at: str) method to GammaClient that fetches GET /markets?order=updatedAt&ascending=false&limit=100 and paginates until a record's updatedAt <= since_updated_at",
+            "Add fetch_events_incremental(since_updated_at: str) method with the same pattern for GET /events",
+            "Handle edge case: if all records on a page are newer than cutoff, continue to next page; if page has a mix, collect only the newer ones and stop",
+            "Return both the collected records and the max updatedAt value seen (for writing to manifest)",
+            "Add unit tests: incremental fetch stops at cutoff, collects only newer records, handles empty result, handles all-new page followed by mixed page"
+        ],
+        "passes": false
+    },
+    {
+        "category": "incremental_ingestion",
+        "description": "Update ingest_markets() and ingest_events() to support incremental mode — find the latest manifest, extract the updatedAt cursor, fetch only changes, and store as delta partition",
+        "steps": [
+            "Add helper to find the latest manifest for a catalog entity and extract the latest_timestamp (reuse find_latest_timestamp from discovery.py or add updatedAt-specific logic)",
+            "Modify ingest_markets() to accept optional since_updated_at parameter; when provided, call fetch_markets_incremental() instead of fetch_all_markets()",
+            "Modify ingest_events() similarly with since_updated_at parameter",
+            "Write manifest with snapshot_type='delta' for incremental runs, snapshot_type='snapshot' for full runs",
+            "Store max updatedAt from fetched records as latest_timestamp in manifest source metadata (convert ISO datetime to epoch seconds)",
+            "Preserve backwards compatibility: without since_updated_at, existing full snapshot behavior is unchanged",
+            "Add unit tests: incremental path stores delta manifest, full path stores snapshot manifest, latest_timestamp written correctly, zero-change incremental run writes empty delta or skips"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_integration",
+        "description": "Update the catchup command so catalog entities (markets, events) use incremental mode by default instead of full snapshots, and add --full flag to force full snapshot when needed",
+        "steps": [
+            "Modify catchup logic for catalog entities: instead of checking if today's snapshot exists, find latest manifest and extract latest_timestamp, then run incremental ingestion",
+            "Add --full flag to catchup command that forces full snapshot mode for catalog entities",
+            "Update dry-run output for catalog entities to show incremental vs full mode and the since_updated_at cursor value",
+            "Handle first-run case: if no previous manifest exists, fall back to full snapshot automatically",
+            "Add unit tests: catchup uses incremental by default, --full forces full snapshot, first-run falls back to full, dry-run shows correct mode"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_docs",
+        "description": "Final verification pass and documentation updates",
+        "steps": [
+            "Ensure all tests pass: pytest -m 'not integration'",
+            "Ensure type checking passes: mypy src/",
+            "Ensure linting passes: ruff check src/ tests/",
+            "Update CLAUDE.md: document incremental catalog ingestion in Backfill CLI section, add --full flag to catchup examples",
+            "Update FORBRIAN.md: add Sprint 11 section with design rationale (updatedAt ordering trick, delta vs snapshot partitions, backwards compatibility)"
+        ],
+        "passes": false
+    }
+]

@@ -1,7 +1,7 @@
 """Manifest schema for Bronze layer storage contract."""
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -39,6 +39,10 @@ class Source(BaseModel):
     latest_timestamp: int | None = Field(
         default=None,
         description="Max timestamp (Unix epoch seconds) seen in fetched records, for incremental ingestion",
+    )
+    snapshot_type: Literal["snapshot", "delta"] = Field(
+        default="snapshot",
+        description="Type of data capture: 'snapshot' for full snapshots, 'delta' for incremental changes",
     )
 
 
@@ -151,6 +155,7 @@ def create_manifest(
     pagination: str = "none",
     cursor: str | None = None,
     latest_timestamp: int | None = None,
+    snapshot_type: Literal["snapshot", "delta"] = "snapshot",
     generated_at: datetime | None = None,
 ) -> Manifest:
     """Create a new manifest with a single data file.
@@ -170,6 +175,7 @@ def create_manifest(
         pagination: Pagination method used.
         cursor: Final cursor value, if applicable.
         latest_timestamp: Max timestamp from fetched records (Unix epoch seconds).
+        snapshot_type: Type of capture — 'snapshot' for full, 'delta' for incremental.
         generated_at: Manifest generation timestamp (defaults to now).
 
     Returns:
@@ -191,5 +197,6 @@ def create_manifest(
             pagination=pagination,
             cursor=cursor,
             latest_timestamp=latest_timestamp,
+            snapshot_type=snapshot_type,
         ),
     )
