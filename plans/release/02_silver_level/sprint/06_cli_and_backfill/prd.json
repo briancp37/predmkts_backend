@@ -10,7 +10,7 @@
             "Print run summary: manifests processed, rows written, snapshot IDs",
             "Register silver command group in main CLI app"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "state_tracking",
