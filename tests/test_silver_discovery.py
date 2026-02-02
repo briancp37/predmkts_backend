@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from prediction_data.silver.discovery import DiscoveredManifest, discover_manifests
+from prediction_data.silver.discovery import (
+    DiscoveredManifest,
+    discover_manifests,
+    select_snapshot_and_deltas,
+)
 from prediction_data.storage.manifest import Manifest, FileReference, Source
 
 
@@ -18,6 +22,7 @@ def _make_manifest(
     run_id: str = "run-001",
     row_count: int = 100,
     generated_at: datetime | None = None,
+    snapshot_type: str = "snapshot",
 ) -> Manifest:
     """Create a test manifest."""
     if generated_at is None:
@@ -30,7 +35,7 @@ def _make_manifest(
         generated_at=generated_at,
         files=[FileReference(bucket="test-bucket", key=f"bronze/{platform}/{entity}/dt={dt}/run_id={run_id}/part-000.jsonl.gz")],
         row_count=row_count,
-        source=Source(api_base_url="https://example.com", pagination="cursor"),
+        source=Source(api_base_url="https://example.com", pagination="cursor", snapshot_type=snapshot_type),
     )
 
 
@@ -220,3 +225,92 @@ class TestDiscoveredManifest:
         assert dm.dt == "2024-01-01"
         assert dm.run_id == "abc"
         assert dm.row_count == 50
+
+    def test_snapshot_type_property(self) -> None:
+        manifest = _make_manifest(snapshot_type="delta")
+        dm = DiscoveredManifest(manifest=manifest, s3_key="k")
+        assert dm.snapshot_type == "delta"
+
+    def test_snapshot_type_default(self) -> None:
+        manifest = _make_manifest()
+        dm = DiscoveredManifest(manifest=manifest, s3_key="k")
+        assert dm.snapshot_type == "snapshot"
+
+
+def _dm(manifest: Manifest) -> DiscoveredManifest:
+    return DiscoveredManifest(manifest=manifest, s3_key="key")
+
+
+class TestSelectSnapshotAndDeltas:
+    def test_empty_list(self) -> None:
+        assert select_snapshot_and_deltas([]) == []
+
+    def test_single_snapshot(self) -> None:
+        m = _dm(_make_manifest(run_id="s1", snapshot_type="snapshot"))
+        result = select_snapshot_and_deltas([m])
+        assert len(result) == 1
+        assert result[0].run_id == "s1"
+
+    def test_selects_latest_snapshot(self) -> None:
+        s1 = _dm(_make_manifest(
+            run_id="s1", dt="2024-06-10",
+            generated_at=datetime(2024, 6, 10, 12, 0, 0, tzinfo=UTC),
+        ))
+        s2 = _dm(_make_manifest(
+            run_id="s2", dt="2024-06-15",
+            generated_at=datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC),
+        ))
+        result = select_snapshot_and_deltas([s1, s2])
+        assert len(result) == 1
+        assert result[0].run_id == "s2"
+
+    def test_snapshot_plus_deltas(self) -> None:
+        snap = _dm(_make_manifest(
+            run_id="snap", dt="2024-06-10", snapshot_type="snapshot",
+            generated_at=datetime(2024, 6, 10, 12, 0, 0, tzinfo=UTC),
+        ))
+        d1 = _dm(_make_manifest(
+            run_id="d1", dt="2024-06-11", snapshot_type="delta",
+            generated_at=datetime(2024, 6, 11, 12, 0, 0, tzinfo=UTC),
+        ))
+        d2 = _dm(_make_manifest(
+            run_id="d2", dt="2024-06-12", snapshot_type="delta",
+            generated_at=datetime(2024, 6, 12, 12, 0, 0, tzinfo=UTC),
+        ))
+        result = select_snapshot_and_deltas([snap, d1, d2])
+        assert len(result) == 3
+        assert result[0].run_id == "snap"
+        assert result[1].run_id == "d1"
+        assert result[2].run_id == "d2"
+
+    def test_ignores_deltas_before_latest_snapshot(self) -> None:
+        old_delta = _dm(_make_manifest(
+            run_id="old-d", dt="2024-06-08", snapshot_type="delta",
+            generated_at=datetime(2024, 6, 8, 12, 0, 0, tzinfo=UTC),
+        ))
+        snap = _dm(_make_manifest(
+            run_id="snap", dt="2024-06-10", snapshot_type="snapshot",
+            generated_at=datetime(2024, 6, 10, 12, 0, 0, tzinfo=UTC),
+        ))
+        new_delta = _dm(_make_manifest(
+            run_id="new-d", dt="2024-06-11", snapshot_type="delta",
+            generated_at=datetime(2024, 6, 11, 12, 0, 0, tzinfo=UTC),
+        ))
+        result = select_snapshot_and_deltas([old_delta, snap, new_delta])
+        assert len(result) == 2
+        assert result[0].run_id == "snap"
+        assert result[1].run_id == "new-d"
+
+    def test_all_snapshots_no_deltas(self) -> None:
+        """Pre-sprint-11 data: all are snapshots, picks latest only."""
+        s1 = _dm(_make_manifest(
+            run_id="s1", dt="2024-06-10",
+            generated_at=datetime(2024, 6, 10, 12, 0, 0, tzinfo=UTC),
+        ))
+        s2 = _dm(_make_manifest(
+            run_id="s2", dt="2024-06-15",
+            generated_at=datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC),
+        ))
+        result = select_snapshot_and_deltas([s1, s2])
+        assert len(result) == 1
+        assert result[0].run_id == "s2"

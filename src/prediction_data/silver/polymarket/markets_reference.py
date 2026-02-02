@@ -14,9 +14,12 @@ from __future__ import annotations
 import gzip
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from prediction_data.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from prediction_data.storage.s3 import S3Client
 
 logger = get_logger(__name__)
 
@@ -135,3 +138,62 @@ class MarketsReferenceLookup:
             "unique_markets": len(markets),
             "lookup_entries": len(self._lookup),
         }
+
+
+async def load_markets_reference(
+    s3_client: S3Client,
+    *,
+    end_date: str | None = None,
+) -> MarketsReferenceLookup:
+    """Build a markets reference lookup from Bronze manifests.
+
+    Discovers all Bronze ``polymarket/markets`` manifests, selects the
+    latest snapshot plus any subsequent deltas, reads the data, and
+    populates a :class:`MarketsReferenceLookup`.
+
+    Args:
+        s3_client: S3 client bound to the Bronze bucket.
+        end_date: Optional upper-bound date (YYYY-MM-DD). If ``None``,
+            all available dates are considered.
+
+    Returns:
+        Populated :class:`MarketsReferenceLookup`.
+    """
+    from prediction_data.silver.discovery import (
+        discover_manifests,
+        select_snapshot_and_deltas,
+    )
+    from prediction_data.silver.reader import read_manifest_data
+
+    all_manifests = await discover_manifests(
+        s3_client,
+        platform="polymarket",
+        entity="markets",
+        end_date=end_date,
+    )
+
+    selected = select_snapshot_and_deltas(all_manifests)
+
+    lookup = MarketsReferenceLookup()
+
+    if not selected:
+        logger.warning("No markets manifests found, returning empty lookup")
+        return lookup
+
+    for manifest in selected:
+        logger.info(
+            "Loading markets manifest",
+            dt=manifest.dt,
+            run_id=manifest.run_id,
+            snapshot_type=manifest.snapshot_type,
+        )
+        result = await read_manifest_data(s3_client, manifest)
+        lookup.load_from_records(result.records)
+
+    logger.info(
+        "Markets reference loaded",
+        manifests_loaded=len(selected),
+        **lookup.coverage_stats,
+    )
+
+    return lookup

@@ -56,6 +56,10 @@ class DiscoveredManifest:
     def entity(self) -> str:
         return self.manifest.entity
 
+    @property
+    def snapshot_type(self) -> str:
+        return self.manifest.source.snapshot_type
+
 
 async def discover_manifests(
     s3_client: S3Client,
@@ -161,3 +165,65 @@ async def discover_manifests(
     )
 
     return results
+
+
+def select_snapshot_and_deltas(
+    manifests: list[DiscoveredManifest],
+) -> list[DiscoveredManifest]:
+    """Select the latest snapshot manifest and any subsequent deltas.
+
+    Strategy:
+        1. Find the latest manifest with ``snapshot_type == "snapshot"``.
+        2. Collect any delta manifests generated *after* that snapshot.
+        3. Return [snapshot, delta1, delta2, ...] sorted by ``generated_at``.
+        4. If no snapshot exists, return all manifests (treat everything as
+           pre-sprint-11 snapshot data).
+
+    Args:
+        manifests: All discovered manifests, typically for a single
+            platform/entity pair. Should already be sorted by
+            ``(dt, generated_at)``.
+
+    Returns:
+        Minimal ordered list of manifests needed to reconstruct the full
+        dataset.
+    """
+    if not manifests:
+        return []
+
+    # Find latest snapshot
+    snapshots = [
+        m for m in manifests if m.snapshot_type == "snapshot"
+    ]
+
+    if not snapshots:
+        # Pre-sprint-11 data: no snapshot_type was set, but the default is
+        # "snapshot", so this branch means *all* are deltas (unlikely) or
+        # the list is empty.  Return everything as-is.
+        logger.info(
+            "No snapshot manifests found, using all manifests",
+            total=len(manifests),
+        )
+        return list(manifests)
+
+    latest_snapshot = snapshots[-1]  # already sorted by (dt, generated_at)
+
+    # Collect deltas generated after the latest snapshot
+    deltas = [
+        m
+        for m in manifests
+        if m.snapshot_type == "delta"
+        and m.manifest.generated_at > latest_snapshot.manifest.generated_at
+    ]
+
+    result = [latest_snapshot, *deltas]
+
+    logger.info(
+        "Selected snapshot + deltas",
+        snapshot_dt=latest_snapshot.dt,
+        snapshot_run_id=latest_snapshot.run_id,
+        delta_count=len(deltas),
+        total_manifests=len(result),
+    )
+
+    return result

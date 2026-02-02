@@ -1,0 +1,25 @@
+2026-02-02: Completed loader_delta_awareness category.
+
+What was done:
+- Added `snapshot_type` property to `DiscoveredManifest` for easy access to manifest snapshot type.
+- Added `select_snapshot_and_deltas()` function to `silver/discovery.py`:
+  - Finds the latest snapshot manifest from a list of discovered manifests.
+  - Collects any delta manifests generated after that snapshot.
+  - Returns [snapshot, delta1, delta2, ...] for ordered loading.
+  - Falls back to returning all manifests if no snapshots exist (pre-sprint-11 compat).
+- Added `load_markets_reference()` async function to `silver/polymarket/markets_reference.py`:
+  - Discovers all Bronze polymarket/markets manifests.
+  - Uses `select_snapshot_and_deltas()` to pick the right manifests.
+  - Reads and loads records into `MarketsReferenceLookup` in order.
+- Added 8 new tests in `test_silver_discovery.py`:
+  - `TestDiscoveredManifest.test_snapshot_type_property`
+  - `TestDiscoveredManifest.test_snapshot_type_default`
+  - `TestSelectSnapshotAndDeltas` (6 tests): empty list, single snapshot,
+    selects latest snapshot, snapshot+deltas, ignores old deltas, all-snapshots.
+
+All 686 tests pass. mypy clean.
+
+Key files changed:
+- src/prediction_data/silver/discovery.py
+- src/prediction_data/silver/polymarket/markets_reference.py
+- tests/test_silver_discovery.py

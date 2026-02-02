@@ -1,0 +1,14 @@
+[
+    {
+        "category": "loader_delta_awareness",
+        "description": "Update markets reference loader to handle snapshot vs delta Bronze manifests",
+        "steps": [
+            "Investigate current manifest selection logic in markets reference loader",
+            "Update loader to prefer the latest snapshot manifest when building the full token lookup",
+            "If no snapshot exists for the target date, fall back to latest snapshot + subsequent deltas merged in order",
+            "Add snapshot_type awareness to manifest discovery/filtering used by the loader",
+            "Unit tests: loader selects snapshot over delta, loader merges snapshot+deltas when needed, loader works with snapshot-only (pre-sprint-11 data)"
+        ],
+        "passes": true
+    }
+]
