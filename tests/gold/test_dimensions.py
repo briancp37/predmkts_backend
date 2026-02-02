@@ -619,3 +619,268 @@ class TestLoadDimWallet:
 
         mock_write.assert_not_called()
         mock_ch.insert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: full pipeline Silver → S3 + ClickHouse for all dims
+# ---------------------------------------------------------------------------
+
+
+class TestFullPipelineAllDims:
+    """Test loading all four dimension tables through a single pipeline run.
+
+    Verifies that each loader reads Silver data, writes S3 Parquet, and
+    inserts into ClickHouse with correct table names and row counts.
+    """
+
+    def _mock_catalog(self) -> MagicMock:
+        """Return a catalog that serves markets for dim_market/dim_outcome
+        and trades for dim_wallet."""
+        catalog = MagicMock()
+
+        def _load_table(identifier: tuple[str, str]) -> MagicMock:
+            _ns, table_name = identifier
+            tbl = MagicMock()
+            if table_name == "markets":
+                tbl.scan.return_value.to_arrow.return_value = (
+                    _fake_silver_markets_with_tokens()
+                )
+            elif table_name == "trades":
+                tbl.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+            return tbl
+
+        catalog.load_table.side_effect = _load_table
+        return catalog
+
+    def test_all_dims_write_to_s3_and_clickhouse(
+        self, mock_s3_gold: MagicMock
+    ) -> None:
+        mock_ch = MagicMock()
+        catalog = self._mock_catalog()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            p_rows = load_dim_platform(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+            )
+            m_rows = load_dim_market(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            o_rows = load_dim_outcome(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            w_rows = load_dim_wallet(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+
+        # All loaders returned rows.
+        assert p_rows == len(PLATFORMS)
+        assert m_rows == 2
+        assert o_rows == 4
+        assert w_rows == 3
+
+        # S3 written for all four tables.
+        assert mock_write.call_count == 4
+        s3_table_names = [c.args[2] for c in mock_write.call_args_list]
+        assert s3_table_names == [
+            "dim_platform",
+            "dim_market",
+            "dim_outcome",
+            "dim_wallet",
+        ]
+
+        # ClickHouse insert called for each table.
+        assert mock_ch.insert.call_count == 4
+        ch_table_names = [c.args[0] for c in mock_ch.insert.call_args_list]
+        assert ch_table_names == [
+            "dim_platform",
+            "dim_market",
+            "dim_outcome",
+            "dim_wallet",
+        ]
+
+    def test_clickhouse_receives_correct_columns(
+        self, mock_s3_gold: MagicMock
+    ) -> None:
+        """Verify that each ClickHouse insert passes the expected column names."""
+        mock_ch = MagicMock()
+        catalog = self._mock_catalog()
+
+        with patch("prediction_data.gold.dimensions.write_gold_parquet"):
+            load_dim_platform(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+            )
+            load_dim_market(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_outcome(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_wallet(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+
+        calls = mock_ch.insert.call_args_list
+        # dim_platform
+        assert calls[0][1]["column_names"] == ["platform_id", "platform_name", "url"]
+        # dim_market
+        assert calls[1][1]["column_names"] == DIM_MARKET_COLUMNS
+        # dim_outcome
+        assert calls[2][1]["column_names"] == DIM_OUTCOME_COLUMNS
+        # dim_wallet
+        assert calls[3][1]["column_names"] == DIM_WALLET_COLUMNS
+
+    def test_clickhouse_data_is_queryable(self, mock_s3_gold: MagicMock) -> None:
+        """Verify inserted data has correct structure for ClickHouse queries.
+
+        Checks that each insert passes dicts/lists with the right keys and
+        value types, simulating what ClickHouse would receive.
+        """
+        mock_ch = MagicMock()
+        catalog = self._mock_catalog()
+
+        with patch("prediction_data.gold.dimensions.write_gold_parquet"):
+            load_dim_platform(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+            )
+            load_dim_market(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_outcome(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_wallet(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+
+        calls = mock_ch.insert.call_args_list
+
+        # dim_platform: list of lists
+        platform_data = calls[0][1]["data"]
+        assert len(platform_data) == 2
+        assert platform_data[0] == ["polymarket", "Polymarket", "https://polymarket.com"]
+
+        # dim_market: list of dicts with all expected keys
+        market_data = calls[1][1]["data"]
+        assert len(market_data) == 2
+        for row in market_data:
+            assert set(row.keys()) == set(DIM_MARKET_COLUMNS)
+            assert isinstance(row["platform"], str)
+            assert isinstance(row["platform_market_id"], str)
+
+        # dim_outcome: list of dicts with all expected keys
+        outcome_data = calls[2][1]["data"]
+        assert len(outcome_data) == 4
+        for row in outcome_data:
+            assert set(row.keys()) == set(DIM_OUTCOME_COLUMNS)
+            assert row["side"] in ("token1", "token2")
+
+        # dim_wallet: list of dicts with all expected keys
+        wallet_data = calls[3][1]["data"]
+        assert len(wallet_data) == 3
+        for row in wallet_data:
+            assert set(row.keys()) == set(DIM_WALLET_COLUMNS)
+            assert isinstance(row["trade_count"], int)
+
+
+# ---------------------------------------------------------------------------
+# CLI integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadDimsCLI:
+    """Test the `prediction-data gold load-dims` CLI command."""
+
+    def _mock_catalog(self) -> MagicMock:
+        catalog = MagicMock()
+
+        def _load_table(identifier: tuple[str, str]) -> MagicMock:
+            _ns, table_name = identifier
+            tbl = MagicMock()
+            if table_name == "markets":
+                tbl.scan.return_value.to_arrow.return_value = (
+                    _fake_silver_markets_with_tokens()
+                )
+            elif table_name == "trades":
+                tbl.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+            return tbl
+
+        catalog.load_table.side_effect = _load_table
+        return catalog
+
+    def test_load_single_table_dry_run(self) -> None:
+        from typer.testing import CliRunner
+
+        from prediction_data.cli.main import app as cli_app
+
+        runner = CliRunner()
+        result = runner.invoke(cli_app, ["gold", "load-dims", "--table", "dim_platform", "--dry-run"])
+        assert result.exit_code == 0
+        assert "dim_platform" in result.output
+        assert "2 rows loaded" in result.output
+
+    def test_load_all_tables_dry_run(self) -> None:
+        from typer.testing import CliRunner
+
+        from prediction_data.cli.main import app as cli_app
+
+        runner = CliRunner()
+        catalog = self._mock_catalog()
+
+        with (
+            patch("prediction_data.gold.dimensions._read_silver_markets") as mock_markets,
+            patch("prediction_data.gold.dimensions._read_silver_trades") as mock_trades,
+        ):
+            mock_markets.return_value = _fake_silver_markets_with_tokens()
+            mock_trades.return_value = _fake_silver_trades()
+            result = runner.invoke(cli_app, ["gold", "load-dims", "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "dim_platform" in result.output
+        assert "dim_market" in result.output
+        assert "dim_outcome" in result.output
+        assert "dim_wallet" in result.output
+
+    def test_unknown_table_fails(self) -> None:
+        from typer.testing import CliRunner
+
+        from prediction_data.cli.main import app as cli_app
+
+        runner = CliRunner()
+        result = runner.invoke(cli_app, ["gold", "load-dims", "--table", "dim_bogus"])
+        assert result.exit_code != 0
+        assert "Unknown dimension table" in result.output

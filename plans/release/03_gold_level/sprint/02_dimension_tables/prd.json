@@ -69,6 +69,6 @@
             "Write integration tests for full dimension loading pipeline",
             "Verify all dimension tables queryable in ClickHouse after loading"
         ],
-        "passes": false
+        "passes": true
     }
 ]

@@ -62,6 +62,18 @@
   - 10 new unit tests (7 transform, 3 loader) in tests/gold/test_dimensions.py
   - All 805 tests pass, mypy clean
 
+- [2026-02-02] cli_and_testing: CLI commands and integration testing for dimension loading
+  - CLI `prediction-data gold load-dims` already implemented (--table, --dry-run flags)
+  - Added TestFullPipelineAllDims integration test class (3 tests):
+    - test_all_dims_write_to_s3_and_clickhouse: loads all 4 dims, verifies S3 writes and CH inserts with correct table names and row counts
+    - test_clickhouse_receives_correct_columns: verifies each CH insert passes the expected column_names for all 4 tables
+    - test_clickhouse_data_is_queryable: validates inserted data structure (keys, types, values) matches what CH would receive
+  - Added TestLoadDimsCLI class (3 tests):
+    - test_load_single_table_dry_run: CLI loads dim_platform with --dry-run via Typer CliRunner
+    - test_load_all_tables_dry_run: CLI loads all 4 dims with --dry-run, verifies all table names in output
+    - test_unknown_table_fails: CLI rejects unknown --table values with non-zero exit code
+  - All 811 tests pass, mypy clean
+
 ## In Progress
 
 
