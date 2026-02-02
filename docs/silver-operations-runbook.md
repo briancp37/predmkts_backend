@@ -142,6 +142,91 @@ prediction-data silver init-tables --dry-run  # preview
 
 All tables are partitioned by `days(event_ts)`, sorted by `(primary_key, event_ts)`, and use Parquet with ZSTD compression (format version 2).
 
+## Quality Check Configuration
+
+Quality checks run automatically during Silver processing and enforce data integrity before any records are written to Iceberg. Checks use **fail-fast semantics**: the first failure aborts processing for that manifest (other days continue).
+
+### Check Types
+
+| Check | What it validates | Failure behavior |
+|-------|------------------|-----------------|
+| **non_null** | Required columns are not null | Hard fail |
+| **uniqueness** | Primary key column has no duplicates in batch | Hard fail |
+| **timestamp_range** | `event_ts` within partition date ± 1 day, not in future | Hard fail |
+| **referential** | Trade `platform_market_id` exists in known markets | Warn only (logs warning, does not fail) |
+
+Checks run in this order: non_null → uniqueness → timestamp_range → referential.
+
+### Per-Entity Configuration
+
+Configuration is defined in `src/prediction_data/silver/quality.py`.
+
+**Non-null required columns:**
+
+| Entity | Required columns |
+|--------|-----------------|
+| `polymarket/trades` | `event_ts`, `platform_trade_id`, `platform_market_id`, `maker`, `taker`, `price`, `usd_amount`, `token_amount` |
+| `polymarket/markets` | `event_ts`, `platform_market_id` |
+| `polymarket/events` | `event_ts`, `platform_event_id` |
+| `kalshi/trades` | `event_ts`, `platform_trade_id`, `platform_market_id` |
+| `kalshi/markets` | `event_ts`, `platform_market_id` |
+| `kalshi/events` | `event_ts`, `platform_event_id` |
+
+**Uniqueness key column:**
+
+| Entity | Key column |
+|--------|-----------|
+| `*/trades` | `platform_trade_id` |
+| `*/markets` | `platform_market_id` |
+| `*/events` | `platform_event_id` |
+
+**Timestamp range:** All entities use the partition date as `expected_date` with a tolerance of ±1 day.
+
+**Referential check:** Only applies to trades entities. Validates `platform_market_id` against known Silver market IDs. Runs in warn-only mode — orphan trades are logged but not rejected.
+
+### Skipping Quality Checks
+
+Use `--skip-quality-checks` to bypass all checks for a processing run:
+
+```bash
+prediction-data silver process --platform polymarket --entity trades \
+    --dt 2024-06-15 --skip-quality-checks
+```
+
+Use this sparingly — it allows malformed data into Silver tables.
+
+### Reading Quality Check Failures
+
+On failure, the error log includes:
+- **check_name**: Which check failed (e.g., `non_null`, `uniqueness`)
+- **failed_count**: Number of records that failed
+- **error_message**: Description of the failure
+- **sample_failures**: Up to 5 example failing records with row indices
+
+Example failure output:
+```
+Quality check 'non_null' failed: 3 failures. Non-null violation in columns: ['event_ts', 'platform_trade_id']
+```
+
+Search structured logs for `quality_check_failed` to find all failures, or `quality_check_result` for both passes and failures.
+
+### Extending Quality Checks
+
+To add a custom check, subclass `QualityCheck` in `src/prediction_data/silver/quality.py`:
+
+```python
+class MyCustomCheck(QualityCheck):
+    @property
+    def name(self) -> str:
+        return "my_custom_check"
+
+    def run(self, records: list[dict[str, Any]]) -> QualityCheckResult:
+        # validate records, return QualityCheckResult
+        ...
+```
+
+Then add it to the `checks_for_entity()` function to include it in the pipeline.
+
 ## Environment Requirements
 
 | Variable | Required | Description |

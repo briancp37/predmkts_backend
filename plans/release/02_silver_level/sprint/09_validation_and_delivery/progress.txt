@@ -16,9 +16,14 @@
   troubleshooting (common issues, state inspection, late-arriving data, catalog entity logic),
   table initialization, and environment requirements. All types check clean (mypy), 744 tests pass.
 
+- [2026-02-02] Documentation: Documented quality check configuration in docs/silver-operations-runbook.md.
+  Added comprehensive section covering all 4 check types (non_null, uniqueness, timestamp_range,
+  referential), per-entity configuration tables, skip flag usage, failure output format, and
+  extensibility guide. All types check clean (mypy), 744 tests pass.
+
 ## In Progress
 
-- Documentation category: 2 remaining steps (schema evolution docs, quality check config docs)
+- Documentation category: 1 remaining step (schema evolution procedures docs)
 
 ## Blockers/Issues
 
