@@ -449,7 +449,8 @@ async def _run_backfill(
 
     if _is_date_scoped_entity(entity):
         dates = _date_range(start_date, end_date)
-        for d in dates:
+        total_days = len(dates)
+        for idx, d in enumerate(dates, 1):
             dt_str = d.isoformat()
             label = f"{platform}/{entity} dt={dt_str}"
 
@@ -457,6 +458,7 @@ async def _run_backfill(
                 typer.echo(f"[dry-run] Would ingest {label}")
                 continue
 
+            typer.echo(f"[{idx}/{total_days}] Ingesting {label}...")
             logger.info("Backfill starting", platform=platform, entity=entity, dt=dt_str)
 
             try:
@@ -779,6 +781,13 @@ def backfill_catchup(
                         from prediction_data.bronze.polymarket import ingest as pm_ingest
 
                         dt_str = today.isoformat()
+                        since_dt = datetime.utcfromtimestamp(latest_ts).strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        )
+                        typer.echo(
+                            f"RUNNING {label}: fetching since {since_dt} UTC "
+                            f"(streaming batches to S3)..."
+                        )
                         run_id = await pm_ingest.ingest_order_filled(
                             dt_str, bucket=bucket, since_timestamp=latest_ts
                         )

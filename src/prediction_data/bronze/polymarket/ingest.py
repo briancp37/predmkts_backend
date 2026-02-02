@@ -604,55 +604,78 @@ async def ingest_order_filled(
         incremental=since_timestamp is not None,
     )
 
-    # Fetch OrderFilledEvents from Goldsky subgraph
-    async with GoldskyClient() as client:
-        events = await client.fetch_all_order_filled_events(
-            timestamp_gte=start_ts, timestamp_lte=end_ts,
-        )
+    # Fetch and upload OrderFilledEvents in batches to avoid memory exhaustion
+    from prediction_data.storage.manifest import (
+        FileReference,
+        Manifest,
+        Source,
+    )
 
-    logger.info("Fetched order_filled events from Goldsky", record_count=len(events))
-
-    # Compute latest_timestamp from fetched records
+    file_refs: list[FileReference] = []
+    total_row_count = 0
     max_ts: int | None = None
-    for evt in events:
-        ts_val = evt.get("timestamp")
-        if ts_val is not None:
-            ts_int = int(ts_val)
-            if max_ts is None or ts_int > max_ts:
-                max_ts = ts_int
+    part_number = 0
 
-    # Upload to S3
-    async with S3Client(bucket=bucket) as s3_client:
-        data_key, row_count = await s3_client.upload_jsonl(
-            records=events,
-            platform="polymarket",
-            entity="order_filled",
-            dt=dt,
-            run_id=run_ctx.run_id,
-        )
+    async with GoldskyClient() as client, S3Client(bucket=bucket) as s3_client:
+        async for batch in client.iter_order_filled_batches(
+            timestamp_gte=start_ts, timestamp_lte=end_ts,
+        ):
+            # Track max timestamp across all batches
+            for evt in batch:
+                ts_val = evt.get("timestamp")
+                if ts_val is not None:
+                    ts_int = int(ts_val)
+                    if max_ts is None or ts_int > max_ts:
+                        max_ts = ts_int
 
-        logger.info(
-            "Uploaded order_filled data to S3",
-            key=data_key,
-            row_count=row_count,
-        )
+            data_key, row_count = await s3_client.upload_jsonl(
+                records=batch,
+                platform="polymarket",
+                entity="order_filled",
+                dt=dt,
+                run_id=run_ctx.run_id,
+                part_number=part_number,
+            )
 
-        manifest = create_manifest(
-            run_id=run_ctx.run_id,
-            platform="polymarket",
-            entity="order_filled",
-            dt=dt,
-            bucket=bucket,
-            key=data_key,
-            row_count=row_count,
+            file_refs.append(FileReference(bucket=bucket, key=data_key))
+            total_row_count += row_count
+            part_number += 1
+
+            logger.info(
+                "Flushed order_filled batch to S3",
+                part=part_number,
+                batch_rows=row_count,
+                total_rows=total_row_count,
+            )
+
+    if total_row_count == 0:
+        logger.info("No order_filled events found", dt=dt)
+        run_ctx.mark_complete()
+        run_ctx.log_end(logger)
+        return run_ctx.run_id
+
+    # Build manifest with all part files
+    from datetime import timezone as tz
+
+    manifest = Manifest(
+        run_id=run_ctx.run_id,
+        platform="polymarket",
+        entity="order_filled",
+        dt=dt,
+        generated_at=datetime.now(tz.utc),
+        files=file_refs,
+        row_count=total_row_count,
+        source=Source(
             api_base_url=GOLDSKY_API_BASE_URL,
             pagination="cursor",
             cursor=None,
             latest_timestamp=max_ts,
-        )
+        ),
+    )
 
+    async with S3Client(bucket=bucket) as s3_client:
         manifest_key = await s3_client.upload_manifest(manifest)
-        logger.info("Uploaded manifest to S3", key=manifest_key)
+        logger.info("Uploaded manifest to S3", key=manifest_key, total_rows=total_row_count)
 
     # Mark run complete
     run_ctx.mark_complete()

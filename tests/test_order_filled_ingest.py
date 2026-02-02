@@ -9,6 +9,24 @@ import pytest
 from prediction_data.bronze.polymarket.goldsky import GOLDSKY_API_BASE_URL
 from prediction_data.bronze.polymarket.ingest import ingest_order_filled
 
+
+async def _async_gen(batches: list[list[dict[str, Any]]]):
+    """Helper to create an async generator from a list of batches."""
+    for batch in batches:
+        yield batch
+
+
+def _make_iter_batches(batches: list[list[dict[str, Any]]]):
+    """Return a callable that tracks calls and returns an async generator."""
+    calls: list[dict[str, Any]] = []
+
+    def _fn(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return _async_gen(batches)
+
+    _fn.calls = calls  # type: ignore[attr-defined]
+    return _fn
+
 SAMPLE_ORDER_FILLED_EVENTS: list[dict[str, Any]] = [
     {
         "id": "evt1",
@@ -55,9 +73,8 @@ class TestIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = (
-                SAMPLE_ORDER_FILLED_EVENTS
-            )
+            iter_fn = _make_iter_batches([SAMPLE_ORDER_FILLED_EVENTS])
+            mock_client.iter_order_filled_batches = iter_fn
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
@@ -73,8 +90,8 @@ class TestIngestOrderFilled:
             run_id = await ingest_order_filled(dt="2024-11-14")
 
             # Verify Goldsky client was called with day boundaries
-            mock_client.fetch_all_order_filled_events.assert_called_once()
-            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            assert len(iter_fn.calls) == 1
+            call_kwargs = iter_fn.calls[0]
             assert call_kwargs["timestamp_gte"] > 0
             assert call_kwargs["timestamp_lte"] > call_kwargs["timestamp_gte"]
 
@@ -94,8 +111,8 @@ class TestIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = (
-                SAMPLE_ORDER_FILLED_EVENTS
+            mock_client.iter_order_filled_batches = (
+                lambda **kw: _async_gen([SAMPLE_ORDER_FILLED_EVENTS])
             )
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
@@ -124,13 +141,12 @@ class TestIngestOrderFilled:
             ) as mock_client_class,
             patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
-            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
         ):
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = (
-                SAMPLE_ORDER_FILLED_EVENTS
+            mock_client.iter_order_filled_batches = (
+                lambda **kw: _async_gen([SAMPLE_ORDER_FILLED_EVENTS])
             )
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
@@ -139,16 +155,15 @@ class TestIngestOrderFilled:
             mock_s3.upload_manifest.return_value = "manifest.json"
             mock_s3_class.return_value.__aenter__.return_value = mock_s3
 
-            mock_manifest.return_value = {"mocked": True}
-
             await ingest_order_filled(dt="2024-11-14")
 
-            mock_manifest.assert_called_once()
-            manifest_kwargs = mock_manifest.call_args.kwargs
-            assert manifest_kwargs["api_base_url"] == GOLDSKY_API_BASE_URL
-            assert manifest_kwargs["pagination"] == "cursor"
-            assert manifest_kwargs["platform"] == "polymarket"
-            assert manifest_kwargs["entity"] == "order_filled"
+            # Verify manifest was uploaded and contains correct source metadata
+            mock_s3.upload_manifest.assert_called_once()
+            manifest = mock_s3.upload_manifest.call_args[0][0]
+            assert manifest.source.api_base_url == GOLDSKY_API_BASE_URL
+            assert manifest.source.pagination == "cursor"
+            assert manifest.platform == "polymarket"
+            assert manifest.entity == "order_filled"
 
     @pytest.mark.asyncio
     async def test_custom_bucket(self) -> None:
@@ -163,7 +178,9 @@ class TestIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "default-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = []
+            mock_client.iter_order_filled_batches = (
+                lambda **kw: _async_gen([])
+            )
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
@@ -173,6 +190,7 @@ class TestIngestOrderFilled:
 
             await ingest_order_filled(dt="2024-11-14", bucket="custom-bucket")
 
+            # S3Client called once (no events = no manifest upload)
             mock_s3_class.assert_called_once_with(bucket="custom-bucket")
 
     @pytest.mark.asyncio
@@ -188,7 +206,8 @@ class TestIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = []
+            iter_fn = _make_iter_batches([])
+            mock_client.iter_order_filled_batches = iter_fn
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
@@ -198,7 +217,7 @@ class TestIngestOrderFilled:
 
             await ingest_order_filled(dt="2024-11-14")
 
-            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            call_kwargs = iter_fn.calls[0]
             # 2024-11-14 00:00:00 UTC = 1731542400
             assert call_kwargs["timestamp_gte"] == 1731542400
             # 2024-11-14 23:59:59 UTC = 1731628799
@@ -221,9 +240,8 @@ class TestIncrementalIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = (
-                SAMPLE_ORDER_FILLED_EVENTS
-            )
+            iter_fn = _make_iter_batches([SAMPLE_ORDER_FILLED_EVENTS])
+            mock_client.iter_order_filled_batches = iter_fn
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
@@ -235,7 +253,7 @@ class TestIncrementalIngestOrderFilled:
                 dt="2024-11-14", since_timestamp=1700000050
             )
 
-            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            call_kwargs = iter_fn.calls[0]
             assert call_kwargs["timestamp_gte"] == 1700000050
             # end should be ~now, not day boundary
             assert call_kwargs["timestamp_lte"] != 1731628799
@@ -253,7 +271,8 @@ class TestIncrementalIngestOrderFilled:
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = []
+            iter_fn = _make_iter_batches([])
+            mock_client.iter_order_filled_batches = iter_fn
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
@@ -263,7 +282,7 @@ class TestIncrementalIngestOrderFilled:
 
             await ingest_order_filled(dt="2024-11-14")
 
-            call_kwargs = mock_client.fetch_all_order_filled_events.call_args.kwargs
+            call_kwargs = iter_fn.calls[0]
             assert call_kwargs["timestamp_gte"] == 1731542400
             assert call_kwargs["timestamp_lte"] == 1731628799
 
@@ -276,13 +295,12 @@ class TestIncrementalIngestOrderFilled:
             ) as mock_client_class,
             patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
-            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
         ):
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = (
-                SAMPLE_ORDER_FILLED_EVENTS
+            mock_client.iter_order_filled_batches = (
+                lambda **kw: _async_gen([SAMPLE_ORDER_FILLED_EVENTS])
             )
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
@@ -291,42 +309,38 @@ class TestIncrementalIngestOrderFilled:
             mock_s3.upload_manifest.return_value = "manifest.json"
             mock_s3_class.return_value.__aenter__.return_value = mock_s3
 
-            mock_manifest.return_value = {"mocked": True}
-
             await ingest_order_filled(dt="2024-11-14")
 
-            manifest_kwargs = mock_manifest.call_args.kwargs
+            manifest = mock_s3.upload_manifest.call_args[0][0]
             # Max timestamp from SAMPLE_ORDER_FILLED_EVENTS is 1700000100
-            assert manifest_kwargs["latest_timestamp"] == 1700000100
+            assert manifest.source.latest_timestamp == 1700000100
 
     @pytest.mark.asyncio
-    async def test_manifest_latest_timestamp_none_when_no_events(self) -> None:
-        """When no events are fetched, latest_timestamp should be None."""
+    async def test_no_manifest_when_no_events(self) -> None:
+        """When no events are fetched, no manifest or data should be uploaded."""
         with (
             patch(
                 "prediction_data.bronze.polymarket.goldsky.GoldskyClient"
             ) as mock_client_class,
             patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
-            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
         ):
             mock_settings.return_value.bronze_bucket = "test-bucket"
 
             mock_client = AsyncMock()
-            mock_client.fetch_all_order_filled_events.return_value = []
+            mock_client.iter_order_filled_batches = (
+                lambda **kw: _async_gen([])
+            )
             mock_client_class.return_value.__aenter__.return_value = mock_client
 
             mock_s3 = AsyncMock()
-            mock_s3.upload_jsonl.return_value = ("key", 0)
-            mock_s3.upload_manifest.return_value = "manifest.json"
             mock_s3_class.return_value.__aenter__.return_value = mock_s3
 
-            mock_manifest.return_value = {"mocked": True}
+            run_id = await ingest_order_filled(dt="2024-11-14")
 
-            await ingest_order_filled(dt="2024-11-14")
-
-            manifest_kwargs = mock_manifest.call_args.kwargs
-            assert manifest_kwargs["latest_timestamp"] is None
+            mock_s3.upload_jsonl.assert_not_called()
+            mock_s3.upload_manifest.assert_not_called()
+            assert isinstance(run_id, str)
 
 
 class TestParquetConversion:

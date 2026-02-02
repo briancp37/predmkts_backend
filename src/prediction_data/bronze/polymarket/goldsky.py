@@ -1,6 +1,7 @@
 """Goldsky GraphQL client for querying OrderFilledEvent data from Polymarket orderbook subgraph."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
@@ -235,3 +236,80 @@ class GoldskyClient:
         )
 
         return all_events
+
+    async def iter_order_filled_batches(
+        self,
+        *,
+        timestamp_gte: int,
+        timestamp_lte: int,
+        batch_size: int = 100_000,
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Yield batches of OrderFilledEvents, flushing every ``batch_size`` records.
+
+        Same pagination logic as :meth:`fetch_all_order_filled_events` but
+        yields batches instead of accumulating everything in memory.
+
+        Args:
+            timestamp_gte: Lower bound Unix timestamp (inclusive).
+            timestamp_lte: Upper bound Unix timestamp (inclusive).
+            batch_size: Number of records per yielded batch.
+
+        Yields:
+            Lists of OrderFilledEvent records, each up to ``batch_size`` long.
+        """
+        buffer: list[dict[str, Any]] = []
+        cursor = ""
+        page_count = 0
+        total_fetched = 0
+
+        self._logger.info(
+            "Starting Goldsky order filled batched fetch",
+            timestamp_gte=timestamp_gte,
+            timestamp_lte=timestamp_lte,
+            batch_size=batch_size,
+        )
+
+        while True:
+            events = await self.fetch_order_filled_page(
+                timestamp_gte=timestamp_gte,
+                timestamp_lte=timestamp_lte,
+                cursor=cursor,
+            )
+
+            if not events:
+                break
+
+            buffer.extend(events)
+            page_count += 1
+            total_fetched += len(events)
+            cursor = events[-1]["id"]
+
+            self._logger.info(
+                "Goldsky order filled pagination progress",
+                page=page_count,
+                page_count=len(events),
+                total_fetched=total_fetched,
+                buffer_size=len(buffer),
+            )
+
+            # Flush buffer when it reaches batch_size
+            while len(buffer) >= batch_size:
+                yield buffer[:batch_size]
+                buffer = buffer[batch_size:]
+
+            # If we got fewer than page_size, we've reached the end
+            if len(events) < self._page_size:
+                break
+
+            if self._page_delay > 0:
+                await asyncio.sleep(self._page_delay)
+
+        # Yield any remaining records
+        if buffer:
+            yield buffer
+
+        self._logger.info(
+            "Goldsky order filled batched fetch complete",
+            total_fetched=total_fetched,
+            pages=page_count,
+        )
