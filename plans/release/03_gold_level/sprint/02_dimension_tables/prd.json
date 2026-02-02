@@ -46,7 +46,7 @@
             "Write to S3 Gold Parquet + load into ClickHouse",
             "Write unit tests for token parsing logic"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dim_wallet",

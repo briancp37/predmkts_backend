@@ -37,6 +37,19 @@
   - 9 new unit tests in tests/gold/test_dimensions.py (schema, transform, canonical mapping, nulls, dry-run, S3+CH write)
   - All 779 tests pass, mypy clean
 
+- [2026-02-02] dim_outcome: Outcome dimension derived from markets token data
+  - Created ClickHouse DDL: docker/clickhouse/init/004_dim_outcome.sql (ReplacingMergeTree(version), ORDER BY (platform, market_id, outcome_id))
+  - Schema: platform, market_id, outcome_id, token_id, side, outcome_label
+  - Added parse_tokens() utility: parses JSON tokens string, handles None/empty/invalid JSON gracefully
+  - Added _silver_to_dim_outcome() transform: reads Silver markets, explodes tokens into one row per outcome
+  - Side assignment: token1 for index 0, token2 for index 1 (positional)
+  - outcome_id: deterministic composite key "{market_id}_{index}"
+  - Added load_dim_outcome() loader: reads Silver → transforms → writes S3 Gold Parquet + ClickHouse
+  - Supports --dry-run, optional S3 bucket, injectable catalog for testing
+  - Registered dim_outcome in CLI: `prediction-data gold load-dims --table dim_outcome`
+  - 16 new unit tests (6 parse_tokens, 7 transform, 3 loader) in tests/gold/test_dimensions.py
+  - All 795 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -47,7 +60,7 @@
 - The default YAML path resolves relative to canonical.py's location (3 parents up = repo root).
   This works for installed and editable installs but would need adjustment if the package
   were distributed as a standalone wheel without the mappings/ directory.
-- Next priority: dim_outcome (parse tokens field from Silver markets into separate outcome rows).
+- Next priority: dim_wallet (scan Silver trades for distinct wallet addresses).
 - The load-dims CLI is extensible: LOADABLE_DIMS tuple in gold.py controls which tables are available.
   Add new loaders to dimensions.py and register them in the CLI dispatch.
 - dim_market uses CanonicalResolver — ensure mappings/market_links.yaml is populated before

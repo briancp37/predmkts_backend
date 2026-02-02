@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -213,4 +214,123 @@ def load_dim_market(
     )
 
     logger.info("loaded_dim_market", rows=num_rows, day=day)
+    return num_rows
+
+
+# ---------------------------------------------------------------------------
+# dim_outcome
+# ---------------------------------------------------------------------------
+
+DIM_OUTCOME_SCHEMA = pa.schema(
+    [
+        pa.field("platform", pa.string()),
+        pa.field("market_id", pa.string()),
+        pa.field("outcome_id", pa.string()),
+        pa.field("token_id", pa.string()),
+        pa.field("side", pa.string()),
+        pa.field("outcome_label", pa.string()),
+    ]
+)
+
+DIM_OUTCOME_COLUMNS = [f.name for f in DIM_OUTCOME_SCHEMA]
+
+
+def parse_tokens(tokens_json: str | None) -> list[dict[str, str]]:
+    """Parse a JSON tokens string into a list of token dicts.
+
+    Each token dict is expected to have ``token_id`` and ``outcome`` keys.
+    Returns an empty list on *None*, empty string, or invalid JSON.
+    """
+    if not tokens_json:
+        return []
+    try:
+        parsed = json.loads(tokens_json)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if isinstance(parsed, list):
+        return [t for t in parsed if isinstance(t, dict)]
+    return []
+
+
+def _silver_to_dim_outcome(
+    arrow: pa.Table,
+    platform: str,
+) -> pa.Table:
+    """Transform Silver markets Arrow table into dim_outcome rows.
+
+    Each market with N tokens produces N outcome rows.  The *side* field is
+    ``token1`` for index 0, ``token2`` for index 1, etc.
+    """
+    records = arrow.to_pylist()
+
+    rows: dict[str, list[Any]] = {col: [] for col in DIM_OUTCOME_COLUMNS}
+
+    for rec in records:
+        market_id = str(rec.get("platform_market_id", "") or "")
+        tokens = parse_tokens(rec.get("tokens"))
+
+        for idx, tok in enumerate(tokens):
+            token_id = str(tok.get("token_id", "") or "")
+            outcome_label = str(tok.get("outcome", "") or "")
+            # outcome_id: deterministic composite key
+            outcome_id = f"{market_id}_{idx}"
+            side = f"token{idx + 1}"
+
+            rows["platform"].append(platform)
+            rows["market_id"].append(market_id)
+            rows["outcome_id"].append(outcome_id)
+            rows["token_id"].append(token_id)
+            rows["side"].append(side)
+            rows["outcome_label"].append(outcome_label)
+
+    return pa.table(rows, schema=DIM_OUTCOME_SCHEMA)
+
+
+def load_dim_outcome(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Load the dim_outcome dimension table.
+
+    Reads Silver polymarket.markets, parses the tokens field, and writes
+    one row per outcome to S3 Gold Parquet + ClickHouse.
+
+    Returns:
+        Number of rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    silver_arrow = _read_silver_markets("polymarket", catalog=catalog)
+    dim_table = _silver_to_dim_outcome(silver_arrow, "polymarket")
+
+    num_rows: int = dim_table.num_rows
+    logger.info("dim_outcome_transformed", platform="polymarket", rows=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_outcome", rows=num_rows, day=day)
+        return num_rows
+
+    # Write to S3 if bucket configured.
+    if gold_bucket:
+        write_gold_parquet(
+            dim_table,
+            gold_bucket,
+            "dim_outcome",
+            day,
+            s3_client=s3_client,
+        )
+
+    # Insert into ClickHouse.
+    ch = clickhouse_client or get_client()
+    ch.insert(
+        "dim_outcome",
+        data=dim_table.to_pylist(),
+        column_names=DIM_OUTCOME_COLUMNS,
+    )
+
+    logger.info("loaded_dim_outcome", rows=num_rows, day=day)
     return num_rows

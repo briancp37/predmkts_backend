@@ -13,7 +13,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-LOADABLE_DIMS = ("dim_platform", "dim_market")
+LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome")
 
 
 @app.command(name="status")
@@ -32,7 +32,11 @@ def load_dims(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
 ) -> None:
     """Load Gold dimension tables into S3 and ClickHouse."""
-    from prediction_data.gold.dimensions import load_dim_market, load_dim_platform
+    from prediction_data.gold.dimensions import (
+        load_dim_market,
+        load_dim_outcome,
+        load_dim_platform,
+    )
 
     settings = get_settings()
     tables_to_load = [table] if table else list(LOADABLE_DIMS)
@@ -55,3 +59,9 @@ def load_dims(
                 dry_run=dry_run,
             )
             typer.echo(f"dim_market: {rows} rows loaded.")
+        elif tbl == "dim_outcome":
+            rows = load_dim_outcome(
+                gold_bucket=settings.gold_bucket or None,
+                dry_run=dry_run,
+            )
+            typer.echo(f"dim_outcome: {rows} rows loaded.")

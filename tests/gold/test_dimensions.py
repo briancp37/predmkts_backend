@@ -11,12 +11,17 @@ from prediction_data.gold.canonical import CanonicalResolver
 from prediction_data.gold.dimensions import (
     DIM_MARKET_COLUMNS,
     DIM_MARKET_SCHEMA,
+    DIM_OUTCOME_COLUMNS,
+    DIM_OUTCOME_SCHEMA,
     DIM_PLATFORM_SCHEMA,
     PLATFORMS,
     _platforms_to_arrow,
     _silver_to_dim_market,
+    _silver_to_dim_outcome,
     load_dim_market,
+    load_dim_outcome,
     load_dim_platform,
+    parse_tokens,
 )
 
 
@@ -246,6 +251,192 @@ class TestLoadDimMarket:
             "prediction_data.gold.dimensions.write_gold_parquet"
         ) as mock_write:
             load_dim_market(
+                gold_bucket=None,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        mock_write.assert_not_called()
+        mock_ch.insert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# dim_outcome tests
+# ---------------------------------------------------------------------------
+
+
+def _fake_silver_markets_with_tokens() -> pa.Table:
+    """Silver markets with realistic token_id/outcome token data."""
+    return pa.table(
+        {
+            "event_ts": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+            "platform_market_id": ["mkt-1", "mkt-2"],
+            "question": ["Will it rain?", "Will it snow?"],
+            "description": ["Rain market", "Snow market"],
+            "market_slug": ["will-it-rain", "will-it-snow"],
+            "status": ["active", "closed"],
+            "outcome": ["", ""],
+            "tokens": [
+                '[{"token_id":"tok-1a","outcome":"Yes"},{"token_id":"tok-1b","outcome":"No"}]',
+                '[{"token_id":"tok-2a","outcome":"Yes"},{"token_id":"tok-2b","outcome":"No"}]',
+            ],
+            "event_id": ["evt-1", "evt-2"],
+            "updated_at": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+            "bronze_run_id": ["run1", "run2"],
+            "silver_ingestion_ts": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+        }
+    )
+
+
+class TestParseTokens:
+    def test_valid_json(self) -> None:
+        result = parse_tokens('[{"token_id":"a","outcome":"Yes"}]')
+        assert len(result) == 1
+        assert result[0]["token_id"] == "a"
+
+    def test_none(self) -> None:
+        assert parse_tokens(None) == []
+
+    def test_empty_string(self) -> None:
+        assert parse_tokens("") == []
+
+    def test_invalid_json(self) -> None:
+        assert parse_tokens("not json") == []
+
+    def test_non_list_json(self) -> None:
+        assert parse_tokens('{"token_id":"a"}') == []
+
+    def test_filters_non_dict_items(self) -> None:
+        result = parse_tokens('[{"token_id":"a"}, "bad", 123]')
+        assert len(result) == 1
+
+
+class TestSilverToDimOutcome:
+    def test_schema_matches(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        assert result.schema.equals(DIM_OUTCOME_SCHEMA)
+
+    def test_two_markets_produce_four_outcomes(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        assert result.num_rows == 4
+
+    def test_side_assignment(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        sides = result.column("side").to_pylist()
+        assert sides == ["token1", "token2", "token1", "token2"]
+
+    def test_outcome_id_format(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        ids = result.column("outcome_id").to_pylist()
+        assert ids == ["mkt-1_0", "mkt-1_1", "mkt-2_0", "mkt-2_1"]
+
+    def test_token_ids(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        token_ids = result.column("token_id").to_pylist()
+        assert token_ids == ["tok-1a", "tok-1b", "tok-2a", "tok-2b"]
+
+    def test_outcome_labels(self) -> None:
+        result = _silver_to_dim_outcome(
+            _fake_silver_markets_with_tokens(), "polymarket"
+        )
+        labels = result.column("outcome_label").to_pylist()
+        assert labels == ["Yes", "No", "Yes", "No"]
+
+    def test_market_with_no_tokens_skipped(self) -> None:
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_market_id": ["mkt-x"],
+                "question": ["Q"],
+                "description": ["D"],
+                "market_slug": ["q"],
+                "status": ["active"],
+                "outcome": [""],
+                "tokens": [None],
+                "event_id": ["evt-x"],
+                "updated_at": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+                "bronze_run_id": ["run1"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_to_dim_outcome(arrow, "polymarket")
+        assert result.num_rows == 0
+
+
+class TestLoadDimOutcome:
+    def test_dry_run_returns_count(self) -> None:
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = (
+            _fake_silver_markets_with_tokens()
+        )
+
+        rows = load_dim_outcome(catalog=mock_catalog, dry_run=True)
+        assert rows == 4
+
+    def test_writes_to_s3_and_clickhouse(self, mock_s3_gold: MagicMock) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = (
+            _fake_silver_markets_with_tokens()
+        )
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            rows = load_dim_outcome(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        assert rows == 4
+        mock_write.assert_called_once()
+        mock_ch.insert.assert_called_once()
+
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_outcome"
+        assert len(call_args[1]["data"]) == 4
+
+    def test_skips_s3_when_no_bucket(self) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = (
+            _fake_silver_markets_with_tokens()
+        )
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            load_dim_outcome(
                 gold_bucket=None,
                 clickhouse_client=mock_ch,
                 catalog=mock_catalog,
