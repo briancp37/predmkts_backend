@@ -226,8 +226,9 @@ class TestNoSilverGoldAssumptions:
             code_only = "\n".join(lines)
             assert "silver" not in code_only.lower(), f"Found 'silver' reference in {py_file}"
 
-    def test_no_gold_references_in_source(self) -> None:
-        for py_file in SRC_DIR.rglob("*.py"):
+    def test_no_gold_references_in_bronze_source(self) -> None:
+        """Bronze layer should not contain gold tier references."""
+        for py_file in (SRC_DIR / "bronze").rglob("*.py"):
             content = py_file.read_text()
             lines = [
                 line

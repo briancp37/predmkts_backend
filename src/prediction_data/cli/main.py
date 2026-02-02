@@ -12,6 +12,7 @@ load_dotenv()
 import typer
 
 from prediction_data import __version__
+from prediction_data.cli.gold import app as gold_app
 from prediction_data.cli.silver import app as silver_app
 from prediction_data.cli.status import app as status_app
 
@@ -26,6 +27,9 @@ app.add_typer(status_app, name="status")
 
 # Silver command group
 app.add_typer(silver_app, name="silver")
+
+# Gold command group
+app.add_typer(gold_app, name="gold")
 
 # Ingest command group placeholder
 ingest_app = typer.Typer(

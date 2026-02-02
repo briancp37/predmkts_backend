@@ -1,0 +1,64 @@
+[
+    {
+        "category": "docker_setup",
+        "description": "Docker-compose configuration for local ClickHouse development environment",
+        "steps": [
+            "Create docker-compose.yml with ClickHouse server (latest LTS image) and persistent volume",
+            "Add health check and port mapping (8123 HTTP, 9000 native)",
+            "Create initialization SQL script for database creation (prediction_gold)",
+            "Add docker-compose instructions to project README or CLAUDE.md",
+            "Verify ClickHouse starts cleanly and accepts queries via clickhouse-client"
+        ],
+        "passes": false
+    },
+    {
+        "category": "python_client",
+        "description": "Python ClickHouse client library integration and connection factory",
+        "steps": [
+            "Add clickhouse-connect (or clickhouse-driver) to pyproject.toml dependencies",
+            "Create src/prediction_data/gold/clickhouse.py with connection factory",
+            "Support connection via environment variables (CLICKHOUSE_HOST, CLICKHOUSE_PORT, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, CLICKHOUSE_DATABASE)",
+            "Add connection health check method (ping / SELECT 1)",
+            "Add config entries to src/prediction_data/core/config.py for ClickHouse settings",
+            "Write unit tests for connection factory with mocked client"
+        ],
+        "passes": false
+    },
+    {
+        "category": "gold_s3_writer",
+        "description": "S3 Gold Parquet writer utility for canonical Gold table output",
+        "steps": [
+            "Create src/prediction_data/gold/s3_writer.py with Parquet write function using PyArrow",
+            "Implement S3 Gold path convention: gold/<table_name>/day=YYYY-MM-DD/part-NNN.parquet",
+            "Support ZSTD compression for Parquet output",
+            "Add GOLD_BUCKET environment variable to config",
+            "Add idempotent partition overwrite (delete existing partition files before writing)",
+            "Write unit tests with mocked S3"
+        ],
+        "passes": false
+    },
+    {
+        "category": "gold_module_structure",
+        "description": "Create the Gold module structure and shared utilities",
+        "steps": [
+            "Create src/prediction_data/gold/__init__.py",
+            "Create src/prediction_data/gold/config.py for Gold-specific configuration constants (TTL defaults, lookback windows)",
+            "Create src/prediction_data/gold/ch_loader.py stub for ClickHouse loading pattern (Parquet → CH insert)",
+            "Add Gold CLI group stub in src/prediction_data/cli/gold.py registered with main CLI",
+            "Verify `prediction-data gold --help` shows the new command group"
+        ],
+        "passes": true
+    },
+    {
+        "category": "testing",
+        "description": "Testing infrastructure for Gold layer",
+        "steps": [
+            "Create tests/gold/ directory with conftest.py",
+            "Add pytest fixture for ClickHouse connection (uses Docker or mock)",
+            "Add pytest fixture for temporary S3 Gold bucket (localstack or mock)",
+            "Add integration test marker for tests requiring Docker ClickHouse",
+            "Verify test suite runs cleanly with `pytest -m 'not integration'`"
+        ],
+        "passes": false
+    }
+]

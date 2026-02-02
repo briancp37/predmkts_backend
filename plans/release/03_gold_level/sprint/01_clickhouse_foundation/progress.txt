@@ -1,0 +1,26 @@
+# Sprint Progress: ClickHouse Foundation
+# Release: 03_gold_level
+# Created: 2026-02-02
+
+## Status: In Progress
+
+## Completed Tasks
+
+### gold_module_structure (2026-02-02)
+- Created `src/prediction_data/gold/__init__.py`
+- Created `src/prediction_data/gold/config.py` with TTL defaults, lookback window, and S3 path template
+- Created `src/prediction_data/gold/ch_loader.py` stub (NotImplementedError until clickhouse-connect is added)
+- Created `src/prediction_data/cli/gold.py` with Typer app and placeholder `status` command
+- Registered gold CLI group in `src/prediction_data/cli/main.py` — `prediction-data gold --help` works
+- Updated `tests/test_exit_criteria.py`: narrowed the "no gold references" test to bronze-only scope (was blocking gold module creation)
+- All 744 tests pass, mypy clean, ruff clean
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- The ch_loader.py stub raises NotImplementedError — it needs the clickhouse-connect dependency from the python_client category
+- The exit criteria test was scoped to all of src/ but needed to be narrowed to bronze/ now that gold module exists
