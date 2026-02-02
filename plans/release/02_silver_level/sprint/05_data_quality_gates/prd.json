@@ -9,7 +9,7 @@
             "Configure failure behavior: abort Silver job, no partial commits",
             "Add quality check failure exception type"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "checks",
