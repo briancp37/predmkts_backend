@@ -55,7 +55,7 @@ Release 1 is complete when:
 
 **Catalog vs date-scoped entities:**
 - **Date-scoped** (trades): Fetched per-day using timestamp filters. Backfill iterates over each day in the range.
-- **Catalog** (Polymarket markets/events): Full fetch of every record via the Gamma API. Not date-filtered — the API returns the entire catalog (~360k markets, ~176k events). Backfill runs a single fetch partitioned by today's date. Incremental updates (future) will use timestamp-based filtering.
+- **Catalog** (Polymarket markets/events): Supports two modes. **Full snapshot**: fetches every record via the Gamma API (~360k markets, ~176k events), stored with `snapshot_type: "snapshot"`. **Incremental delta**: fetches only records updated since the last run by paginating with `order=updatedAt&ascending=false` and stopping at the previous cursor, stored with `snapshot_type: "delta"`. Catchup uses incremental mode by default; `--full` forces a full snapshot.
 
 > Explicitly out of scope in R1: order books, transfers, canonicalization.
 
@@ -118,14 +118,19 @@ This ensures:
 - deterministic reprocessing
 - complete forensic history
 
-### 5.3 Incremental ingestion (order_filled)
+### 5.3 Incremental ingestion
 
-The `order_filled` entity supports **incremental ingestion**: each run fetches only records newer than the last known timestamp, rather than re-fetching the entire day. This avoids massive data duplication when running on a frequent schedule (e.g., every 5 minutes).
+Two entity types support **incremental ingestion**:
 
-- The latest timestamp is discovered by reading the most recent manifest's `source.latest_timestamp` field (or falling back to scanning the data file).
+**order_filled (timestamp-based):** Each run fetches only records newer than the last known timestamp via `timestamp_gte` on the Goldsky subgraph. Avoids massive data duplication when running on a frequent schedule.
+
+**Catalog entities — markets & events (updatedAt-based):** Each run fetches only records that changed since the last run by paginating with `order=updatedAt&ascending=false` and stopping when a record's `updatedAt` is older than the previous cursor. Delta partitions are tagged with `snapshot_type: "delta"` in the manifest; full snapshots use `snapshot_type: "snapshot"`. Existing manifests without `snapshot_type` default to `"snapshot"` for backwards compatibility.
+
+Common mechanics:
+- The latest cursor is discovered by reading the most recent manifest's `source.latest_timestamp` field (or falling back to scanning the data file for order_filled).
 - Discovery uses S3 delimiter listing (`list_prefixes`) for fast partition enumeration — no full key scan required.
 - New records are appended as a new `run_id` directory (Bronze append-only contract preserved).
-- The `backfill catchup` command uses this incremental path for `order_filled` and standard full-day backfill for other entities.
+- The `backfill catchup` command uses incremental mode for both `order_filled` and catalog entities by default. Use `--full` to force a full snapshot for catalog entities.
 - The `status coverage` command only checks date-scoped bronze entities (kalshi/trades, polymarket/order_filled). Catalog entities (markets, events) and polymarket/trades (not in bronze) are excluded.
 - The `status latest` command provides a fast check of the most recent date partition per entity using S3 delimiter listing.
 
@@ -150,7 +155,9 @@ Each ingestion run **must** write a manifest.
   "source": {
     "api_base_url": "string",
     "pagination": "string | null",
-    "cursor": "string | null"
+    "cursor": "string | null",
+    "latest_timestamp": "integer | null",
+    "snapshot_type": "snapshot | delta (default: snapshot)"
   }
 }
 ````

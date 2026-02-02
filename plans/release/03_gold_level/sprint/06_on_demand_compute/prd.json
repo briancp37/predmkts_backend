@@ -1,0 +1,49 @@
+[
+    {
+        "category": "snapshot_reconstruction",
+        "description": "Reconstruct historical position snapshots from ledger and marks",
+        "steps": [
+            "Create src/prediction_data/gold/on_demand.py with compute_wallet_snapshots() function",
+            "Accept inputs: wallet address, start_date, end_date",
+            "Check which day partitions already exist in S3 Gold for wallet_position_snapshot_daily",
+            "For missing partitions, reconstruct from wallet_position_ledger: replay fills chronologically to rebuild position state at each day boundary",
+            "Join reconstructed positions with market_mark_daily to compute mark_price, position_value_usd, unrealized_pnl_usd",
+            "Handle edge cases: no trades in range (carry forward last known position), market with no mark (skip or use last available)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "caching",
+        "description": "Cache computed snapshots to S3 Gold and optionally ClickHouse",
+        "steps": [
+            "Always write computed missing partitions to S3 Gold (wallet_position_snapshot_daily)",
+            "If partition date is within last 90 days, also load into ClickHouse",
+            "Use idempotent partition overwrite for S3 writes",
+            "Log summary: partitions computed, partitions cached, rows written"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli",
+        "description": "CLI command for on-demand snapshot computation",
+        "steps": [
+            "Implement `prediction-data gold compute-snapshot --wallet ADDR --start-date YYYY-MM-DD --end-date YYYY-MM-DD`",
+            "Add --dry-run flag (report what would be computed without writing)",
+            "Add --skip-ch flag (write to S3 only, skip ClickHouse loading)",
+            "Chunk large date ranges into manageable batches (e.g., 30-day chunks)",
+            "Print progress: 'Computing snapshots for wallet 0xABC... day 15/365'"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Testing for on-demand compute",
+        "steps": [
+            "Write unit test: wallet with known trade history → verify reconstructed snapshots match expected daily positions",
+            "Write unit test: partial existing snapshots → only missing days computed",
+            "Write unit test: wallet with no trades in requested range → carry forward last position",
+            "Write integration test: end-to-end CLI invocation with mock Silver data"
+        ],
+        "passes": false
+    }
+]

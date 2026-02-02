@@ -1,0 +1,69 @@
+[
+    {
+        "category": "integration_tests",
+        "description": "End-to-end integration tests for the full Gold pipeline",
+        "steps": [
+            "Write integration test: Silver trades → process-trades → ledger + position_state → verify correctness",
+            "Write integration test: Silver trades → compute-marks → market_mark_daily S3 + CH → verify values",
+            "Write integration test: full daily-run → all Gold tables populated → query CH and verify",
+            "Write integration test: ch-load with lookback → only recent partitions in CH",
+            "Write integration test: on-demand compute-snapshot → S3 cached + CH loaded"
+        ],
+        "passes": false
+    },
+    {
+        "category": "pnl_reconciliation",
+        "description": "PnL accuracy tests with known trade sequences",
+        "steps": [
+            "Create test fixture: synthetic trade sequence with hand-calculated expected PnL at each step",
+            "Test case 1: simple buy-sell cycle (buy 100 @ $0.50, sell 100 @ $0.70 → realized PnL = $20)",
+            "Test case 2: multiple buys at different prices, partial sell (average cost basis verification)",
+            "Test case 3: position flip (long to short via oversized sell)",
+            "Test case 4: concurrent positions in multiple markets for same wallet",
+            "Verify wallet_pnl_daily totals match sum of per-fill realized PnL from ledger"
+        ],
+        "passes": false
+    },
+    {
+        "category": "data_quality_validation",
+        "description": "Validate data quality across all Gold tables",
+        "steps": [
+            "Verify no null primary keys in any Gold table",
+            "Verify wallet_position_state has no rows with qty = 0",
+            "Verify wallet_pnl_daily has no rows with trades_count = 0",
+            "Verify market_mark_daily prices are within reasonable bounds (0 < price < 1 for prediction markets)",
+            "Verify all S3 Gold Parquet files are readable and schema-conformant"
+        ],
+        "passes": false
+    },
+    {
+        "category": "documentation",
+        "description": "Documentation and runbooks for Gold operations",
+        "steps": [
+            "Update CLAUDE.md with Gold CLI reference and environment variables",
+            "Document Gold S3 path conventions and ClickHouse table schemas",
+            "Create Gold operations runbook: daily processing, backfills, rebuilds, troubleshooting",
+            "Document the position accounting methodology (average cost basis, per-fill PnL)",
+            "Document freshness SLAs and alerting state definitions"
+        ],
+        "passes": false
+    },
+    {
+        "category": "exit_criteria",
+        "description": "Verify all RELEASE.md exit criteria are met",
+        "steps": [
+            "Verify exit criterion 1: ClickHouse running (Docker dev)",
+            "Verify exit criterion 2: Dimension tables populated",
+            "Verify exit criterion 3: Canonical ID mapping implemented",
+            "Verify exit criterion 4: Position accounting processes both sides",
+            "Verify exit criteria 5-6: wallet_position_state and wallet_position_ledger working",
+            "Verify exit criteria 7-8: market_mark_daily and wallet_pnl_daily working",
+            "Verify exit criterion 9: Watchlist tables computed",
+            "Verify exit criterion 10: On-demand CLI works",
+            "Verify exit criteria 11-12: Ops metadata and freshness SLAs",
+            "Verify exit criteria 13-14: Gold CLI and scheduling",
+            "Verify exit criterion 15: No API/frontend code in Gold"
+        ],
+        "passes": false
+    }
+]

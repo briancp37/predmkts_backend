@@ -1,14 +1,9 @@
-Below is a **full, production-grade `RELEASE_3.md`** at the same level of detail as Releases 1 and 2, followed by a **clear answer** to whether this is the final release or if another one should exist.
-
----
-
-````md
 # RELEASE_3.md
-## Release 3 — Gold Serving Layer (ClickHouse) Fully Working  
-### Silver → Gold Analytics, APIs, Rollups, SLAs
+## Release 3 — Gold Serving Layer (S3 + ClickHouse)
+### Silver → Gold Analytics, Position Accounting, Serving
 
-**Scope:** Everything required to go from **trusted Silver (Iceberg)** to a **production-ready Gold layer** in **ClickHouse** that supports APIs, analytics, dashboards, and downstream products.  
-**Non-Goals:** End-user UI, trading strategies, ML models, alerting products (those are Release 4+).
+**Scope:** Everything required to go from **trusted Silver (Iceberg)** to a **production-ready Gold layer** with canonical derived tables in S3 (Parquet) and a hot serving store in ClickHouse for fast queries.
+**Non-Goals:** End-user UI, trading strategies, ML models, alerting products, API endpoints (those are Release 4+).
 
 ---
 
@@ -16,14 +11,16 @@ Below is a **full, production-grade `RELEASE_3.md`** at the same level of detail
 
 Release 3 establishes **Gold as the serving and analytics layer**:
 
-- Fast, query-optimized ClickHouse tables
-- Clear separation between **facts**, **dimensions**, and **rollups**
-- Deterministic, rebuildable aggregates
-- Stable schemas suitable for APIs and frontends
-- Operational observability and SLAs
+- Dual-storage architecture: **S3 Gold (Parquet)** as canonical store, **ClickHouse** as hot serving layer
+- Position accounting with average cost basis and per-fill realized PnL
+- Daily market marks, wallet metrics, and leaderboards
+- On-demand historical snapshot computation via CLI
+- Watchlist-driven selective computation for expensive per-wallet tables
+- Operational metadata, freshness SLAs, and alerting states
+- Lightweight scheduling via EventBridge/cron triggering CLI commands
 
 At the end of Release 3:
-> Gold is the only layer most applications ever need to touch.
+> Gold provides fast, query-optimized data for any downstream API or frontend, with S3 as the canonical store and ClickHouse as a TTL-managed hot mirror.
 
 ---
 
@@ -31,357 +28,373 @@ At the end of Release 3:
 
 Release 3 is complete when:
 
-1. ✅ ClickHouse cluster is deployed and reachable
-2. ✅ Dimension tables are populated from Silver
-3. ✅ Fact tables are populated from Silver
-4. ✅ Time-based rollups are computed and correct
-5. ✅ Rebuilds from Silver are deterministic and documented
-6. ✅ Query latency meets target SLAs
-7. ✅ Operational metadata is queryable in ClickHouse
-8. ✅ API consumers can rely on Gold without custom joins
+1. ✅ ClickHouse is running (Docker local dev, prod hosting TBD)
+2. ✅ Dimension tables are populated from Silver (dim_market, dim_outcome, dim_platform, dim_wallet)
+3. ✅ Canonical ID mapping is implemented (market_links.yaml + resolution logic)
+4. ✅ Position accounting engine processes both maker + taker sides per fill
+5. ✅ `wallet_position_state` reflects current open positions in ClickHouse
+6. ✅ `wallet_position_ledger` records per-fill audit trail with realized PnL in S3 Gold
+7. ✅ `market_mark_daily` computes daily marks, volume, and liquidity metrics
+8. ✅ `wallet_pnl_daily` aggregates realized PnL (sparse, trade-days only)
+9. ✅ Watchlist-only tables computed for tracked wallets (mtm_daily, position_snapshot_daily)
+10. ✅ On-demand CLI computes and caches historical snapshots to S3 Gold
+11. ✅ Ops metadata tables track pipeline runs, partitions, freshness, and quality
+12. ✅ Freshness SLAs are defined and alerting states implemented
+13. ✅ Gold CLI commands support load, rollup, rebuild with dry-run
+14. ✅ EventBridge/cron schedules defined for automated Gold processing
+15. ✅ No API/frontend logic leaks into Gold code
 
 ---
 
 ## 3) Inputs & Outputs
 
-### Inputs
-- Silver Iceberg tables (Release 2)
-- Canonical schemas (where applicable)
+### Inputs (from Release 2)
+- Silver Iceberg tables (Polymarket trades, markets, events)
+- Silver schemas and deduplication guarantees
 
-### Outputs
-- ClickHouse **dimension tables**
-- ClickHouse **fact tables**
-- ClickHouse **rollup tables / materialized views**
-- API-ready datasets
-
----
-
-## 4) Gold Table Taxonomy (Critical)
-
-Gold tables are split into **three explicit categories**.
-
-### 4.1 Dimensions (mostly mutable, low volume)
-- `dim_platform`
-- `dim_market`
-- `dim_outcome`
-- `dim_wallet`
-- `dim_category` (optional)
-
-Characteristics:
-- Slowly changing
-- Use `ReplacingMergeTree(version)`
-- Queried constantly by APIs
+### Outputs (Release 3)
+- S3 Gold Parquet files (canonical derived tables)
+- ClickHouse hot serving tables (TTL-managed subsets)
+- Ops metadata and freshness tracking
 
 ---
 
-### 4.2 Facts (append-heavy, immutable-ish)
-- `fact_trades`
-- `fact_order_fills` (if available)
-- `fact_market_updates`
+## 4) Architecture
 
-Characteristics:
-- High volume
-- Append-only
-- Never updated in place
-- Use `MergeTree`
+```
+Silver (Iceberg/S3) = source of truth
+        ↓
+Gold compute (Python CLI jobs)
+        ↓
+S3 Gold (Parquet) = canonical derived tables
+        ↓
+ClickHouse = hot serving store (TTL-managed subset)
+```
 
----
+### 4.1 S3 Gold Path Convention
+```
+s3://<GOLD_BUCKET>/gold/<table_name>/day=YYYY-MM-DD/part-*.parquet
+```
 
-### 4.3 Rollups / Aggregates
-- `market_stats_hourly`
-- `market_price_timeseries_minute`
-- `wallet_positions_daily`
-- `wallet_pnl_daily`
-- `leaderboard_daily`
-- `smart_scores_daily`
-- `flow_metrics_hourly`
+### 4.2 ClickHouse Hosting
+- **Development**: Docker-compose with local ClickHouse
+- **Production**: TBD (ClickHouse Cloud Basic or cheap VPS, ~$20/month budget target)
+- Code is connection-string agnostic — same logic works against local or remote
 
-Characteristics:
-- Derived
-- Rebuildable
-- Query-optimized
-- Deterministic
+### 4.3 Orchestration
+- **Lightweight scheduler**: EventBridge/cron triggers CLI commands
+- No Dagster in R3. CLI-based execution identical to Bronze/Silver patterns.
 
 ---
 
-## 5) ClickHouse Engine Choices (Non-Negotiable)
+## 5) Gold Data Products
 
-### 5.1 Dimensions
+### 5.1 Global — Computed for All Data
+
+#### A) `market_mark_daily`
+Daily canonical mark prices + market activity metrics.
+
+| Property | Value |
+|---|---|
+| **Canonical store** | S3 Gold (Parquet) |
+| **Hot mirror** | ClickHouse, last 90 days |
+| **Key** | `(day_utc, platform, market_id, outcome_id)` |
+
+Fields:
+- `day_utc` (date, midnight UTC)
+- `platform` (polymarket / kalshi)
+- `market_id`, `outcome_id`
+- `mark_price`
+- `volume_usd_24h`
+- `liquidity_metric` (open_interest_usd if feasible, else proxy)
+- Optional: `trades_count_24h`, `last_trade_price`, `active_wallets_24h`
+
+S3 path: `s3://.../gold/market_mark_daily/day=YYYY-MM-DD/part-*.parquet`
+
+#### B) `wallet_pnl_daily`
+Realized PnL only, sparse (rows only when trades_count > 0 that day).
+
+| Property | Value |
+|---|---|
+| **Canonical store** | S3 Gold (Parquet) |
+| **Serving** | ClickHouse, TTL 90 days |
+| **Key** | `(day_utc, wallet)` |
+
+Fields:
+- `realized_pnl_usd`
+- `fees_usd`
+- `volume_usd`
+- `trades_count`
+- Optional: `wins`, `losses`
+
+S3 path: `s3://.../gold/wallet_pnl_daily/day=YYYY-MM-DD/part-*.parquet`
+
+---
+
+### 5.2 Current State — Everyone
+
+#### `wallet_position_state`
+Current open positions only. Rows drop when qty = 0.
+
+| Property | Value |
+|---|---|
+| **Canonical serving** | ClickHouse only (current-state) |
+| **History** | NOT stored here |
+| **Key** | `(wallet, platform, market_id, outcome_id)` |
+
+Fields:
+- `qty` (net shares)
+- `avg_cost`
+- `cost_basis_usd`
+- `last_fill_ts`
+- Optional: `first_open_ts`, `fees_lifetime`
+
+---
+
+### 5.3 Watchlist-Only — Selective Computation
+
+Computed only for wallets in the `gold_watchlist` ClickHouse table.
+
+#### A) `wallet_mtm_daily`
+Portfolio equity/exposure/unrealized charts for watchlist wallets.
+
+| Property | Value |
+|---|---|
+| **Canonical store** | S3 Gold (Parquet) |
+| **Serving** | ClickHouse, TTL 90 days |
+| **Key** | `(day_utc, wallet)` |
+
+Fields:
+- `equity_usd` (sum position value)
+- `unrealized_pnl_usd`
+- `exposure_gross_usd`
+- `exposure_net_usd`
+
+S3 path: `s3://.../gold/wallet_mtm_daily/day=YYYY-MM-DD/part-*.parquet`
+
+#### B) `wallet_position_snapshot_daily`
+Chart-ready per-position history for watchlist wallets.
+
+| Property | Value |
+|---|---|
+| **Canonical store** | S3 Gold (Parquet) |
+| **Serving** | ClickHouse, TTL 90 days |
+| **On-demand** | If missing partitions requested, compute and persist |
+| **Key** | `(day_utc, wallet, platform, market_id, outcome_id)` |
+
+Fields:
+- `qty`, `avg_cost`, `mark_price`
+- `position_value_usd`, `unrealized_pnl_usd`
+
+S3 path: `s3://.../gold/wallet_position_snapshot_daily/day=YYYY-MM-DD/part-*.parquet`
+
+#### C) `wallet_position_ledger`
+Per-fill audit trail with before/after state and realized PnL per fill.
+
+| Property | Value |
+|---|---|
+| **Canonical store** | S3 Gold (Parquet) |
+| **Serving** | ClickHouse, TTL 7–30 days (optional) |
+| **Key** | `(ts, wallet, platform, market_id, outcome_id)` |
+
+Fields:
+- `ts`, `wallet`, `platform`, `market_id`, `outcome_id`
+- `side`, `qty_delta`, `price`, `fees_usd`
+- `qty_before`, `qty_after`
+- `avg_cost_before`, `avg_cost_after`
+- `realized_pnl_this_fill_usd`
+
+S3 path: `s3://.../gold/wallet_position_ledger/day=YYYY-MM-DD/part-*.parquet`
+
+---
+
+## 6) Dimension Tables
+
+### 6.1 Tables
+- `dim_platform` — static reference (polymarket, kalshi)
+- `dim_market` — from Silver markets, includes canonical_market_id
+- `dim_outcome` — derived from markets token data (token1/token2 per market)
+- `dim_wallet` — discovered from Silver trades (maker + taker addresses)
+- `dim_category` — optional, from Silver events
+
+### 6.2 Canonical ID Mapping
+- Source: `mappings/market_links.yaml` (cross-platform market mappings)
+- Resolution logic maps platform-specific IDs to `canonical_market_id`
+- Platform-native IDs remain available alongside canonical IDs
+
+### 6.3 ClickHouse Engine
 ```sql
 ENGINE = ReplacingMergeTree(version)
 ORDER BY (primary_key)
-````
-
-Rules:
-
-* Always include a `version` or `updated_at`
-* Latest record wins
-* Never delete; replace
-
----
-
-### 5.2 Facts
-
-```sql
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(event_ts)
-ORDER BY (platform, market_id, event_ts)
 ```
 
-Rules:
+---
 
-* Append-only
-* No updates
-* No deletes
-* Event-time ordering
+## 7) Position Accounting Rules
+
+### 7.1 Method
+**Average cost basis** per `(wallet, platform, market_id, outcome_id)`.
+
+### 7.2 Per-Fill Processing
+Each Silver trade (derived from order_filled) produces **2 ledger entries** — one for the maker and one for the taker:
+
+1. Determine each party's side (buy/sell) from `maker_direction` / `taker_direction`
+2. For **buys**: increase qty, update weighted average cost
+3. For **sells**: decrease qty, compute realized PnL = `qty_delta × (price - avg_cost)`
+4. Update `wallet_position_state` (insert/update if qty ≠ 0, remove if qty = 0)
+5. Emit a `wallet_position_ledger` row with before/after state + realized PnL
+6. Aggregate per-wallet into `wallet_pnl_daily` for that day_utc (realized only)
+
+### 7.3 Formulas
+- `realized_pnl = qty_sold × (sell_price - avg_cost)`
+- `unrealized_pnl = current_qty × (mark_price - avg_cost)`
+- `cost_basis_usd = current_qty × avg_cost`
+- `equity_usd = sum(position_value_usd)` across all positions
 
 ---
 
-### 5.3 Rollups
+## 8) On-Demand Compute + Caching
 
-Two allowed patterns:
+### 8.1 CLI Interface
+```bash
+# Compute missing position snapshots for a wallet
+prediction-data gold compute-snapshot --wallet 0xABC... --start-date 2024-01-01 --end-date 2024-12-31
 
-1. **Scheduled rebuild tables**
-2. **Materialized views** (only if logic is simple and stable)
+# Dry run
+prediction-data gold compute-snapshot --wallet 0xABC... --start-date 2024-01-01 --end-date 2024-12-31 --dry-run
+```
 
-Rebuildable tables are preferred for correctness.
+### 8.2 Computation Logic
+Inputs:
+- `market_mark_daily` (S3)
+- `wallet_position_snapshot_daily` (if exists), else reconstruct from:
+  - `wallet_position_ledger` (S3) and/or Silver facts
 
----
+Output caching:
+- Always write computed missing partitions to S3 Gold (`wallet_position_snapshot_daily`)
+- Optionally load into ClickHouse if within hot TTL window (last 90 days)
 
-## 6) Silver → Gold Loading Model
-
-### 6.1 Load Order
-
-1. Dimensions
-2. Facts
-3. Rollups
-
-This order is mandatory to maintain referential sanity.
-
----
-
-### 6.2 Idempotency Rules
-
-* Gold loads are **partition-scoped**
-* Re-running a load for the same time range:
-
-  * overwrites that partition (or truncates + reloads)
-* No cross-partition side effects
+### 8.3 Guardrails
+- Chunk by day range
+- Async job for very large ranges (future)
+- Idempotent partition overwrite
 
 ---
 
-### 6.3 Example Load Units
+## 9) ClickHouse Serving TTL Recommendations
 
-* Facts: `(platform, date range)`
-* Rollups: `(market_id, hour/day)`
-* Wallet metrics: `(wallet_id, day)`
-
----
-
-## 7) Canonicalization in Gold
-
-By Release 3:
-
-* Gold tables **must** expose:
-
-  * `canonical_market_id`
-  * `canonical_outcome_id`
-* Platform-specific IDs remain available
-* Cross-platform analytics rely on canonical IDs
-
-Canonical mapping sources:
-
-* `mappings/market_links.yaml`
-* Silver canonical tables (if created in R2)
+| Table | TTL |
+|---|---|
+| `wallet_pnl_daily` | 90 days |
+| `wallet_position_snapshot_daily` (watchlist) | 90 days |
+| `wallet_mtm_daily` (watchlist) | 90 days |
+| `wallet_position_ledger` (watchlist) | 7–30 days (optional) |
+| `wallet_position_state` | No TTL (current only) |
+| `market_mark_daily` | 90 days |
 
 ---
 
-## 8) Rollups & Metrics (Required)
+## 10) Ops Metadata & Freshness SLAs
 
-### 8.1 Market Metrics
+### 10.1 Metadata Tables (ClickHouse)
 
-* Volume (total, buy, sell)
-* VWAP
-* Last price
-* High/low
-* Volatility proxy
-* Liquidity proxies (if available)
+**`pipeline_runs`**
+- `run_id`, `stage` (bronze/silver/gold), `started_at`, `ended_at`, `status`
+- `input_snapshot_id`, `output_snapshot_id`, `rows_written`, `bytes_written`, `error`
 
-### 8.2 Wallet Metrics
+**`dataset_partitions`**
+- `dataset`, `partition_day_utc`, `row_count`, `max_event_ts`, `written_at`, `run_id`
 
-* Positions (net, gross)
-* Realized P&L
-* Unrealized P&L
-* Win rate
-* Turnover
-* Size buckets
+**`dataset_freshness`**
+- `dataset`, `last_success_at`, `expected_lag_seconds`, `actual_lag_seconds`
+- `state` (fresh/stale/broken), `last_run_id`
 
-### 8.3 Leaderboards
+**`data_quality_metrics`**
+- `dataset`, `partition`, `check_name`, `status`, `observed_value`, `expected`, `run_id`
 
-* By volume
-* By P&L
-* By Sharpe-like score
-* Time-windowed (7d / 30d / all-time)
+### 10.2 Freshness SLAs (Defaults)
 
----
+| Dataset | SLA |
+|---|---|
+| `market_mark_daily` | Written by 00:05 UTC daily |
+| `wallet_pnl_daily` | Written by 00:10 UTC daily |
+| `wallet_mtm_daily` (watchlist) | Written by 00:15 UTC daily |
+| `wallet_position_snapshot_daily` (watchlist) | Written by 00:15 UTC daily |
+| `wallet_position_state` | Document cadence (batch for R3) |
 
-## 9) Query SLAs (Target)
-
-| Query Type   | Target   |
-| ------------ | -------- |
-| Market stats | < 100 ms |
-| Leaderboards | < 200 ms |
-| Wallet page  | < 300 ms |
-| Time series  | < 500 ms |
-
-Gold exists to **guarantee performance**, not flexibility.
+### 10.3 Alerting States
+- **Fresh**: within SLA
+- **Stale**: > SLA and ≤ 2× SLA
+- **Broken**: > 2× SLA or last run failed
 
 ---
 
-## 10) Rebuild & Recovery Strategy
+## 11) CLI Contract (Release 3)
 
-### 10.1 When Rebuilds Are Expected
+```bash
+# Load dimensions from Silver to Gold
+prediction-data gold load-dims [--dry-run]
 
-* Bug in Silver logic
-* Canonical mapping changes
-* Metric definition changes
-* Late corrections discovered
+# Process trades into position ledger + state
+prediction-data gold process-trades --dt YYYY-MM-DD [--dry-run]
+prediction-data gold process-trades --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 
-### 10.2 Rebuild Rules
+# Compute market marks
+prediction-data gold compute-marks --dt YYYY-MM-DD [--dry-run]
 
-* Always rebuild from Silver
-* Never mutate facts in place
-* Rollups are disposable
+# Compute wallet metrics (pnl, mtm for watchlist)
+prediction-data gold compute-wallet-metrics --dt YYYY-MM-DD [--dry-run]
 
-Gold correctness is derived, not sacred.
+# On-demand snapshot computation
+prediction-data gold compute-snapshot --wallet ADDR --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 
----
+# Load data from S3 Gold into ClickHouse
+prediction-data gold ch-load --table TABLE [--lookback-days N] [--dry-run]
 
-## 11) Orchestration (Release 3)
+# Rebuild a Gold table from Silver
+prediction-data gold rebuild --table TABLE --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 
-### 11.1 Triggering Model
-
-| Stage        | Trigger                          |
-| ------------ | -------------------------------- |
-| Bronze       | EventBridge                      |
-| Silver       | Manifest-driven (Dagster sensor) |
-| Gold facts   | Silver success                   |
-| Gold rollups | Scheduled + dependency-aware     |
-
-### 11.2 Recommended Orchestrator
-
-**Dagster** is strongly recommended starting in Release 3:
-
-* Asset graph clarity
-* Partitioned backfills
-* Rebuild orchestration
-* Clear lineage (Bronze → Silver → Gold)
+# Run all daily Gold processing
+prediction-data gold daily-run [--dry-run]
+```
 
 ---
 
-## 12) Observability & Ops (Mandatory)
+## 12) Layering Note
 
-Gold must expose:
-
-* Load durations
-* Rows read / written
-* Partition coverage
-* Rollup freshness
-* Query performance (p95)
-
-Recommended tables:
-
-* `gold_load_runs`
-* `gold_rollup_runs`
-* `gold_freshness_metrics`
+All derived analytics tables (`*_daily`, `*_ledger`, snapshots) belong in **S3 Gold**, not Silver. Silver remains normalized facts and dimensions only.
 
 ---
 
-## 13) API Readiness Contract
+## 13) Explicit Non-Goals (Not Built in R3)
 
-Gold schemas must:
-
-* Be stable and documented
-* Avoid nested JSON
-* Avoid nullable surprises
-* Support pagination & filtering
-* Avoid joins across large fact tables at query time
-
-If an API needs a join, it should already exist in Gold.
-
----
-
-## 14) Explicit Non-Goals (Still Not Built)
-
-* Frontend UI
-* Alerts / notifications
-* Strategy signals
-* ML models
-* User auth / permissions
-
-Gold is a **data product**, not a user product.
+- API endpoints (R4)
+- Frontend UI (R4)
+- Alerts / notifications (R4)
+- Strategy signals (R4)
+- ML models (R4)
+- User auth / permissions (R4)
+- Dagster orchestration (deferred — CLI + cron is sufficient)
+- Real-time / streaming ingestion
 
 ---
 
-## 15) Is This the Final Release?
+## 14) Release 4 Preview
 
-**No — this is the final *data platform* release, but not the final product release.**
-
-### You should plan **one more formal release**:
-
----
-
-## 16) Release 4 (Recommended, but Optional)
-
-### Release 4 — Productization & Intelligence Layer
-
-This is where you add:
-
-* APIs
-* Frontend
-* Alerts
-* Strategy signals
-* ML features
-* Permissions / auth
-* SLAs for external users
-
-Think of it as:
-
-* Releases 1–3 = **data infrastructure**
-* Release 4 = **business/product layer**
-
-You *can* stop at Release 3 if this is purely an internal data platform — but most successful systems don’t.
+Release 4 will introduce:
+- REST API layer over Gold ClickHouse tables
+- Frontend / dashboard
+- Alerts and notifications
+- Strategy signals and ML features
+- User authentication and permissions
+- SLAs for external consumers
 
 ---
 
-## 17) Final Rule
+## 15) Final Rule
 
 > **Gold is convenience, not truth.**
 > Silver is truth.
 > Bronze is history.
 
 Release 3 exists to make truth *fast and usable*.
-
-```
-
----
-
-## Direct answer to your question
-
-**Is Release 3 the final release?**
-
-- ✅ **Final release for the *data platform*** → **Yes**
-- ❌ **Final release for the *product*** → **No**
-
-A clean roadmap is:
-
-1. **Release 1** — Bronze (immutability, correctness)
-2. **Release 2** — Silver (truth, contracts)
-3. **Release 3** — Gold (performance, APIs)
-4. **Release 4 (optional but recommended)** — Productization (alerts, UI, strategies, ML)
-
-If you want, next I can:
-- collapse all four into a single **ROADMAP.md**
-- generate **Dagster asset graphs** for R2/R3
-- or produce **ClickHouse DDL** that exactly matches Release 3’s guarantees
-```

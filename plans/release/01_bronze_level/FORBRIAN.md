@@ -236,6 +236,26 @@ Think of it like a DVR's "catch up to live" button — it figures out where you 
 
 **Lesson:** The original "fetch everything, deduplicate later" design was correct for the *initial build* — it's simpler, harder to break, and good enough when you're running manually. But once you move to scheduled execution, the economics change. A 5-minute schedule with full-day fetches produces O(n^2) data per day. Incremental fetching produces O(n). Know when your design assumptions change and adapt accordingly.
 
+### Sprint 11: Incremental Catalog Ingestion (Markets & Events)
+
+**What:** Replace full daily snapshots of markets (~360K records, 163 MB, 48 min) and events (~176K records, 165 MB, 19 min) with incremental delta fetches that only download changed/new records.
+
+**Why it matters:** The Gamma API has no `updated_since` filter, so Sprint 10's incremental approach (used for order_filled) doesn't directly apply. The full catalog download every day is wasteful — most records haven't changed since the last fetch. But we found a workaround.
+
+**The trick:** The Gamma API supports `order=updatedAt&ascending=false`. By paginating in reverse `updatedAt` order and stopping when we hit a record older than our last fetch, we get effective incremental behavior without needing an explicit `updated_since` parameter. Instead of downloading 360K records, we typically download only the hundreds or thousands that actually changed.
+
+**Storage model — delta partitions:** Each incremental run stores only the changed records as a "delta" partition, tagged with `snapshot_type: "delta"` in the manifest. Full snapshots (tagged `snapshot_type: "snapshot"`) are run periodically or on-demand with `--full`. The manifest's `latest_timestamp` field stores the max `updatedAt` epoch from fetched records, which becomes the cursor for the next incremental run.
+
+**Backwards compatibility:** Existing manifests without a `snapshot_type` field default to `"snapshot"`. No existing S3 data needs to be modified or deleted. Silver's Iceberg upsert logic processes records regardless of whether they came from a delta or full snapshot — it just upserts by dedup key.
+
+**Implementation details:**
+- `fetch_markets_incremental(since_updated_at)` and `fetch_events_incremental(since_updated_at)` added to PolymarketClient — paginate by `updatedAt` desc, collect only records strictly newer than cutoff
+- `ingest_markets()` and `ingest_events()` accept optional `since_updated_at` parameter; when provided, use incremental fetch and write delta manifest
+- `find_latest_manifest_source()` helper in discovery.py extracts the cursor from the most recent manifest
+- ISO-to-epoch conversion helpers handle the `updatedAt` string ↔ `latest_timestamp` int translation
+
+**Lesson:** When an API doesn't give you the filter you want, check what ordering options it supports. Ordering by `updatedAt` descending + early termination is functionally equivalent to an `updated_since` filter, just approached from the other direction. The key insight: you don't need to read the whole result set to know you're done — as soon as you see a record older than your cursor, everything after it is also old.
+
 ---
 
 ## How to Use the System (The Operator's Guide)

@@ -1,0 +1,59 @@
+[
+    {
+        "category": "mark_price_computation",
+        "description": "Compute daily mark prices from Silver trades",
+        "steps": [
+            "Create src/prediction_data/gold/market_marks.py",
+            "Read Silver polymarket.trades for a given date, grouped by (market_id, outcome_id)",
+            "Compute mark_price as VWAP (volume-weighted average price) for the day, falling back to last trade price if < N trades",
+            "Compute volume_usd_24h as sum of usd_amount for the day",
+            "Compute trades_count_24h as count of trades",
+            "Compute last_trade_price from the latest trade by timestamp",
+            "Compute active_wallets_24h as count of distinct maker + taker addresses"
+        ],
+        "passes": false
+    },
+    {
+        "category": "liquidity_metric",
+        "description": "Derive liquidity proxy metric for markets",
+        "steps": [
+            "Research feasibility of computing open_interest_usd from position state data",
+            "If open_interest not feasible, implement proxy: trailing 7-day average daily volume",
+            "Add liquidity_metric field to market_mark_daily output",
+            "Document the chosen liquidity proxy methodology in code comments"
+        ],
+        "passes": false
+    },
+    {
+        "category": "s3_gold_output",
+        "description": "Write market_mark_daily to S3 Gold Parquet",
+        "steps": [
+            "Define PyArrow schema for market_mark_daily Parquet files",
+            "Write daily partitions to s3://.../gold/market_mark_daily/day=YYYY-MM-DD/part-*.parquet",
+            "Support backfill: process date ranges sequentially",
+            "Add idempotent partition overwrite"
+        ],
+        "passes": false
+    },
+    {
+        "category": "clickhouse_mirror",
+        "description": "ClickHouse hot mirror for market_mark_daily",
+        "steps": [
+            "Write ClickHouse DDL for market_mark_daily (MergeTree, PARTITION BY toYYYYMM(day_utc), ORDER BY (platform, market_id, outcome_id, day_utc), TTL day_utc + INTERVAL 90 DAY)",
+            "Implement CH loader: read S3 Gold Parquet → insert into ClickHouse",
+            "Support configurable lookback window (--lookback-days N, default 90)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_and_testing",
+        "description": "CLI commands and testing for market marks",
+        "steps": [
+            "Implement `prediction-data gold compute-marks --dt YYYY-MM-DD [--dry-run]`",
+            "Implement `prediction-data gold compute-marks --start-date YYYY-MM-DD --end-date YYYY-MM-DD`",
+            "Write unit tests for VWAP and metric computation with known trade data",
+            "Write integration test: Silver trades → market_mark_daily S3 + CH round-trip"
+        ],
+        "passes": false
+    }
+]

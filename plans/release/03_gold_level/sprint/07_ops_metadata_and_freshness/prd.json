@@ -1,0 +1,59 @@
+[
+    {
+        "category": "pipeline_runs",
+        "description": "Track all pipeline run metadata in ClickHouse",
+        "steps": [
+            "Write ClickHouse DDL for pipeline_runs (MergeTree, ORDER BY (stage, started_at))",
+            "Schema: run_id, stage (bronze/silver/gold), started_at, ended_at, status (success/failed/running), input_snapshot_id, output_snapshot_id, rows_written, bytes_written, error",
+            "Create src/prediction_data/gold/ops_metadata.py with PipelineRunTracker class",
+            "Instrument Gold process-trades, compute-marks, compute-wallet-metrics to emit pipeline_runs records",
+            "Write helper: start_run() returns run context, end_run() writes completion record"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dataset_partitions",
+        "description": "Track partition-level metadata for all Gold datasets",
+        "steps": [
+            "Write ClickHouse DDL for dataset_partitions (ReplacingMergeTree(written_at), ORDER BY (dataset, partition_day_utc))",
+            "Schema: dataset, partition_day_utc, row_count, max_event_ts, written_at, run_id",
+            "Emit partition records after each Gold write (S3 or CH)",
+            "Support querying: 'what partitions exist for market_mark_daily?' and 'what was the last partition written?'"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dataset_freshness",
+        "description": "Freshness tracking with SLA monitoring and alerting states",
+        "steps": [
+            "Write ClickHouse DDL for dataset_freshness (ReplacingMergeTree(last_success_at), ORDER BY dataset)",
+            "Schema: dataset, last_success_at, expected_lag_seconds, actual_lag_seconds, state (fresh/stale/broken), last_run_id",
+            "Define default SLAs: market_mark_daily=300s, wallet_pnl_daily=600s, wallet_mtm_daily=900s, wallet_position_snapshot_daily=900s",
+            "Create freshness checker: compare last_success_at to current time and SLA thresholds",
+            "Compute alerting state: fresh (within SLA), stale (> SLA and <= 2x SLA), broken (> 2x SLA or last run failed)",
+            "Add CLI command: `prediction-data gold freshness` to display current freshness status of all datasets"
+        ],
+        "passes": false
+    },
+    {
+        "category": "data_quality_metrics",
+        "description": "Track data quality check results",
+        "steps": [
+            "Write ClickHouse DDL for data_quality_metrics (MergeTree, ORDER BY (dataset, partition, run_id))",
+            "Schema: dataset, partition, check_name, status (pass/fail/warn), observed_value, expected, run_id",
+            "Add quality checks to Gold processing: non-null keys, reasonable price ranges, PnL sanity",
+            "Emit quality records after each processing run"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Testing for ops metadata",
+        "steps": [
+            "Write unit tests for freshness state computation logic",
+            "Write integration test: run a Gold processing job → verify pipeline_runs, dataset_partitions, and freshness records exist in CH",
+            "Verify freshness CLI output matches expected format"
+        ],
+        "passes": false
+    }
+]

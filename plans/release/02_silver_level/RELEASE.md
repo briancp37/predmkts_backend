@@ -1,4 +1,3 @@
-```md
 # RELEASE_2.md
 ## Release 2 — Silver Lakehouse (Iceberg) Fully Working  
 ### Bronze → Silver Normalization, Deduplication, Quality Gates
@@ -335,5 +334,3 @@ But only once Silver is **boring and correct**.
 
 Release 2 exists to make Silver unquestionable.
 
-```
-```

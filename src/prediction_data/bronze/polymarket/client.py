@@ -13,7 +13,7 @@ GAMMA_API_BASE_URL = "https://gamma-api.polymarket.com"
 DATA_API_BASE_URL = "https://data-api.polymarket.com"
 
 # Pagination limits
-DEFAULT_PAGE_SIZE = 100
+DEFAULT_PAGE_SIZE = 500
 MAX_TRADES_OFFSET = 10000
 MAX_TRADES_LIMIT = 10000
 

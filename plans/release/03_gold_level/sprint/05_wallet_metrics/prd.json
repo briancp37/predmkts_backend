@@ -1,0 +1,64 @@
+[
+    {
+        "category": "wallet_pnl_daily",
+        "description": "Daily realized PnL aggregation from position ledger",
+        "steps": [
+            "Create src/prediction_data/gold/wallet_pnl.py",
+            "Aggregate wallet_position_ledger by (day_utc, wallet): sum realized_pnl_this_fill_usd, sum fees_usd, sum abs(qty_delta * price) as volume_usd, count fills as trades_count",
+            "Compute optional wins/losses: count fills where realized_pnl > 0 vs < 0",
+            "Only emit rows where trades_count > 0 (sparse output)",
+            "Write to S3 Gold Parquet: gold/wallet_pnl_daily/day=YYYY-MM-DD/part-*.parquet",
+            "Write ClickHouse DDL (MergeTree, ORDER BY (wallet, day_utc), TTL day_utc + INTERVAL 90 DAY)",
+            "Implement CH loader with configurable lookback"
+        ],
+        "passes": false
+    },
+    {
+        "category": "watchlist_table",
+        "description": "ClickHouse watchlist table for selective wallet computation",
+        "steps": [
+            "Write ClickHouse DDL for gold_watchlist (ReplacingMergeTree, ORDER BY wallet_address)",
+            "Schema: wallet_address, added_at, notes (optional), active (bool)",
+            "Create src/prediction_data/gold/watchlist.py with add/remove/list functions",
+            "Add CLI commands: `prediction-data gold watchlist add ADDR`, `prediction-data gold watchlist list`, `prediction-data gold watchlist remove ADDR`"
+        ],
+        "passes": false
+    },
+    {
+        "category": "wallet_mtm_daily",
+        "description": "Daily mark-to-market for watchlist wallets",
+        "steps": [
+            "Create src/prediction_data/gold/wallet_mtm.py",
+            "For each watchlist wallet, load current positions from wallet_position_state",
+            "Join positions with market_mark_daily to get mark prices",
+            "Compute: equity_usd = sum(qty * mark_price), unrealized_pnl_usd = sum(qty * (mark_price - avg_cost)), exposure_gross_usd = sum(abs(qty * mark_price)), exposure_net_usd = sum(qty * mark_price)",
+            "Write to S3 Gold Parquet + CH with 90-day TTL",
+            "Handle missing marks gracefully (log warning, use last available mark or skip)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "wallet_position_snapshot_daily",
+        "description": "Per-position daily snapshots for watchlist wallets",
+        "steps": [
+            "Create src/prediction_data/gold/position_snapshots.py",
+            "For each watchlist wallet and each open position, create daily snapshot row",
+            "Include: day_utc, wallet, platform, market_id, outcome_id, qty, avg_cost, mark_price, position_value_usd (qty * mark_price), unrealized_pnl_usd (qty * (mark_price - avg_cost))",
+            "Write to S3 Gold Parquet + CH with 90-day TTL",
+            "Support backfill: reconstruct historical snapshots from ledger + marks"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_and_testing",
+        "description": "CLI and testing for wallet metrics",
+        "steps": [
+            "Implement `prediction-data gold compute-wallet-metrics --dt YYYY-MM-DD [--dry-run]`",
+            "This command computes: wallet_pnl_daily (all wallets), wallet_mtm_daily (watchlist only), wallet_position_snapshot_daily (watchlist only)",
+            "Write unit tests for PnL aggregation with known ledger data",
+            "Write unit tests for MTM computation with known positions and marks",
+            "Write integration test: full pipeline Silver trades → ledger → pnl + mtm + snapshots"
+        ],
+        "passes": false
+    }
+]

@@ -75,9 +75,9 @@ Returns a JSON array of Market objects containing:
 
 Example pagination sequence:
 ```
-Page 1: GET /markets?limit=100&offset=0
-Page 2: GET /markets?limit=100&offset=100
-Page 3: GET /markets?limit=100&offset=200
+Page 1: GET /markets?limit=500&offset=0
+Page 2: GET /markets?limit=500&offset=500
+Page 3: GET /markets?limit=500&offset=1000
 ```
 
 Continue until fewer results than `limit` are returned.
@@ -181,7 +181,7 @@ For a daily snapshot of all markets:
 ```python
 # Pseudocode
 offset = 0
-limit = 100
+limit = 500
 all_markets = []
 
 while True:

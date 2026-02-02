@@ -1,0 +1,80 @@
+[
+    {
+        "category": "accounting_engine",
+        "description": "Core average-cost position accounting logic",
+        "steps": [
+            "Create src/prediction_data/gold/accounting.py with PositionState dataclass (wallet, platform, market_id, outcome_id, qty, avg_cost, cost_basis_usd, last_fill_ts)",
+            "Implement apply_fill() method: given a fill (side, qty_delta, price, fees), compute new qty, new avg_cost, realized_pnl",
+            "For buys: new_avg_cost = (old_qty * old_avg_cost + qty_delta * price) / (old_qty + qty_delta)",
+            "For sells: realized_pnl = qty_delta * (price - avg_cost), qty decreases, avg_cost unchanged",
+            "Handle position closing (qty → 0): emit final realized PnL, mark position as closed",
+            "Handle position flipping (long → short via oversized sell): split into close + open",
+            "Write comprehensive unit tests with known trade sequences and expected PnL values"
+        ],
+        "passes": false
+    },
+    {
+        "category": "trade_to_fills",
+        "description": "Convert Silver trades into maker + taker fill events",
+        "steps": [
+            "Create src/prediction_data/gold/fill_splitter.py",
+            "For each Silver trade row, emit 2 fill records: one for maker (wallet=maker, side=maker_direction) and one for taker (wallet=taker, side=taker_direction)",
+            "Each fill contains: ts, wallet, platform, market_id, outcome_id, side, qty_delta, price, fees_usd",
+            "Map nonusdc_side (token1/token2) to outcome_id via dim_outcome lookup",
+            "Sort fills by timestamp before processing (critical for correct accounting)",
+            "Write unit tests verifying 1 trade → 2 fills with correct sides"
+        ],
+        "passes": false
+    },
+    {
+        "category": "position_ledger",
+        "description": "wallet_position_ledger: per-fill audit trail with before/after state",
+        "steps": [
+            "Create src/prediction_data/gold/ledger.py with LedgerWriter class",
+            "For each fill processed through accounting engine, emit a ledger row with: ts, wallet, platform, market_id, outcome_id, side, qty_delta, price, fees_usd, qty_before, qty_after, avg_cost_before, avg_cost_after, realized_pnl_this_fill_usd",
+            "Write ledger rows to S3 Gold Parquet (partitioned by day)",
+            "Write ClickHouse DDL for wallet_position_ledger (MergeTree, ORDER BY (wallet, ts), TTL 30 days)",
+            "Implement CH loader for ledger table",
+            "Write integration test: process known trades → verify ledger output matches expected"
+        ],
+        "passes": false
+    },
+    {
+        "category": "position_state",
+        "description": "wallet_position_state: current open positions in ClickHouse",
+        "steps": [
+            "Write ClickHouse DDL for wallet_position_state (ReplacingMergeTree(last_fill_ts), ORDER BY (wallet, platform, market_id, outcome_id))",
+            "After processing all fills for a batch, write current position states to ClickHouse",
+            "Rows with qty = 0 should be deleted (or marked and excluded from queries)",
+            "Include fields: wallet, platform, market_id, outcome_id, qty, avg_cost, cost_basis_usd, last_fill_ts, first_open_ts",
+            "Write integration test: process trades → verify position_state reflects correct current positions"
+        ],
+        "passes": false
+    },
+    {
+        "category": "batch_processor",
+        "description": "Orchestrator for processing Silver trades through accounting pipeline",
+        "steps": [
+            "Create src/prediction_data/gold/trade_processor.py with process_day() function",
+            "Read Silver polymarket.trades for a given date via PyIceberg",
+            "Load current position state from ClickHouse (or initialize empty for first run)",
+            "Split trades into fills, sort by timestamp, process through accounting engine",
+            "Write ledger to S3 Gold + CH, update position_state in CH",
+            "Support --dt and --start-date/--end-date for date ranges",
+            "Add idempotency: track processed dates in state store, support --force-reprocess",
+            "Write end-to-end test with mock Silver data"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli",
+        "description": "CLI command for trade processing",
+        "steps": [
+            "Implement `prediction-data gold process-trades --dt YYYY-MM-DD [--dry-run]`",
+            "Implement `prediction-data gold process-trades --start-date YYYY-MM-DD --end-date YYYY-MM-DD`",
+            "Add --force-reprocess flag",
+            "Log summary: fills processed, positions updated, realized PnL total"
+        ],
+        "passes": false
+    }
+]

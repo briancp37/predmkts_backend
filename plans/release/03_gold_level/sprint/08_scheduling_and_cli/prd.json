@@ -1,0 +1,65 @@
+[
+    {
+        "category": "daily_run_command",
+        "description": "Unified daily Gold processing command",
+        "steps": [
+            "Implement `prediction-data gold daily-run [--dt YYYY-MM-DD] [--dry-run]`",
+            "Default --dt to yesterday (UTC)",
+            "Execute in order: 1) load-dims, 2) process-trades, 3) compute-marks, 4) compute-wallet-metrics",
+            "Each step logs start/end and emits pipeline_runs metadata",
+            "On step failure: log error, continue to next step (fail-forward), report summary at end",
+            "Add --stop-on-error flag to halt on first failure instead"
+        ],
+        "passes": false
+    },
+    {
+        "category": "ch_load_command",
+        "description": "Configurable ClickHouse loading from S3 Gold",
+        "steps": [
+            "Implement `prediction-data gold ch-load --table TABLE [--lookback-days N] [--dry-run]`",
+            "Support all Gold tables: market_mark_daily, wallet_pnl_daily, wallet_mtm_daily, wallet_position_snapshot_daily, wallet_position_ledger",
+            "Default lookback: 90 days (configurable via --lookback-days)",
+            "Read S3 Gold Parquet partitions within lookback window, insert into ClickHouse",
+            "Handle TTL: ClickHouse TTL expressions handle old data expiry automatically",
+            "Add `prediction-data gold ch-load --all [--lookback-days N]` to load all tables"
+        ],
+        "passes": false
+    },
+    {
+        "category": "rebuild_command",
+        "description": "Rebuild Gold tables from Silver for a date range",
+        "steps": [
+            "Implement `prediction-data gold rebuild --table TABLE --start-date YYYY-MM-DD --end-date YYYY-MM-DD`",
+            "For position accounting tables: must rebuild sequentially from earliest date (position state is cumulative)",
+            "For market_mark_daily: can rebuild individual days independently",
+            "For wallet metrics: depends on ledger, so rebuild ledger first if needed",
+            "Add --force flag to overwrite existing S3 Gold partitions",
+            "Log rebuild progress and summary"
+        ],
+        "passes": false
+    },
+    {
+        "category": "scheduling",
+        "description": "EventBridge/cron schedule definitions for automated Gold processing",
+        "steps": [
+            "Document recommended cron schedules in RELEASE.md or a scheduling config file",
+            "Daily Gold processing: `0 0 * * *` UTC (midnight, after Silver processing completes)",
+            "CH loading: `30 0 * * *` UTC (30 min after daily Gold processing)",
+            "Freshness check: `0 1 * * *` UTC (1 hour after daily run, verify all datasets fresh)",
+            "Create scripts/gold_daily_cron.sh wrapper script for cron execution",
+            "Document ECS task definition overrides for Gold commands (same pattern as Bronze)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing",
+        "description": "Testing for scheduling and CLI commands",
+        "steps": [
+            "Write integration test: daily-run command executes all steps in order",
+            "Write unit test: ch-load respects lookback window (only loads recent partitions)",
+            "Write unit test: rebuild processes dates in correct order for cumulative tables",
+            "Verify all CLI commands show correct --help output"
+        ],
+        "passes": false
+    }
+]

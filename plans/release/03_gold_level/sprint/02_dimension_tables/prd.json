@@ -1,0 +1,74 @@
+[
+    {
+        "category": "canonical_id_mapping",
+        "description": "Cross-platform canonical market ID mapping system",
+        "steps": [
+            "Create mappings/ directory at project root",
+            "Create mappings/market_links.yaml with initial structure (polymarket_market_id → canonical_market_id mappings)",
+            "Create src/prediction_data/gold/canonical.py with YAML loader and lookup class",
+            "Implement fallback: if no canonical mapping exists, use platform-native ID as canonical_market_id",
+            "Write unit tests for canonical resolution (mapped, unmapped, multi-platform)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dim_platform",
+        "description": "Static platform dimension table",
+        "steps": [
+            "Create ClickHouse DDL for dim_platform (ReplacingMergeTree, ORDER BY platform_id)",
+            "Populate with static data: polymarket, kalshi",
+            "Write loader in src/prediction_data/gold/dimensions.py",
+            "Add to Gold CLI: `prediction-data gold load-dims --table dim_platform`"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dim_market",
+        "description": "Market dimension table from Silver markets with canonical IDs",
+        "steps": [
+            "Create ClickHouse DDL for dim_market (ReplacingMergeTree(updated_at), ORDER BY (platform, platform_market_id))",
+            "Define schema: platform, platform_market_id, canonical_market_id, question, description, status, event_id, tokens (JSON), updated_at",
+            "Read Silver polymarket.markets via PyIceberg and transform to dim_market rows",
+            "Apply canonical ID resolution from market_links.yaml",
+            "Write to S3 Gold Parquet + load into ClickHouse",
+            "Scaffold Kalshi dim_market (DDL created, loader stubbed, no data)",
+            "Write integration test: Silver markets → dim_market round-trip"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dim_outcome",
+        "description": "Outcome dimension derived from markets token data",
+        "steps": [
+            "Create ClickHouse DDL for dim_outcome (ReplacingMergeTree(version), ORDER BY (platform, market_id, outcome_id))",
+            "Define schema: platform, market_id, outcome_id, token_id, side (token1/token2), outcome_label",
+            "Parse Silver markets 'tokens' field to extract token1/token2 per market as separate outcome rows",
+            "Write to S3 Gold Parquet + load into ClickHouse",
+            "Write unit tests for token parsing logic"
+        ],
+        "passes": false
+    },
+    {
+        "category": "dim_wallet",
+        "description": "Wallet dimension discovered from Silver trades",
+        "steps": [
+            "Create ClickHouse DDL for dim_wallet (ReplacingMergeTree(last_seen_ts), ORDER BY wallet_address)",
+            "Define schema: wallet_address, platform, first_trade_ts, last_trade_ts, trade_count",
+            "Scan Silver polymarket.trades for distinct maker + taker addresses",
+            "Write to S3 Gold Parquet + load into ClickHouse",
+            "Design for incremental updates (new wallets discovered on each run)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_and_testing",
+        "description": "CLI commands and testing for dimension loading",
+        "steps": [
+            "Implement `prediction-data gold load-dims` CLI command (loads all dims, or --table for specific)",
+            "Add --dry-run support to dimension loading",
+            "Write integration tests for full dimension loading pipeline",
+            "Verify all dimension tables queryable in ClickHouse after loading"
+        ],
+        "passes": false
+    }
+]
