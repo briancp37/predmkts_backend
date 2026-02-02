@@ -46,6 +46,6 @@
             "Test state tracking prevents reprocessing",
             "Test force-reprocess flag overrides state"
         ],
-        "passes": false
+        "passes": true
     }
 ]

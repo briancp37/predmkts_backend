@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-01-30
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -31,6 +31,18 @@
   - Overall progress indicator (`[3/15]`) across all manifests
   - Dry-run output now shows day-level grouping with manifest counts
   - mypy clean, 692 tests passing
+
+- [2026-02-02] testing: Added CLI and backfill tests in test_silver_cli.py
+  - 8 tests covering all PRD test requirements:
+    - Single-day processing via CLI (+ no-manifests-found case)
+    - Date range backfill with multi-day processing
+    - Continues on per-day failure with error summary
+    - Dry-run mode prevents processing, shows manifest listing
+    - State tracking skips already-processed manifests
+    - All-processed graceful exit
+    - Force-reprocess flag overrides state tracking
+  - Uses Typer CliRunner with patched S3/state/discovery/processor
+  - mypy clean, 700 tests passing
 
 ## In Progress
 
