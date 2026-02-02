@@ -22,7 +22,7 @@
             "Skip already-processed manifests by default",
             "Support `--force-reprocess` flag to ignore state"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "backfill_workflow",

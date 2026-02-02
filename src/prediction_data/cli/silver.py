@@ -223,6 +223,24 @@ async def _run_process(
 
     typer.echo(f"Found {len(manifests)} manifest(s).")
 
+    # Load state tracker for idempotency
+    from prediction_data.silver.state import SilverStateStore
+
+    state_store = SilverStateStore(s3, platform, entity)
+    await state_store.load()
+
+    # Filter out already-processed manifests unless --force-reprocess
+    if not force_reprocess:
+        before = len(manifests)
+        manifests = [m for m in manifests if not state_store.is_processed(m.run_id)]
+        skipped = before - len(manifests)
+        if skipped:
+            typer.echo(f"Skipping {skipped} already-processed manifest(s).")
+
+    if not manifests:
+        typer.echo("No unprocessed manifests remaining.")
+        return
+
     if dry_run:
         typer.echo("\nDry run — manifests that would be processed:")
         for m in manifests:
@@ -247,6 +265,13 @@ async def _run_process(
                 f"snapshot_id={result.snapshot_id}, "
                 f"{result.duplicates_dropped} dupes dropped, "
                 f"{result.duration_seconds:.1f}s"
+            )
+            # Mark as processed in state log
+            await state_store.mark_processed(
+                run_id=m.run_id,
+                platform=m.platform,
+                entity=m.entity,
+                dt=m.dt,
             )
         except ProcessingError as exc:
             failures.append((m.run_id, str(exc)))

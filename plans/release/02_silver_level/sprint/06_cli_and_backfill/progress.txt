@@ -15,6 +15,15 @@
   - Platform/entity validation against SILVER_TABLES definitions
   - mypy clean, 686 tests passing
 
+- [2026-02-02] state_tracking: Implemented Silver processing state management
+  - Created `silver/state.py` with SilverStateStore class
+  - State stored as S3 JSONL log at `silver/_state/{platform}/{entity}/processed.jsonl`
+  - `is_processed(run_id)` and `mark_processed()` for idempotent processing
+  - Integrated into CLI: skips already-processed manifests by default
+  - `--force-reprocess` flag bypasses state check
+  - State is marked only after successful processing (no partial state)
+  - 6 unit tests in test_silver_state.py, mypy clean, 692 tests passing
+
 ## In Progress
 
 
@@ -23,7 +32,6 @@
 
 ## Notes
 
-- The process command accepts --force-reprocess and --skip-quality-checks flags
-  but they are not yet wired to state tracking or quality bypass logic.
-  Those will be implemented in the state_tracking category.
+- --force-reprocess is now wired to state tracking (skips the is_processed check).
+- --skip-quality-checks flag is accepted but not yet wired to quality bypass logic.
 
