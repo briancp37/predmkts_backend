@@ -11,7 +11,7 @@
             "Write ClickHouse DDL (MergeTree, ORDER BY (wallet, day_utc), TTL day_utc + INTERVAL 90 DAY)",
             "Implement CH loader with configurable lookback"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "watchlist_table",

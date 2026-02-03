@@ -20,6 +20,19 @@
 - 11 unit + CLI tests in `tests/gold/test_watchlist.py`, all passing
 - mypy clean, 834 tests passing (full suite)
 
+### wallet_pnl_daily (2026-02-02)
+- Created `src/prediction_data/gold/wallet_pnl.py`
+  - Schema: day_utc, wallet, realized_pnl_usd, fees_usd, volume_usd, trades_count, wins, losses
+  - `aggregate_pnl_for_day()` groups ledger rows by wallet, sums PnL/fees/volume, counts wins/losses
+  - `compute_wallet_pnl()` reads from CH wallet_position_ledger, writes S3 Parquet + CH
+  - Sparse output: only emits rows where trades_count > 0
+- Created ClickHouse DDL: `docker/clickhouse/init/007_wallet_pnl_daily.sql`
+  - ReplacingMergeTree(version), ORDER BY (wallet, day_utc), TTL 90 days
+- Added CLI command: `prediction-data gold compute-pnl --dt YYYY-MM-DD [--dry-run]`
+  - Supports --start-date/--end-date for range processing
+- 15 unit + CLI tests in `tests/gold/test_wallet_pnl.py`, all passing
+- mypy clean, 856 tests passing (full suite)
+
 ## In Progress
 
 

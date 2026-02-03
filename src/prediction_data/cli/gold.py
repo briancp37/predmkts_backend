@@ -157,6 +157,75 @@ def compute_marks(
         raise typer.Exit(code=1)
 
 
+@app.command(name="compute-pnl")
+def compute_pnl(
+    dt: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        help="Single date to compute (YYYY-MM-DD).",
+    ),
+    start_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--start-date",
+        help="Start of date range (YYYY-MM-DD). Requires --end-date.",
+    ),
+    end_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--end-date",
+        help="End of date range inclusive (YYYY-MM-DD). Requires --start-date.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+) -> None:
+    """Compute wallet_pnl_daily from wallet_position_ledger."""
+    from datetime import date as date_cls, timedelta
+
+    from prediction_data.gold.wallet_pnl import compute_wallet_pnl
+
+    settings = get_settings()
+
+    if dt and (start_date or end_date):
+        typer.echo("Error: --dt cannot be combined with --start-date/--end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    if dt:
+        dates = [date_cls.fromisoformat(dt)]
+    elif start_date and end_date:
+        s = date_cls.fromisoformat(start_date)
+        e = date_cls.fromisoformat(end_date)
+        if s > e:
+            typer.echo("Error: --start-date must be <= --end-date.", err=True)
+            raise typer.Exit(code=1)
+        dates = []
+        cur = s
+        while cur <= e:
+            dates.append(cur)
+            cur += timedelta(days=1)
+    else:
+        typer.echo("Error: provide --dt or both --start-date and --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    total_rows = 0
+    failures: list[str] = []
+    for d in dates:
+        try:
+            rows = compute_wallet_pnl(
+                dt=d,
+                gold_bucket=settings.gold_bucket or None,
+                dry_run=dry_run,
+            )
+            total_rows += rows
+            typer.echo(f"{d}: {rows} rows{'  [dry-run]' if dry_run else ''}")
+        except Exception as exc:
+            failures.append(f"{d}: {exc}")
+            typer.echo(f"{d}: FAILED ({exc})", err=True)
+
+    typer.echo(f"Total: {total_rows} rows across {len(dates)} day(s).")
+    if failures:
+        typer.echo(f"{len(failures)} day(s) failed:", err=True)
+        for f in failures:
+            typer.echo(f"  {f}", err=True)
+        raise typer.Exit(code=1)
+
+
 @watchlist_app.command(name="add")
 def watchlist_add(
     address: str = typer.Argument(..., help="Wallet address to add."),
