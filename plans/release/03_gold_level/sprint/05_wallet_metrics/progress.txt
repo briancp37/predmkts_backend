@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -64,6 +64,16 @@
 - 17 unit + CLI tests in `tests/gold/test_wallet_position_snapshot.py`, all passing
 - mypy clean, 900 tests passing (full suite)
 
+### cli_and_testing (2026-02-02)
+- Added unified CLI command: `prediction-data gold compute-wallet-metrics --dt YYYY-MM-DD [--dry-run]`
+  - Computes all three metrics in sequence: wallet_pnl_daily (all wallets), wallet_mtm_daily (watchlist), wallet_position_snapshot_daily (watchlist)
+  - Supports --start-date/--end-date for range processing
+  - Reports per-step row counts, continues on partial failure, exits non-zero if any step fails
+- 8 tests in `tests/gold/test_compute_wallet_metrics.py`, all passing:
+  - 6 CLI tests: help, requires date, dt/range conflict, single date dry-run, date range, partial failure
+  - 2 integration tests: single-wallet full pipeline (ledger → pnl + mtm + snapshots with cross-table consistency checks), multi-wallet multi-position pipeline verifying MTM aggregation matches sum of snapshot values
+- mypy clean, 919 tests passing (full suite)
+
 ## In Progress
 
 
@@ -74,4 +84,5 @@
 - wallet_pnl_daily depends on wallet_position_ledger which is from sprint 04
 - wallet_mtm_daily and wallet_position_snapshot_daily both depend on watchlist (now done) + market marks
 - wallet_mtm_daily depends on wallet_position_state table (not yet created — will be part of position ledger sprint)
-- Next up: cli_and_testing — unified compute-wallet-metrics command + integration tests
+- All 5 categories complete. Sprint done.
+- The on_demand.py module and its tests (test_on_demand.py) were already present as bonus work from position_snapshot implementation

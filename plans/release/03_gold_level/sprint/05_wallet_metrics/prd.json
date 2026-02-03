@@ -59,6 +59,6 @@
             "Write unit tests for MTM computation with known positions and marks",
             "Write integration test: full pipeline Silver trades → ledger → pnl + mtm + snapshots"
         ],
-        "passes": false
+        "passes": true
     }
 ]

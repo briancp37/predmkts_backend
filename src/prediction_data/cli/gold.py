@@ -391,6 +391,106 @@ def compute_position_snapshot(
         raise typer.Exit(code=1)
 
 
+@app.command(name="compute-wallet-metrics")
+def compute_wallet_metrics(
+    dt: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        help="Single date to compute (YYYY-MM-DD).",
+    ),
+    start_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--start-date",
+        help="Start of date range (YYYY-MM-DD). Requires --end-date.",
+    ),
+    end_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--end-date",
+        help="End of date range inclusive (YYYY-MM-DD). Requires --start-date.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+) -> None:
+    """Compute all wallet metrics: pnl (all wallets), mtm + snapshots (watchlist only)."""
+    from datetime import date as date_cls, timedelta
+
+    from prediction_data.gold.wallet_mtm import compute_wallet_mtm
+    from prediction_data.gold.wallet_pnl import compute_wallet_pnl
+    from prediction_data.gold.wallet_position_snapshot import compute_wallet_position_snapshot
+
+    settings = get_settings()
+
+    if dt and (start_date or end_date):
+        typer.echo("Error: --dt cannot be combined with --start-date/--end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    if dt:
+        dates = [date_cls.fromisoformat(dt)]
+    elif start_date and end_date:
+        s = date_cls.fromisoformat(start_date)
+        e = date_cls.fromisoformat(end_date)
+        if s > e:
+            typer.echo("Error: --start-date must be <= --end-date.", err=True)
+            raise typer.Exit(code=1)
+        dates = []
+        cur = s
+        while cur <= e:
+            dates.append(cur)
+            cur += timedelta(days=1)
+    else:
+        typer.echo("Error: provide --dt or both --start-date and --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    gold_bucket = settings.gold_bucket or None
+    failures: list[str] = []
+
+    # 1. wallet_pnl_daily (all wallets)
+    typer.echo("--- wallet_pnl_daily (all wallets) ---")
+    pnl_total = 0
+    for d in dates:
+        try:
+            rows = compute_wallet_pnl(dt=d, gold_bucket=gold_bucket, dry_run=dry_run)
+            pnl_total += rows
+            typer.echo(f"  {d}: {rows} rows{'  [dry-run]' if dry_run else ''}")
+        except Exception as exc:
+            failures.append(f"pnl {d}: {exc}")
+            typer.echo(f"  {d}: FAILED ({exc})", err=True)
+
+    # 2. wallet_mtm_daily (watchlist only)
+    typer.echo("--- wallet_mtm_daily (watchlist) ---")
+    mtm_total = 0
+    for d in dates:
+        try:
+            rows = compute_wallet_mtm(dt=d, gold_bucket=gold_bucket, dry_run=dry_run)
+            mtm_total += rows
+            typer.echo(f"  {d}: {rows} rows{'  [dry-run]' if dry_run else ''}")
+        except Exception as exc:
+            failures.append(f"mtm {d}: {exc}")
+            typer.echo(f"  {d}: FAILED ({exc})", err=True)
+
+    # 3. wallet_position_snapshot_daily (watchlist only)
+    typer.echo("--- wallet_position_snapshot_daily (watchlist) ---")
+    snap_total = 0
+    for d in dates:
+        try:
+            rows = compute_wallet_position_snapshot(
+                dt=d, gold_bucket=gold_bucket, dry_run=dry_run
+            )
+            snap_total += rows
+            typer.echo(f"  {d}: {rows} rows{'  [dry-run]' if dry_run else ''}")
+        except Exception as exc:
+            failures.append(f"snapshot {d}: {exc}")
+            typer.echo(f"  {d}: FAILED ({exc})", err=True)
+
+    typer.echo(
+        f"Total: pnl={pnl_total}, mtm={mtm_total}, snapshots={snap_total} "
+        f"across {len(dates)} day(s)."
+    )
+    if failures:
+        typer.echo(f"{len(failures)} step(s) failed:", err=True)
+        for f in failures:
+            typer.echo(f"  {f}", err=True)
+        raise typer.Exit(code=1)
+
+
 @watchlist_app.command(name="add")
 def watchlist_add(
     address: str = typer.Argument(..., help="Wallet address to add."),
