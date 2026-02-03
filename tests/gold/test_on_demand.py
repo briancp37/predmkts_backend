@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pyarrow as pa
+from typer.testing import CliRunner
 
 from prediction_data.gold.on_demand import (
     SNAPSHOT_SCHEMA,
     _replay_fills_to_snapshots,
     compute_wallet_snapshots,
 )
+
+runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -387,3 +392,149 @@ class TestComputeWalletSnapshots:
             clickhouse_client=mock_ch,
         )
         assert result.num_rows == 0
+
+
+# ---------------------------------------------------------------------------
+# CLI integration tests
+# ---------------------------------------------------------------------------
+
+
+def _fake_snapshot_table(rows: int = 2) -> pa.Table:
+    """Build a minimal SNAPSHOT_SCHEMA table with *rows* rows."""
+    arrays = [
+        pa.array([date(2024, 6, 15 + i) for i in range(rows)], type=pa.date32()),
+        pa.array(["0xABC"] * rows),
+        pa.array(["polymarket"] * rows),
+        pa.array(["mkt1"] * rows),
+        pa.array(["tok1"] * rows),
+        pa.array([100.0] * rows),
+        pa.array([0.50] * rows),
+        pa.array([0.60] * rows),
+        pa.array([60.0] * rows),
+        pa.array([10.0] * rows),
+    ]
+    return pa.table(arrays, schema=SNAPSHOT_SCHEMA)
+
+
+class TestComputeSnapshotCli:
+    """Integration tests for the compute-snapshot CLI command."""
+
+    @patch("prediction_data.cli.gold.get_settings")
+    @patch("prediction_data.gold.on_demand.compute_wallet_snapshots")
+    def test_dry_run_end_to_end(
+        self,
+        mock_compute: MagicMock,
+        mock_settings: MagicMock,
+    ) -> None:
+        from prediction_data.cli.gold import app
+
+        mock_settings.return_value.gold_bucket = "test-gold"
+        mock_compute.return_value = _fake_snapshot_table(2)
+
+        result = runner.invoke(
+            app,
+            [
+                "compute-snapshot",
+                "--wallet", "0xABC123",
+                "--start-date", "2024-06-15",
+                "--end-date", "2024-06-16",
+                "--dry-run",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "dry-run" in result.output.lower()
+        mock_compute.assert_called_once()
+        call_kwargs = mock_compute.call_args
+        assert call_kwargs.kwargs.get("dry_run") or call_kwargs[1].get("dry_run") is True
+
+    @patch("prediction_data.cli.gold.get_settings")
+    @patch("prediction_data.gold.on_demand.compute_wallet_snapshots")
+    def test_skip_ch_flag(
+        self,
+        mock_compute: MagicMock,
+        mock_settings: MagicMock,
+    ) -> None:
+        from prediction_data.cli.gold import app
+
+        mock_settings.return_value.gold_bucket = "test-gold"
+        mock_compute.return_value = _fake_snapshot_table(1)
+
+        result = runner.invoke(
+            app,
+            [
+                "compute-snapshot",
+                "--wallet", "0xABC123",
+                "--start-date", "2024-06-15",
+                "--end-date", "2024-06-15",
+                "--skip-ch",
+            ],
+        )
+        assert result.exit_code == 0
+        call_kwargs = mock_compute.call_args
+        assert call_kwargs.kwargs.get("skip_ch") or call_kwargs[1].get("skip_ch") is True
+
+    @patch("prediction_data.cli.gold.get_settings")
+    @patch("prediction_data.gold.on_demand.compute_wallet_snapshots")
+    def test_chunking_splits_large_range(
+        self,
+        mock_compute: MagicMock,
+        mock_settings: MagicMock,
+    ) -> None:
+        """A 45-day range with chunk_days=30 produces 2 calls."""
+        from prediction_data.cli.gold import app
+
+        mock_settings.return_value.gold_bucket = "test-gold"
+        mock_compute.return_value = _fake_snapshot_table(0)
+
+        result = runner.invoke(
+            app,
+            [
+                "compute-snapshot",
+                "--wallet", "0xABC123",
+                "--start-date", "2024-06-01",
+                "--end-date", "2024-07-15",
+                "--chunk-days", "30",
+                "--dry-run",
+            ],
+        )
+        assert result.exit_code == 0
+        assert mock_compute.call_count == 2
+
+    @patch("prediction_data.cli.gold.get_settings")
+    @patch("prediction_data.gold.on_demand.compute_wallet_snapshots")
+    def test_progress_output(
+        self,
+        mock_compute: MagicMock,
+        mock_settings: MagicMock,
+    ) -> None:
+        from prediction_data.cli.gold import app
+
+        mock_settings.return_value.gold_bucket = "test-gold"
+        mock_compute.return_value = _fake_snapshot_table(3)
+
+        result = runner.invoke(
+            app,
+            [
+                "compute-snapshot",
+                "--wallet", "0xABC123456789",
+                "--start-date", "2024-06-15",
+                "--end-date", "2024-06-17",
+            ],
+        )
+        assert result.exit_code == 0
+        assert "0xABC12345" in result.output  # truncated wallet
+        assert "3 rows" in result.output
+
+    def test_invalid_date_range(self) -> None:
+        from prediction_data.cli.gold import app
+
+        result = runner.invoke(
+            app,
+            [
+                "compute-snapshot",
+                "--wallet", "0xABC",
+                "--start-date", "2024-06-20",
+                "--end-date", "2024-06-15",
+            ],
+        )
+        assert result.exit_code == 1

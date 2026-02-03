@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -40,6 +40,15 @@
   Delegates to on_demand.compute_wallet_snapshots() per chunk. mypy clean,
   178 tests passing.
 
+- [x] testing: Added 5 CLI integration tests in TestComputeSnapshotCli class
+  (tests/gold/test_on_demand.py): test_dry_run_end_to_end, test_skip_ch_flag,
+  test_chunking_splits_large_range, test_progress_output, test_invalid_date_range.
+  These mock compute_wallet_snapshots and get_settings to test CLI argument parsing,
+  chunking behavior (45 days with chunk_days=30 → 2 calls), progress output formatting,
+  flag propagation (dry_run, skip_ch), and invalid date range rejection.
+  Total: 19 tests passing. All 927 non-integration tests pass. mypy clean
+  (2 pre-existing unused-ignore errors in silver/).
+
 ## In Progress
 
 
@@ -53,4 +62,3 @@
   filter by wallet for multi-wallet partitions.
 - Missing marks produce NaN values rather than skipping the row, so the
   position is still visible in the snapshot output.
-- The testing PRD category is not yet started (integration test for CLI).

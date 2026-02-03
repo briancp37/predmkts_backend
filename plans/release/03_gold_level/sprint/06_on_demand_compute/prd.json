@@ -44,6 +44,6 @@
             "Write unit test: wallet with no trades in requested range → carry forward last position",
             "Write integration test: end-to-end CLI invocation with mock Silver data"
         ],
-        "passes": false
+        "passes": true
     }
 ]
