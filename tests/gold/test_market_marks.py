@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 
 from prediction_data.gold.market_marks import (
+    MARKET_MARK_DAILY_COLUMNS,
     MARKET_MARK_DAILY_SCHEMA,
     MIN_TRADES_FOR_VWAP,
+    _load_marks_to_clickhouse,
     attach_liquidity_metric,
     compute_marks_for_day,
     compute_vwap,
+    load_marks_to_clickhouse_from_s3,
 )
 
 
@@ -200,3 +204,75 @@ class TestAttachLiquidityMetric:
         marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
         result = attach_liquidity_metric(marks, {})
         assert result.schema == MARKET_MARK_DAILY_SCHEMA
+
+
+# ---------------------------------------------------------------------------
+# ClickHouse loader tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadMarksToClickhouse:
+    def test_inserts_rows_into_ch(self) -> None:
+        """_load_marks_to_clickhouse calls client.insert with correct args."""
+        trades = [
+            _make_trade("m1", "tok1", 0.5, 100.0),
+            _make_trade("m1", "tok2", 0.3, 50.0),
+        ]
+        marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        ch = MagicMock()
+
+        _load_marks_to_clickhouse(marks, ch)
+
+        ch.insert.assert_called_once()
+        call_args = ch.insert.call_args
+        assert call_args[0][0] == "market_mark_daily"
+        assert call_args[1]["column_names"] == MARKET_MARK_DAILY_COLUMNS
+        assert len(call_args[1]["data"]) == 2
+
+    def test_load_from_s3_reads_partitions(self) -> None:
+        """load_marks_to_clickhouse_from_s3 reads S3 partitions and inserts."""
+        sample = compute_marks_for_day(
+            [_make_trade("m1", "tok1", 0.5, 100.0)], "polymarket", date(2024, 6, 15)
+        )
+        ch = MagicMock()
+        call_count = 0
+
+        def mock_read(gold_bucket: str, day: str, s3_client: object = None) -> pa.Table | None:
+            nonlocal call_count
+            call_count += 1
+            # Return data for first 3 days, None for rest
+            if call_count <= 3:
+                return sample
+            return None
+
+        with patch(
+            "prediction_data.gold.market_marks._read_gold_marks_for_day",
+            side_effect=mock_read,
+        ):
+            rows = load_marks_to_clickhouse_from_s3(
+                gold_bucket="test-gold",
+                lookback_days=5,
+                s3_client=MagicMock(),
+                clickhouse_client=ch,
+            )
+
+        assert rows == 3  # 3 days × 1 row each
+        assert ch.insert.call_count == 3
+
+    def test_load_from_s3_empty_bucket(self) -> None:
+        """No rows loaded when no partitions exist."""
+        ch = MagicMock()
+
+        with patch(
+            "prediction_data.gold.market_marks._read_gold_marks_for_day",
+            return_value=None,
+        ):
+            rows = load_marks_to_clickhouse_from_s3(
+                gold_bucket="test-gold",
+                lookback_days=5,
+                s3_client=MagicMock(),
+                clickhouse_client=ch,
+            )
+
+        assert rows == 0
+        ch.insert.assert_not_called()

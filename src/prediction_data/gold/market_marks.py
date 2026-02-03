@@ -276,7 +276,7 @@ def compute_market_marks(
         catalog: Optional PyIceberg catalog.
         gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
         s3_client: Optional boto3 S3 client.
-        clickhouse_client: Optional ClickHouse client (unused for now, reserved for CH mirror).
+        clickhouse_client: Optional ClickHouse client. If provided, inserts marks into CH.
         dry_run: Preview without writing.
 
     Returns:
@@ -318,5 +318,74 @@ def compute_market_marks(
             s3_client=s3_client,
         )
 
+    # Insert into ClickHouse if client provided.
+    if clickhouse_client is not None and num_rows > 0:
+        _load_marks_to_clickhouse(mark_table, clickhouse_client)
+
     logger.info("loaded_market_marks", platform=platform, day=str(dt), rows=num_rows)
     return num_rows
+
+
+def _load_marks_to_clickhouse(
+    mark_table: pa.Table,
+    clickhouse_client: Any,
+) -> None:
+    """Insert a market_mark_daily Arrow table into ClickHouse."""
+    clickhouse_client.insert(
+        "market_mark_daily",
+        data=mark_table.to_pylist(),
+        column_names=MARKET_MARK_DAILY_COLUMNS,
+    )
+    logger.info("inserted_market_marks_to_ch", rows=mark_table.num_rows)
+
+
+def load_marks_to_clickhouse_from_s3(
+    *,
+    gold_bucket: str,
+    lookback_days: int = 90,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+) -> int:
+    """Load market_mark_daily partitions from S3 Gold into ClickHouse.
+
+    Reads the most recent *lookback_days* of Gold partitions and inserts
+    them into the ClickHouse ``market_mark_daily`` table.
+
+    Args:
+        gold_bucket: S3 bucket containing Gold Parquet files.
+        lookback_days: Number of days to look back from today.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+
+    Returns:
+        Total number of rows loaded.
+    """
+    from datetime import timedelta
+
+    if clickhouse_client is None:
+        from prediction_data.gold.clickhouse import get_client
+
+        clickhouse_client = get_client()
+
+    if s3_client is None:
+        import boto3
+
+        s3_client = boto3.client("s3")
+
+    today = date.today()
+    total_rows = 0
+
+    for offset in range(lookback_days):
+        day = today - timedelta(days=offset)
+        tbl = _read_gold_marks_for_day(gold_bucket, str(day), s3_client=s3_client)
+        if tbl is None or tbl.num_rows == 0:
+            continue
+        _load_marks_to_clickhouse(tbl, clickhouse_client)
+        total_rows += tbl.num_rows
+
+    logger.info(
+        "loaded_marks_from_s3_to_ch",
+        lookback_days=lookback_days,
+        total_rows=total_rows,
+    )
+    return total_rows

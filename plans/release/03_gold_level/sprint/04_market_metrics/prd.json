@@ -43,7 +43,7 @@
             "Implement CH loader: read S3 Gold Parquet → insert into ClickHouse",
             "Support configurable lookback window (--lookback-days N, default 90)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_and_testing",

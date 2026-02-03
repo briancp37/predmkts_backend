@@ -37,6 +37,15 @@
   - 4 new unit tests: no-prior-data, with-prior-volumes, multiple-outcomes, schema-preserved
   - All 861 tests pass, mypy clean
 
+- [2026-02-02] clickhouse_mirror: ClickHouse hot mirror for market_mark_daily
+  - DDL: 008_market_mark_daily.sql (ReplacingMergeTree, PARTITION BY toYYYYMM(day_utc), ORDER BY (platform, market_id, outcome_id, day_utc), TTL 90 days)
+  - _load_marks_to_clickhouse() inserts Arrow table into CH via client.insert()
+  - compute_market_marks() now writes to CH when clickhouse_client is provided
+  - load_marks_to_clickhouse_from_s3() reads S3 Gold partitions for N lookback days and bulk-loads into CH
+  - CLI: `prediction-data gold load-marks-ch --lookback-days N` (default 90)
+  - 3 unit tests for CH loader, 3 CLI tests for load-marks-ch command
+  - All 867 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -46,8 +55,7 @@
 ## Notes
 - outcome_id uses nonusdc_side (the token ID) from Silver trades to identify which outcome a trade belongs to
 - MIN_TRADES_FOR_VWAP = 3; below this threshold, mark_price falls back to last_trade_price
-- ClickHouse mirror not yet wired in compute_market_marks (reserved for clickhouse_mirror category)
-- CLI command not yet added (reserved for cli_and_testing category)
+- ClickHouse mirror wired: compute_market_marks() inserts to CH when clickhouse_client is passed; load-marks-ch CLI loads from S3 Gold with configurable lookback
 - liquidity_metric uses trailing 7-day avg daily volume (LIQUIDITY_WINDOW_DAYS=7); open interest not feasible without position state data
 - attach_liquidity_metric() is called in compute_market_marks() after marks are computed, before S3 write
 - _read_gold_marks_for_day() reads prior days from S3 Gold partitions; gracefully handles missing days

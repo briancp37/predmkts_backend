@@ -110,3 +110,37 @@ class TestComputeMarksCli:
             gold_bucket=None,
             dry_run=True,
         )
+
+
+class TestLoadMarksChCli:
+    """Tests for `prediction-data gold load-marks-ch`."""
+
+    def test_dry_run(self) -> None:
+        with patch("prediction_data.cli.gold.get_settings") as mock_settings:
+            mock_settings.return_value.gold_bucket = "my-bucket"
+            result = runner.invoke(app, ["load-marks-ch", "--dry-run"])
+        assert result.exit_code == 0
+        assert "dry-run" in result.output
+
+    def test_no_gold_bucket_errors(self) -> None:
+        with patch("prediction_data.cli.gold.get_settings") as mock_settings:
+            mock_settings.return_value.gold_bucket = ""
+            result = runner.invoke(app, ["load-marks-ch"])
+        assert result.exit_code == 1
+        assert "GOLD_BUCKET" in result.output
+
+    def test_custom_lookback(self) -> None:
+        with patch(
+            "prediction_data.gold.market_marks.load_marks_to_clickhouse_from_s3",
+            return_value=100,
+        ) as mock_load:
+            with patch("prediction_data.cli.gold.get_settings") as mock_settings:
+                mock_settings.return_value.gold_bucket = "my-bucket"
+                result = runner.invoke(app, ["load-marks-ch", "--lookback-days", "30"])
+
+        assert result.exit_code == 0
+        assert "100 rows" in result.output
+        mock_load.assert_called_once_with(
+            gold_bucket="my-bucket",
+            lookback_days=30,
+        )
