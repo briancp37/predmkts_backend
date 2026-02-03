@@ -10,7 +10,7 @@
             "Join reconstructed positions with market_mark_daily to compute mark_price, position_value_usd, unrealized_pnl_usd",
             "Handle edge cases: no trades in range (carry forward last known position), market with no mark (skip or use last available)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "caching",

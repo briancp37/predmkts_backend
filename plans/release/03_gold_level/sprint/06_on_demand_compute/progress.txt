@@ -2,10 +2,26 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [x] snapshot_reconstruction: Created src/prediction_data/gold/on_demand.py with
+  compute_wallet_snapshots() function. Accepts wallet, start_date, end_date.
+  Checks S3 Gold for existing partitions (skips already-computed days).
+  Replays wallet_position_ledger fills chronologically to rebuild position
+  state at each day boundary. Joins with market_mark_daily for mark_price,
+  position_value_usd, unrealized_pnl_usd. Handles edge cases: no trades in
+  range (carries forward last known position via _read_initial_positions),
+  missing marks (emits NaN values so position is still visible). Writes
+  per-day partitions to S3 Gold using idempotent partition overwrite.
+  Schema: wallet_position_snapshot_daily with 10 columns (day_utc, wallet,
+  platform, market_id, outcome_id, qty, avg_cost, mark_price,
+  position_value_usd, unrealized_pnl_usd).
+- [x] Tests: 11 unit tests in tests/gold/test_on_demand.py covering replay
+  logic (single fill, carry forward, initial positions, closed positions,
+  missing marks, empty range, schema) and compute_wallet_snapshots
+  (dry run, partial existing, no fills carry forward, all partitions exist).
 
 ## In Progress
 
@@ -14,3 +30,10 @@
 
 
 ## Notes
+
+- _check_existing_partitions does a coarse partition-level check (any file
+  in the partition = exists). A future enhancement could read parquet and
+  filter by wallet for multi-wallet partitions.
+- Missing marks produce NaN values rather than skipping the row, so the
+  position is still visible in the snapshot output.
+- The caching, cli, and testing PRD categories are not yet started.
