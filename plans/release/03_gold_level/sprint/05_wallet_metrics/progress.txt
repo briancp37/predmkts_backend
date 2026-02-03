@@ -2,10 +2,23 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### watchlist_table (2026-02-02)
+- Created ClickHouse DDL: `docker/clickhouse/init/006_gold_watchlist.sql`
+  - ReplacingMergeTree(added_at), ORDER BY wallet_address
+  - Schema: wallet_address, added_at, notes, active (Bool)
+- Created `src/prediction_data/gold/watchlist.py` with add_wallet, remove_wallet, list_wallets
+  - Uses ReplacingMergeTree semantics: remove = insert with active=false
+  - list_wallets uses FINAL keyword for dedup at read time
+- Added CLI sub-commands under `prediction-data gold watchlist`:
+  - `add ADDR [--notes ...]`
+  - `remove ADDR`
+  - `list [--all]`
+- 11 unit + CLI tests in `tests/gold/test_watchlist.py`, all passing
+- mypy clean, 834 tests passing (full suite)
 
 ## In Progress
 
@@ -14,3 +27,5 @@
 
 
 ## Notes
+- wallet_pnl_daily depends on wallet_position_ledger which is from sprint 04
+- wallet_mtm_daily and wallet_position_snapshot_daily both depend on watchlist (now done) + market marks

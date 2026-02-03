@@ -22,7 +22,7 @@
             "Create src/prediction_data/gold/watchlist.py with add/remove/list functions",
             "Add CLI commands: `prediction-data gold watchlist add ADDR`, `prediction-data gold watchlist list`, `prediction-data gold watchlist remove ADDR`"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "wallet_mtm_daily",

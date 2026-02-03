@@ -72,3 +72,54 @@ def load_dims(
                 dry_run=dry_run,
             )
             typer.echo(f"dim_wallet: {rows} rows loaded.")
+
+
+# ---------------------------------------------------------------------------
+# Watchlist sub-commands
+# ---------------------------------------------------------------------------
+
+watchlist_app = typer.Typer(
+    help="Manage the Gold watchlist for selective wallet computation.",
+    no_args_is_help=True,
+)
+app.add_typer(watchlist_app, name="watchlist")
+
+
+@watchlist_app.command(name="add")
+def watchlist_add(
+    address: str = typer.Argument(..., help="Wallet address to add."),
+    notes: str = typer.Option("", help="Optional notes for this wallet."),
+) -> None:
+    """Add a wallet address to the watchlist."""
+    from prediction_data.gold.watchlist import add_wallet
+
+    add_wallet(address, notes=notes)
+    typer.echo(f"Added {address} to watchlist.")
+
+
+@watchlist_app.command(name="remove")
+def watchlist_remove(
+    address: str = typer.Argument(..., help="Wallet address to deactivate."),
+) -> None:
+    """Remove (deactivate) a wallet from the watchlist."""
+    from prediction_data.gold.watchlist import remove_wallet
+
+    remove_wallet(address)
+    typer.echo(f"Removed {address} from watchlist.")
+
+
+@watchlist_app.command(name="list")
+def watchlist_list(
+    all_: bool = typer.Option(False, "--all", help="Include inactive wallets."),
+) -> None:
+    """List wallets on the watchlist."""
+    from prediction_data.gold.watchlist import list_wallets
+
+    wallets = list_wallets(active_only=not all_)
+    if not wallets:
+        typer.echo("No wallets on watchlist.")
+        return
+    for w in wallets:
+        status = "active" if w["active"] else "inactive"
+        notes_part = f"  ({w['notes']})" if w["notes"] else ""
+        typer.echo(f"{w['wallet_address']}  [{status}]{notes_part}")
