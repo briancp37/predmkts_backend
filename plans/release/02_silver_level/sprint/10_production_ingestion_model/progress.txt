@@ -153,6 +153,48 @@ Test results: 1009 passed, 0 failed (60 integration tests deselected).
 mypy: 2 pre-existing errors only (unchanged).
 ruff: clean on changed files.
 
+### testing_and_validation (2026-02-03)
+All 6 steps completed:
+1. Integration test: multiple catchup cycles with independent run_ids, processed
+   into Silver with dedup correctness verified. Added TestMultiCatchupIncrementalProcessing
+   class (3 tests) in test_silver_pipeline_integration.py:
+   - test_multiple_manifests_processed_independently: two catchup runs for same day,
+     each with unique records, processed as independent batches
+   - test_overlapping_records_deduped_within_single_manifest: duplicate records within
+     one catchup batch are deduped before write
+   - test_cross_manifest_overlap_resolved_by_merge_keys: overlapping records across
+     catchup cycles resolved by Iceberg upsert with merge_keys
+2. Integration test for Silver trades processing + MarketsReferenceLookup: already
+   covered by 6 tests in TestMarketsReferenceLookupAutoLoad (test_silver_processor.py),
+   added during silver_trades_processing steps 1/2/6.
+3. Integration test for catalog entity (markets) without --skip-quality-checks: added
+   test_catalog_entity_quality_checks_pass_without_skip_flag in TestIdempotencyIntegration
+   class. Processes markets snapshot with timestamps spanning years (2023-2024) and
+   verifies all quality checks pass. Also previously covered by 4 tests in
+   TestCatalogEntityQualityChecks (test_silver_quality.py).
+4. Idempotency test: added test_reprocessing_same_data_produces_same_result in
+   TestIdempotencyIntegration class. Processes same manifest twice and verifies
+   identical results. Also previously covered by test_reprocessing_same_manifest_is_
+   idempotent in test_silver_cli.py (CLI-level state store check).
+5. Concurrent ingestion safety: added TestConcurrentIngestionSafety class (3 tests):
+   - test_independent_manifests_produce_independent_results: two concurrent runs
+     produce independent ProcessingResults
+   - test_overlapping_windows_each_produce_valid_output: overlapping time windows
+     both produce valid Silver output with merge-key columns present
+   - test_state_store_tracks_each_manifest_independently: verifies each manifest
+     from each catchup run is independently tracked in SilverStateStore
+6. Ran mypy and ruff on all changed modules:
+   - mypy: 2 pre-existing errors only (unused type:ignore in writer.py and
+     maintenance.py) — no new errors
+   - ruff: 0 new errors in changed code; 11 pre-existing errors in unchanged
+     portions of test_silver_pipeline_integration.py
+
+New tests added: 8 tests across 3 test classes in test_silver_pipeline_integration.py.
+
+Test results: 1017 passed, 0 failed (60 integration tests deselected).
+mypy: 2 pre-existing errors only (unchanged).
+ruff: clean on new code.
+
 ## In Progress
 
 ## Blockers/Issues

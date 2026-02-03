@@ -500,3 +500,469 @@ class TestSchemaConsistency:
         schema, _ = SILVER_TABLES[(namespace, table_name)]
         first_field = schema.fields[0]
         assert first_field.name == "event_ts"
+
+
+# ---------------------------------------------------------------------------
+# Multi-catchup: independent run_ids processed as incremental batches
+# ---------------------------------------------------------------------------
+
+
+class TestMultiCatchupIncrementalProcessing:
+    """Integration tests for the continuous ingestion architecture.
+
+    Validates that multiple independent catchup cycles (each producing its own
+    run_id and manifest) are processed correctly by Silver, including
+    cross-manifest deduplication at the Iceberg merge level.
+    """
+
+    @pytest.mark.asyncio
+    async def test_multiple_manifests_processed_independently(self) -> None:
+        """Each catchup cycle manifest is processed as an independent batch."""
+        # Two independent catchup runs for the same day, each with unique records
+        records_run1 = [
+            {
+                "id": f"0xmarket{i}",
+                "condition_id": f"0xcond{i}",
+                "question": f"Catchup 1 market {i}",
+                "description": "desc",
+                "market_slug": f"slug-c1-{i}",
+                "status": "open",
+                "outcome": None,
+                "tokens": [{"token_id": f"t1-{i}", "outcome": "Yes"}],
+                "event_id": f"evt-{i}",
+                "updated_at": f"2024-06-15T10:00:{i:02d}Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            }
+            for i in range(3)
+        ]
+        records_run2 = [
+            {
+                "id": f"0xmarket{i}",
+                "condition_id": f"0xcond{i}",
+                "question": f"Catchup 2 market {i}",
+                "description": "desc",
+                "market_slug": f"slug-c2-{i}",
+                "status": "open",
+                "outcome": None,
+                "tokens": [{"token_id": f"t1-{i}", "outcome": "Yes"}],
+                "event_id": f"evt-{i}",
+                "updated_at": f"2024-06-15T14:00:{i:02d}Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            }
+            for i in range(3, 6)
+        ]
+
+        manifest1 = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="catchup-run-1", row_count=3,
+        )
+        manifest2 = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="catchup-run-2", row_count=3,
+        )
+
+        # Process each manifest independently (simulating two catchup cycles)
+        for records, manifest, expected_run_id in [
+            (records_run1, manifest1, "catchup-run-1"),
+            (records_run2, manifest2, "catchup-run-2"),
+        ]:
+            key = manifest.manifest.files[0].key
+            s3_client = _mock_s3_with_compressed({key: records})
+            catalog, captured = _mock_catalog_with_capture()
+
+            result = await process_manifest(manifest, s3_client, catalog)
+
+            assert result.run_id == expected_run_id
+            assert result.rows_read == 3
+            assert result.rows_written == 3
+            assert result.duplicates_dropped == 0
+            assert len(captured) == 1
+            assert captured[0].num_rows == 3
+
+    @pytest.mark.asyncio
+    async def test_overlapping_records_deduped_within_single_manifest(self) -> None:
+        """Records duplicated within a single catchup cycle are deduped before write."""
+        rec = _raw_market_records(1)[0]
+        # Same record appearing twice in one catchup batch (overlapping ingestion window)
+        records = [rec, rec.copy()]
+
+        manifest = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="catchup-overlap-1", row_count=2,
+        )
+        key = manifest.manifest.files[0].key
+        s3_client = _mock_s3_with_compressed({key: records})
+        catalog, captured = _mock_catalog_with_capture()
+
+        result = await process_manifest(manifest, s3_client, catalog)
+
+        assert result.rows_read == 2
+        assert result.duplicates_dropped == 1
+        assert result.rows_written == 1
+        assert captured[0].num_rows == 1
+
+    @pytest.mark.asyncio
+    async def test_cross_manifest_overlap_resolved_by_merge_keys(self) -> None:
+        """Overlapping records across catchup cycles are handled by Iceberg upsert.
+
+        When two catchup cycles ingest the same record (overlapping time windows),
+        each manifest processes independently. The Iceberg merge/upsert with
+        merge_keys ensures the final table has only one copy of each entity.
+        """
+        # Same market appears in both catchup runs (simulating overlapping windows)
+        shared_record = {
+            "id": "0xshared-market",
+            "condition_id": "0xcond-shared",
+            "question": "Shared market across catchups",
+            "description": "desc",
+            "market_slug": "slug-shared",
+            "status": "open",
+            "outcome": None,
+            "tokens": [{"token_id": "t-shared", "outcome": "Yes"}],
+            "event_id": "evt-shared",
+            "updated_at": "2024-06-15T12:00:00Z",
+            "end_date_iso": "2024-12-31T00:00:00Z",
+        }
+
+        unique_rec_1 = {
+            "id": "0xunique-1",
+            "condition_id": "0xcond-u1",
+            "question": "Unique to run 1",
+            "description": "desc",
+            "market_slug": "slug-u1",
+            "status": "open",
+            "outcome": None,
+            "tokens": [],
+            "event_id": "evt-u1",
+            "updated_at": "2024-06-15T10:00:00Z",
+            "end_date_iso": "2024-12-31T00:00:00Z",
+        }
+
+        unique_rec_2 = {
+            "id": "0xunique-2",
+            "condition_id": "0xcond-u2",
+            "question": "Unique to run 2",
+            "description": "desc",
+            "market_slug": "slug-u2",
+            "status": "open",
+            "outcome": None,
+            "tokens": [],
+            "event_id": "evt-u2",
+            "updated_at": "2024-06-15T14:00:00Z",
+            "end_date_iso": "2024-12-31T00:00:00Z",
+        }
+
+        # Run 1: shared + unique-1
+        manifest1 = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="overlap-run-1", row_count=2,
+        )
+        key1 = manifest1.manifest.files[0].key
+        s3_client1 = _mock_s3_with_compressed({key1: [shared_record, unique_rec_1]})
+        catalog1, captured1 = _mock_catalog_with_capture()
+
+        result1 = await process_manifest(manifest1, s3_client1, catalog1)
+        assert result1.rows_written == 2
+
+        # Run 2: shared + unique-2
+        manifest2 = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="overlap-run-2", row_count=2,
+        )
+        key2 = manifest2.manifest.files[0].key
+        s3_client2 = _mock_s3_with_compressed({key2: [shared_record, unique_rec_2]})
+        catalog2, captured2 = _mock_catalog_with_capture()
+
+        result2 = await process_manifest(manifest2, s3_client2, catalog2)
+        assert result2.rows_written == 2
+
+        # Both runs write 2 rows each — Iceberg upsert handles dedup at merge level.
+        # The shared record appears in both write batches; the merge_keys
+        # (platform_market_id) ensure it's upserted rather than duplicated.
+        assert len(captured1) == 1
+        assert len(captured2) == 1
+
+        # Verify merge_keys were used in the upsert call
+        upsert_call1 = catalog1.load_table.return_value.upsert
+        upsert_call1.assert_called_once()
+        call_kwargs1 = upsert_call1.call_args
+        assert "join_cols" in call_kwargs1.kwargs
+
+        upsert_call2 = catalog2.load_table.return_value.upsert
+        upsert_call2.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Concurrent ingestion safety
+# ---------------------------------------------------------------------------
+
+
+class TestConcurrentIngestionSafety:
+    """Tests for correctness when two catchup runs with overlapping time windows
+    produce independent manifests that are then both processed into Silver.
+
+    This validates the continuous ingestion architecture where each catchup
+    invocation is independently processable.
+    """
+
+    @pytest.mark.asyncio
+    async def test_independent_manifests_produce_independent_results(self) -> None:
+        """Two concurrent ingestion runs produce independent ProcessingResults."""
+        records_a = _raw_market_records(3)
+        records_b = [
+            {
+                "id": f"0xmarket{i}",
+                "condition_id": f"0xcond{i}",
+                "question": f"Concurrent batch B market {i}",
+                "description": "desc",
+                "market_slug": f"slug-b-{i}",
+                "status": "open",
+                "outcome": None,
+                "tokens": [],
+                "event_id": f"evt-b-{i}",
+                "updated_at": f"2024-06-15T15:00:{i:02d}Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            }
+            for i in range(3)
+        ]
+
+        manifest_a = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="concurrent-a", row_count=3,
+        )
+        manifest_b = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="concurrent-b", row_count=3,
+        )
+
+        # Process A
+        key_a = manifest_a.manifest.files[0].key
+        s3_a = _mock_s3_with_compressed({key_a: records_a})
+        catalog_a, captured_a = _mock_catalog_with_capture()
+        result_a = await process_manifest(manifest_a, s3_a, catalog_a)
+
+        # Process B
+        key_b = manifest_b.manifest.files[0].key
+        s3_b = _mock_s3_with_compressed({key_b: records_b})
+        catalog_b, captured_b = _mock_catalog_with_capture()
+        result_b = await process_manifest(manifest_b, s3_b, catalog_b)
+
+        # Each result is independent
+        assert result_a.run_id == "concurrent-a"
+        assert result_b.run_id == "concurrent-b"
+        assert result_a.rows_written == 3
+        assert result_b.rows_written == 3
+
+        # Each captured its own Arrow table
+        assert len(captured_a) == 1
+        assert len(captured_b) == 1
+        assert captured_a[0].num_rows == 3
+        assert captured_b[0].num_rows == 3
+
+    @pytest.mark.asyncio
+    async def test_overlapping_windows_each_produce_valid_output(self) -> None:
+        """Two ingestion runs with overlapping records each produce valid Silver output.
+
+        In the continuous model, overlapping time windows are expected. Each
+        catchup run produces its own manifest and is processed independently.
+        The Iceberg upsert with merge_keys handles any cross-batch duplicates.
+        """
+        # Overlapping event records: some appear in both runs
+        overlap_events = _raw_event_records(2)  # events 0 and 1
+        unique_a = [
+            {
+                "id": "event-unique-a",
+                "title": "Unique event A",
+                "description": "Only in run A",
+                "slug": "unique-a",
+                "status": "active",
+                "category": "sports",
+                "updated_at": "2024-06-15T10:00:00Z",
+            },
+        ]
+        unique_b = [
+            {
+                "id": "event-unique-b",
+                "title": "Unique event B",
+                "description": "Only in run B",
+                "slug": "unique-b",
+                "status": "active",
+                "category": "politics",
+                "updated_at": "2024-06-15T14:00:00Z",
+            },
+        ]
+
+        records_a = overlap_events + unique_a  # 3 records
+        records_b = overlap_events + unique_b  # 3 records
+
+        manifest_a = _make_discovered_manifest(
+            entity="events", dt="2024-06-15", run_id="window-a", row_count=3,
+        )
+        manifest_b = _make_discovered_manifest(
+            entity="events", dt="2024-06-15", run_id="window-b", row_count=3,
+        )
+
+        # Process both
+        key_a = manifest_a.manifest.files[0].key
+        s3_a = _mock_s3_with_compressed({key_a: records_a})
+        catalog_a, captured_a = _mock_catalog_with_capture()
+        result_a = await process_manifest(manifest_a, s3_a, catalog_a)
+
+        key_b = manifest_b.manifest.files[0].key
+        s3_b = _mock_s3_with_compressed({key_b: records_b})
+        catalog_b, captured_b = _mock_catalog_with_capture()
+        result_b = await process_manifest(manifest_b, s3_b, catalog_b)
+
+        # Both runs produce valid output
+        assert result_a.rows_written == 3
+        assert result_b.rows_written == 3
+        assert result_a.duplicates_dropped == 0  # no dupes within each batch
+        assert result_b.duplicates_dropped == 0
+
+        # Verify platform_event_id column present for merge-key dedup at Iceberg level
+        tbl_a = captured_a[0]
+        tbl_b = captured_b[0]
+        assert "platform_event_id" in tbl_a.column_names
+        assert "platform_event_id" in tbl_b.column_names
+
+    @pytest.mark.asyncio
+    async def test_state_store_tracks_each_manifest_independently(self) -> None:
+        """Each manifest from each catchup run is independently tracked by state store."""
+        from prediction_data.silver.state import SilverStateStore, _state_key
+
+        # Set up an in-memory state store
+        store_data: dict[str, bytes] = {}
+        mock_s3 = MagicMock()
+        mock_s3.bucket = "test-bucket"
+        boto_client = MagicMock()
+
+        def get_object(Bucket: str, Key: str) -> dict:  # noqa: ARG001
+            if Key not in store_data:
+                raise type("NoSuchKey", (Exception,), {})(f"Key not found: {Key}")
+            body = MagicMock()
+            body.read.return_value = store_data[Key]
+            return {"Body": body}
+
+        def put_object(Bucket: str, Key: str, Body: bytes, **kw: object) -> None:  # noqa: ARG001
+            store_data[Key] = Body
+
+        boto_client.get_object = get_object
+        boto_client.put_object = put_object
+        boto_client.exceptions = MagicMock()
+        boto_client.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
+        mock_s3._get_client.return_value = boto_client
+
+        state = SilverStateStore(mock_s3, "polymarket", "markets")
+        await state.load()
+
+        # Mark two independent catchup runs as processed
+        await state.mark_processed("catchup-run-1", "polymarket", "markets", "2024-06-15")
+        await state.mark_processed("catchup-run-2", "polymarket", "markets", "2024-06-15")
+
+        assert state.is_processed("catchup-run-1")
+        assert state.is_processed("catchup-run-2")
+        assert not state.is_processed("catchup-run-3")
+
+        # Verify both entries persisted
+        key = _state_key("polymarket", "markets")
+        import json
+        data = store_data[key].decode()
+        lines = [line for line in data.strip().splitlines() if line.strip()]
+        assert len(lines) == 2
+        run_ids = {json.loads(line)["run_id"] for line in lines}
+        assert run_ids == {"catchup-run-1", "catchup-run-2"}
+
+
+# ---------------------------------------------------------------------------
+# Idempotency: reprocessing already-processed manifests
+# ---------------------------------------------------------------------------
+
+
+class TestIdempotencyIntegration:
+    """Test that the Silver pipeline is idempotent via the state store.
+
+    The state store (SilverStateStore) tracks processed run_ids. Re-running
+    Silver process on already-processed manifests should be a no-op at the
+    CLI level. At the processor level, process_manifest itself is deterministic
+    — reprocessing produces the same upsert, and Iceberg merge keys prevent
+    duplicates.
+    """
+
+    @pytest.mark.asyncio
+    async def test_reprocessing_same_data_produces_same_result(self) -> None:
+        """Processing the same manifest twice produces identical results."""
+        records = _raw_market_records(3)
+        manifest = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="idempotent-run-1", row_count=3,
+        )
+        key = manifest.manifest.files[0].key
+
+        # First run
+        s3_1 = _mock_s3_with_compressed({key: records})
+        catalog_1, captured_1 = _mock_catalog_with_capture()
+        result_1 = await process_manifest(manifest, s3_1, catalog_1)
+
+        # Second run (same data)
+        s3_2 = _mock_s3_with_compressed({key: records})
+        catalog_2, captured_2 = _mock_catalog_with_capture()
+        result_2 = await process_manifest(manifest, s3_2, catalog_2)
+
+        # Results should be identical
+        assert result_1.rows_read == result_2.rows_read
+        assert result_1.rows_written == result_2.rows_written
+        assert result_1.duplicates_dropped == result_2.duplicates_dropped
+        assert result_1.rows_normalized == result_2.rows_normalized
+
+        # Arrow tables should have same shape
+        assert captured_1[0].num_rows == captured_2[0].num_rows
+        assert captured_1[0].column_names == captured_2[0].column_names
+
+    @pytest.mark.asyncio
+    async def test_catalog_entity_quality_checks_pass_without_skip_flag(self) -> None:
+        """Markets snapshot with wide timestamp range passes quality checks.
+
+        This validates that catalog entities (markets, events) can be processed
+        without --skip-quality-checks, because the timestamp_range check is
+        not applied to them.
+        """
+        # Records spanning years — typical of a markets catalog snapshot
+        records = [
+            {
+                "id": f"0xmarket-old-{i}",
+                "condition_id": f"0xcond-old-{i}",
+                "question": f"Old market {i}",
+                "description": "desc",
+                "market_slug": f"slug-old-{i}",
+                "status": "resolved",
+                "outcome": "Yes",
+                "tokens": [{"token_id": f"t-old-{i}", "outcome": "Yes"}],
+                "event_id": f"evt-old-{i}",
+                "updated_at": f"2023-0{i + 1}-15T12:00:00Z",
+                "end_date_iso": f"2023-0{i + 1}-30T00:00:00Z",
+            }
+            for i in range(3)
+        ] + [
+            {
+                "id": "0xmarket-recent",
+                "condition_id": "0xcond-recent",
+                "question": "Recent market",
+                "description": "desc",
+                "market_slug": "slug-recent",
+                "status": "open",
+                "outcome": None,
+                "tokens": [{"token_id": "t-recent", "outcome": "Yes"}],
+                "event_id": "evt-recent",
+                "updated_at": "2024-06-15T12:00:00Z",
+                "end_date_iso": "2024-12-31T00:00:00Z",
+            },
+        ]
+
+        manifest = _make_discovered_manifest(
+            entity="markets", dt="2024-06-15", run_id="catalog-no-skip", row_count=4,
+        )
+        key = manifest.manifest.files[0].key
+        s3_client = _mock_s3_with_compressed({key: records})
+        catalog, captured = _mock_catalog_with_capture()
+
+        # Process WITHOUT skip_quality_checks — should succeed for catalog entities
+        result = await process_manifest(
+            manifest, s3_client, catalog, skip_quality_checks=False
+        )
+
+        assert result.rows_written == 4
+        assert result.quality_checks_passed >= 1
+        assert len(captured) == 1
+        assert captured[0].num_rows == 4

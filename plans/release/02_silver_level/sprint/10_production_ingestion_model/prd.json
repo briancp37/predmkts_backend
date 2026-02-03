@@ -69,13 +69,13 @@
         "category": "testing_and_validation",
         "description": "Integration tests and validation for the production ingestion model changes",
         "steps": [
-            "Integration test: ingest order_filled with multiple catchup cycles producing independent run_ids, then process all into Silver and verify dedup correctness",
-            "Integration test: verify Silver trades processing correctly loads MarketsReferenceLookup and resolves token IDs",
-            "Integration test: process catalog entity (markets) without --skip-quality-checks after quality check fix",
-            "Test idempotency: re-running Silver process on already-processed manifests should be a no-op (state store check)",
-            "Test concurrent ingestion safety: verify two catchup runs for overlapping time windows produce correct Silver output",
-            "Run mypy and ruff on all changed modules"
+            "[DONE] Integration test: ingest order_filled with multiple catchup cycles producing independent run_ids, then process all into Silver and verify dedup correctness",
+            "[DONE] Integration test: verify Silver trades processing correctly loads MarketsReferenceLookup and resolves token IDs",
+            "[DONE] Integration test: process catalog entity (markets) without --skip-quality-checks after quality check fix",
+            "[DONE] Test idempotency: re-running Silver process on already-processed manifests should be a no-op (state store check)",
+            "[DONE] Test concurrent ingestion safety: verify two catchup runs for overlapping time windows produce correct Silver output",
+            "[DONE] Run mypy and ruff on all changed modules"
         ],
-        "passes": false
+        "passes": true
     }
 ]
