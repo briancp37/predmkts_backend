@@ -11,7 +11,7 @@
             "Compute last_trade_price from the latest trade by timestamp",
             "Compute active_wallets_24h as count of distinct maker + taker addresses"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "liquidity_metric",

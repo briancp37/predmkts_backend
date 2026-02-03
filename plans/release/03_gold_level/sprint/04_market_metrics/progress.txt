@@ -2,10 +2,17 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
-
+- [2026-02-02] mark_price_computation: Created src/prediction_data/gold/market_marks.py
+  - Reads Silver polymarket.trades for a given date via PyIceberg row filter
+  - Groups trades by (market_id, outcome_id) where outcome_id = nonusdc_side token ID
+  - Computes VWAP (volume-weighted average price) with fallback to last trade price when < 3 trades
+  - Computes volume_usd_24h, trades_count_24h, last_trade_price, active_wallets_24h
+  - compute_market_marks() orchestrator reads Silver, computes, writes to S3 Gold Parquet
+  - 12 unit tests covering VWAP edge cases, grouping, wallet counting, schema validation
+  - All 823 tests pass, mypy clean on new code
 
 ## In Progress
 
@@ -14,3 +21,7 @@
 
 
 ## Notes
+- outcome_id uses nonusdc_side (the token ID) from Silver trades to identify which outcome a trade belongs to
+- MIN_TRADES_FOR_VWAP = 3; below this threshold, mark_price falls back to last_trade_price
+- ClickHouse mirror not yet wired in compute_market_marks (reserved for clickhouse_mirror category)
+- CLI command not yet added (reserved for cli_and_testing category)
