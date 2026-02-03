@@ -264,6 +264,7 @@ def compute_wallet_snapshots(
     s3_client: Any | None = None,
     clickhouse_client: Any | None = None,
     dry_run: bool = False,
+    skip_ch: bool = False,
 ) -> pa.Table:
     """Reconstruct historical position snapshots for a wallet.
 
@@ -280,6 +281,7 @@ def compute_wallet_snapshots(
         s3_client: Optional boto3 S3 client.
         clickhouse_client: Optional ClickHouse client.
         dry_run: If True, compute but don't write.
+        skip_ch: If True, skip ClickHouse loading (S3 only).
 
     Returns:
         PyArrow table of snapshot rows for the *missing* days.
@@ -353,6 +355,8 @@ def compute_wallet_snapshots(
         return snapshot_table
 
     # Write to S3 Gold — one partition per day.
+    days_written: set[date] = set()
+    ch_dates: list[date] = []
     if gold_bucket:
         from prediction_data.gold.s3_writer import write_gold_parquet
 
@@ -376,5 +380,47 @@ def compute_wallet_snapshots(
             wallet=wallet,
             partitions=len(days_written),
         )
+
+    # Load recent partitions into ClickHouse (hot mirror).
+    if not skip_ch:
+        from prediction_data.gold.config import DEFAULT_TTL_DAYS
+
+        cutoff = date.today() - timedelta(days=DEFAULT_TTL_DAYS)
+        ch_dates = [d for d in missing_dates if d >= cutoff]
+        if ch_dates:
+            # Filter snapshot table to only CH-eligible dates.
+            ch_mask = pc.greater_equal(
+                snapshot_table.column("day_utc"),
+                pa.scalar(cutoff, pa.date32()),
+            )
+            ch_table = snapshot_table.filter(ch_mask)
+            if ch_table.num_rows > 0:
+                clickhouse_client.insert(
+                    TABLE_NAME,
+                    data=ch_table.to_pylist(),
+                    column_names=SNAPSHOT_COLUMNS,
+                )
+                logger.info(
+                    "snapshots_loaded_ch",
+                    wallet=wallet,
+                    rows=ch_table.num_rows,
+                    days=len(ch_dates),
+                )
+        else:
+            logger.info(
+                "snapshots_ch_skipped_all_outside_ttl",
+                wallet=wallet,
+                ttl_days=DEFAULT_TTL_DAYS,
+            )
+
+    # Summary log.
+    logger.info(
+        "compute_wallet_snapshots_summary",
+        wallet=wallet,
+        partitions_computed=len(missing_dates),
+        partitions_cached_s3=len(days_written) if gold_bucket else 0,
+        partitions_cached_ch=len(ch_dates) if not skip_ch else 0,
+        rows_written=snapshot_table.num_rows,
+    )
 
     return snapshot_table

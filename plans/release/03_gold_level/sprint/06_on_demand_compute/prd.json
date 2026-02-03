@@ -21,7 +21,7 @@
             "Use idempotent partition overwrite for S3 writes",
             "Log summary: partitions computed, partitions cached, rows written"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli",

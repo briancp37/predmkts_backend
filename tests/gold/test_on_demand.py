@@ -280,6 +280,93 @@ class TestComputeWalletSnapshots:
         assert row["qty"] == 50.0
         assert abs(row["position_value_usd"] - 30.0) < 1e-9  # 50 * 0.60
 
+    def test_ch_loading_for_recent_dates(self) -> None:
+        """Partitions within 90 days are loaded into ClickHouse."""
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]  # No existing partitions.
+        mock_s3.get_paginator.return_value = paginator
+
+        # Use a recent date so it's within 90-day TTL.
+        from datetime import timedelta
+        recent_date = date.today() - timedelta(days=10)
+        mock_ch_recent = self._make_ch_mock(
+            fill_rows=[
+                (datetime.combine(recent_date, datetime.min.time()), "polymarket", "mkt1", "tok1", "buy", 100, 0.5, 0, 0.5, 100),
+            ],
+            mark_rows=[
+                (recent_date, "polymarket", "mkt1", "tok1", 0.6),
+            ],
+        )
+
+        compute_wallet_snapshots(
+            wallet="0xA",
+            start_date=recent_date,
+            end_date=recent_date,
+            gold_bucket="test-gold",
+            s3_client=mock_s3,
+            clickhouse_client=mock_ch_recent,
+        )
+        # Verify insert was called for CH loading.
+        mock_ch_recent.insert.assert_called_once()
+        call_args = mock_ch_recent.insert.call_args
+        assert call_args[0][0] == "wallet_position_snapshot_daily"
+
+    def test_ch_loading_skipped_for_old_dates(self) -> None:
+        """Partitions older than 90 days are NOT loaded into ClickHouse."""
+        old_date = date(2020, 1, 1)
+        mock_ch = self._make_ch_mock(
+            fill_rows=[
+                (datetime(2020, 1, 1, 10), "polymarket", "mkt1", "tok1", "buy", 100, 0.5, 0, 0.5, 100),
+            ],
+            mark_rows=[
+                (old_date, "polymarket", "mkt1", "tok1", 0.6),
+            ],
+        )
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        mock_s3.get_paginator.return_value = paginator
+
+        compute_wallet_snapshots(
+            wallet="0xA",
+            start_date=old_date,
+            end_date=old_date,
+            gold_bucket="test-gold",
+            s3_client=mock_s3,
+            clickhouse_client=mock_ch,
+        )
+        # insert should NOT have been called (date is outside 90-day window).
+        mock_ch.insert.assert_not_called()
+
+    def test_skip_ch_flag(self) -> None:
+        """skip_ch=True prevents ClickHouse loading."""
+        from datetime import timedelta
+        recent_date = date.today() - timedelta(days=5)
+        mock_ch = self._make_ch_mock(
+            fill_rows=[
+                (datetime.combine(recent_date, datetime.min.time()), "polymarket", "mkt1", "tok1", "buy", 100, 0.5, 0, 0.5, 100),
+            ],
+            mark_rows=[
+                (recent_date, "polymarket", "mkt1", "tok1", 0.6),
+            ],
+        )
+        mock_s3 = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        mock_s3.get_paginator.return_value = paginator
+
+        compute_wallet_snapshots(
+            wallet="0xA",
+            start_date=recent_date,
+            end_date=recent_date,
+            gold_bucket="test-gold",
+            s3_client=mock_s3,
+            clickhouse_client=mock_ch,
+            skip_ch=True,
+        )
+        mock_ch.insert.assert_not_called()
+
     def test_all_partitions_exist_returns_empty(self) -> None:
         """When all partitions exist, returns empty table."""
         mock_ch = MagicMock()

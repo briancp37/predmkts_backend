@@ -23,6 +23,15 @@
   missing marks, empty range, schema) and compute_wallet_snapshots
   (dry run, partial existing, no fills carry forward, all partitions exist).
 
+- [x] caching: Added ClickHouse hot mirror loading to compute_wallet_snapshots().
+  Partitions within DEFAULT_TTL_DAYS (90 days) are automatically inserted into
+  the wallet_position_snapshot_daily ClickHouse table after S3 writes. Dates
+  older than 90 days are skipped with a log message. Added skip_ch parameter
+  to allow S3-only writes. Summary log emits partitions_computed,
+  partitions_cached_s3, partitions_cached_ch, and rows_written. 3 new tests:
+  test_ch_loading_for_recent_dates, test_ch_loading_skipped_for_old_dates,
+  test_skip_ch_flag. Total: 14 tests passing.
+
 ## In Progress
 
 
