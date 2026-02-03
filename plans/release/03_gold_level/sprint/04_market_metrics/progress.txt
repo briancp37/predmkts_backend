@@ -14,6 +14,19 @@
   - 12 unit tests covering VWAP edge cases, grouping, wallet counting, schema validation
   - All 823 tests pass, mypy clean on new code
 
+- [2026-02-02] s3_gold_output: Marked as complete
+  - PyArrow schema, daily partitions, idempotent overwrite were already implemented in mark_price_computation
+  - Date range backfill now supported via CLI --start-date/--end-date
+- [2026-02-02] cli_and_testing: Added `prediction-data gold compute-marks` CLI command
+  - Supports --dt YYYY-MM-DD for single day computation
+  - Supports --start-date / --end-date for date range backfill (sequential processing)
+  - Supports --platform and --dry-run flags
+  - Continues on per-day failure, reports summary at end
+  - 7 CLI unit tests: single date, date range, conflict detection, missing args, partial failure, custom platform
+  - VWAP unit tests (12) were already written in mark_price_computation phase
+  - Integration test (CH round-trip) deferred until clickhouse_mirror category is complete
+  - All 841 tests pass, mypy clean
+
 ## In Progress
 
 

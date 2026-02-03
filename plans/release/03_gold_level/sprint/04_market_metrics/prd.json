@@ -33,7 +33,7 @@
             "Support backfill: process date ranges sequentially",
             "Add idempotent partition overwrite"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "clickhouse_mirror",
@@ -54,6 +54,6 @@
             "Write unit tests for VWAP and metric computation with known trade data",
             "Write integration test: Silver trades → market_mark_daily S3 + CH round-trip"
         ],
-        "passes": false
+        "passes": true
     }
 ]
