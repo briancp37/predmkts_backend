@@ -35,7 +35,7 @@
             "Write to S3 Gold Parquet + CH with 90-day TTL",
             "Handle missing marks gracefully (log warning, use last available mark or skip)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "wallet_position_snapshot_daily",

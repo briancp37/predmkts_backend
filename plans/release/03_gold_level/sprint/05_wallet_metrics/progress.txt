@@ -33,6 +33,22 @@
 - 15 unit + CLI tests in `tests/gold/test_wallet_pnl.py`, all passing
 - mypy clean, 856 tests passing (full suite)
 
+### wallet_mtm_daily (2026-02-02)
+- Created `src/prediction_data/gold/wallet_mtm.py`
+  - Schema: day_utc, wallet, equity_usd, unrealized_pnl_usd, exposure_gross_usd, exposure_net_usd, positions_count, missing_marks_count
+  - `_read_watchlist_wallets()` queries gold_watchlist FINAL for active wallets
+  - `_read_positions_for_wallets()` reads from wallet_position_state (qty != 0)
+  - `_read_marks_for_day()` reads market_mark_daily FINAL for mark prices
+  - `compute_mtm_for_day()` groups positions by wallet, joins with marks, computes equity/unrealized/exposure
+  - `compute_wallet_mtm()` orchestrates: watchlist → positions → marks → MTM → S3 + CH
+  - Missing marks handled gracefully: logged at debug level, position skipped, counted in missing_marks_count
+- Created ClickHouse DDL: `docker/clickhouse/init/009_wallet_mtm_daily.sql`
+  - ReplacingMergeTree(version), PARTITION BY toYYYYMM(day_utc), ORDER BY (wallet, day_utc), TTL 90 days
+- Added CLI command: `prediction-data gold compute-mtm --dt YYYY-MM-DD [--dry-run]`
+  - Supports --start-date/--end-date for range processing
+- 16 unit + CLI tests in `tests/gold/test_wallet_mtm.py`, all passing
+- mypy clean, 883 tests passing (full suite)
+
 ## In Progress
 
 
@@ -42,3 +58,5 @@
 ## Notes
 - wallet_pnl_daily depends on wallet_position_ledger which is from sprint 04
 - wallet_mtm_daily and wallet_position_snapshot_daily both depend on watchlist (now done) + market marks
+- wallet_mtm_daily depends on wallet_position_state table (not yet created — will be part of position ledger sprint)
+- Next up: wallet_position_snapshot_daily (similar pattern to wallet_mtm but per-position rows)
