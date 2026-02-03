@@ -23,7 +23,7 @@
             "Ensure trades/order_filled (stream entities) retain strict timestamp_range checks",
             "Add tests verifying catalog entities pass quality checks without --skip-quality-checks flag"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "continuous_ingestion_architecture",

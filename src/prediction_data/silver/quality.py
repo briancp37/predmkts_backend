@@ -230,6 +230,11 @@ class ReferentialCheck(QualityCheck):
 # Per-entity check configurations
 # ---------------------------------------------------------------------------
 
+# Catalog entities contain full snapshots with timestamps spanning years
+# (e.g. a markets snapshot for dt=2026-02-03 has records from 2023-2026).
+# Timestamp range checks are not meaningful for these entities.
+CATALOG_ENTITIES: frozenset[str] = frozenset({"markets", "events"})
+
 # Critical non-null columns per entity (platform, entity) -> columns
 ENTITY_NON_NULL_COLUMNS: dict[tuple[str, str], list[str]] = {
     ("polymarket", "trades"): [
@@ -285,8 +290,9 @@ def checks_for_entity(
     if uniq_col:
         checks.append(UniquenessCheck(uniq_col))
 
-    # 3. Timestamp range check
-    if expected_date is not None:
+    # 3. Timestamp range check (skip for catalog entities whose snapshots
+    #    naturally contain records with timestamps spanning years)
+    if expected_date is not None and entity not in CATALOG_ENTITIES:
         checks.append(TimestampRangeCheck(expected_date))
 
     # 4. Referential check (trades -> markets, warn-only)

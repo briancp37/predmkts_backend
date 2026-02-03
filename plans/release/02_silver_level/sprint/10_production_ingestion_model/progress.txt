@@ -34,6 +34,35 @@ Test results: 989 passed, 0 failed.
 mypy: 2 pre-existing errors only (unused type:ignore comments in writer.py and
 maintenance.py).
 
+### quality_checks_catalog_entities (2026-02-03)
+All 5 steps completed:
+1. Analyzed timestamp_range check behavior: catalog entity snapshots (markets,
+   events) contain records with timestamps spanning years (2023-2026 for a
+   dt=2026-02-03 snapshot). The default ±1 day tolerance window in
+   TimestampRangeCheck rejects ~97% of these records, making quality checks
+   unusable without --skip-quality-checks.
+2. Designed entity-type-aware approach: added CATALOG_ENTITIES frozenset
+   containing {"markets", "events"} in quality.py. Catalog entities skip the
+   timestamp_range check entirely since their timestamps naturally span years
+   and the check is not meaningful for snapshot data.
+3. Updated checks_for_entity() in quality.py: the TimestampRangeCheck is now
+   only added when `entity not in CATALOG_ENTITIES`. This is a one-line
+   conditional change that preserves all other checks (non_null, uniqueness,
+   referential) for catalog entities.
+4. Verified stream entities (trades, order_filled) retain strict ±1 day
+   timestamp_range checks — no behavior change for stream entities.
+5. Added 8 new tests in test_silver_quality.py:
+   - TestChecksForEntity: test_catalog_entity_no_timestamp_range,
+     test_stream_entity_has_timestamp_range, test_catalog_entities_set
+   - TestCatalogEntityQualityChecks: test_markets_snapshot_passes_quality_checks,
+     test_events_snapshot_passes_quality_checks,
+     test_trades_still_reject_out_of_range_timestamps,
+     test_kalshi_markets_no_timestamp_range
+
+Test results: 996 passed, 0 failed (60 integration tests deselected).
+mypy: 2 pre-existing errors only (unchanged).
+ruff: clean on changed files.
+
 ## In Progress
 
 ## Blockers/Issues

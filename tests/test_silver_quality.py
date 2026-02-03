@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from prediction_data.silver.quality import (
+    CATALOG_ENTITIES,
     NonNullCheck,
     QualityCheck,
     QualityCheckError,
@@ -18,7 +19,6 @@ from prediction_data.silver.quality import (
     checks_for_entity,
     run_quality_checks,
 )
-
 
 # ---------------------------------------------------------------------------
 # Concrete test check implementations
@@ -297,6 +297,126 @@ class TestChecksForEntity:
         )
         names = [c.name for c in checks]
         assert "referential" not in names
+
+    def test_catalog_entity_no_timestamp_range(self) -> None:
+        """Catalog entities (markets, events) should not get a TimestampRangeCheck."""
+        for entity in CATALOG_ENTITIES:
+            checks = checks_for_entity(
+                "polymarket", entity,
+                expected_date=datetime(2025, 6, 15, tzinfo=UTC),
+            )
+            names = [c.name for c in checks]
+            assert "timestamp_range" not in names, (
+                f"Catalog entity '{entity}' should not have timestamp_range check"
+            )
+
+    def test_stream_entity_has_timestamp_range(self) -> None:
+        """Stream entities (trades) should still get a TimestampRangeCheck."""
+        checks = checks_for_entity(
+            "polymarket", "trades",
+            expected_date=datetime(2025, 6, 15, tzinfo=UTC),
+        )
+        names = [c.name for c in checks]
+        assert "timestamp_range" in names
+
+    def test_catalog_entities_set(self) -> None:
+        """Verify CATALOG_ENTITIES contains markets and events."""
+        assert "markets" in CATALOG_ENTITIES
+        assert "events" in CATALOG_ENTITIES
+        assert "trades" not in CATALOG_ENTITIES
+        assert "order_filled" not in CATALOG_ENTITIES
+
+
+# ---------------------------------------------------------------------------
+# Catalog entity quality check integration
+# ---------------------------------------------------------------------------
+
+
+class TestCatalogEntityQualityChecks:
+    """Verify catalog entities pass quality checks without --skip-quality-checks.
+
+    A catalog entity snapshot (e.g. markets for dt=2026-02-03) contains records
+    with timestamps spanning years. These should pass quality checks because
+    the timestamp_range check is not applied to catalog entities.
+    """
+
+    def test_markets_snapshot_passes_quality_checks(self) -> None:
+        """Markets snapshot with timestamps spanning years should pass all checks."""
+        expected_date = datetime(2026, 2, 3, tzinfo=UTC)
+        records = [
+            {
+                "event_ts": datetime(2023, 5, 10, 14, 0, tzinfo=UTC),
+                "platform_market_id": "m1",
+            },
+            {
+                "event_ts": datetime(2024, 8, 22, 9, 30, tzinfo=UTC),
+                "platform_market_id": "m2",
+            },
+            {
+                "event_ts": datetime(2026, 2, 3, 11, 0, tzinfo=UTC),
+                "platform_market_id": "m3",
+            },
+        ]
+        checks = checks_for_entity(
+            "polymarket", "markets", expected_date=expected_date,
+        )
+        results = run_quality_checks(checks, records)
+        assert all(r.passed for r in results)
+
+    def test_events_snapshot_passes_quality_checks(self) -> None:
+        """Events snapshot with old timestamps should pass all checks."""
+        expected_date = datetime(2026, 2, 3, tzinfo=UTC)
+        records = [
+            {
+                "event_ts": datetime(2023, 11, 1, tzinfo=UTC),
+                "platform_event_id": "e1",
+            },
+            {
+                "event_ts": datetime(2025, 3, 15, 8, 0, tzinfo=UTC),
+                "platform_event_id": "e2",
+            },
+        ]
+        checks = checks_for_entity(
+            "polymarket", "events", expected_date=expected_date,
+        )
+        results = run_quality_checks(checks, records)
+        assert all(r.passed for r in results)
+
+    def test_trades_still_reject_out_of_range_timestamps(self) -> None:
+        """Trades (stream entity) should still fail on out-of-range timestamps."""
+        expected_date = datetime(2026, 2, 3, tzinfo=UTC)
+        records = [
+            {
+                "event_ts": datetime(2023, 5, 10, tzinfo=UTC),
+                "platform_trade_id": "t1",
+                "platform_market_id": "m1",
+                "maker": "0xabc",
+                "taker": "0xdef",
+                "price": 0.65,
+                "usd_amount": 100.0,
+                "token_amount": 153.85,
+            },
+        ]
+        checks = checks_for_entity(
+            "polymarket", "trades", expected_date=expected_date,
+        )
+        with pytest.raises(QualityCheckError, match="timestamp_range"):
+            run_quality_checks(checks, records)
+
+    def test_kalshi_markets_no_timestamp_range(self) -> None:
+        """Kalshi markets (catalog entity) should also skip timestamp_range."""
+        expected_date = datetime(2026, 2, 3, tzinfo=UTC)
+        records = [
+            {
+                "event_ts": datetime(2024, 1, 15, tzinfo=UTC),
+                "platform_market_id": "k_m1",
+            },
+        ]
+        checks = checks_for_entity(
+            "kalshi", "markets", expected_date=expected_date,
+        )
+        results = run_quality_checks(checks, records)
+        assert all(r.passed for r in results)
 
 
 # ---------------------------------------------------------------------------
