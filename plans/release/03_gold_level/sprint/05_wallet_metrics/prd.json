@@ -47,7 +47,7 @@
             "Write to S3 Gold Parquet + CH with 90-day TTL",
             "Support backfill: reconstruct historical snapshots from ledger + marks"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_and_testing",
