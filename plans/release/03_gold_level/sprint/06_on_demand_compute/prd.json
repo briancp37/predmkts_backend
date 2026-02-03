@@ -33,7 +33,7 @@
             "Chunk large date ranges into manageable batches (e.g., 30-day chunks)",
             "Print progress: 'Computing snapshots for wallet 0xABC... day 15/365'"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

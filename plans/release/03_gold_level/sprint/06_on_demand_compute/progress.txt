@@ -32,6 +32,14 @@
   test_ch_loading_for_recent_dates, test_ch_loading_skipped_for_old_dates,
   test_skip_ch_flag. Total: 14 tests passing.
 
+- [x] cli: Added `prediction-data gold compute-snapshot` command in cli/gold.py.
+  Accepts --wallet, --start-date, --end-date (all required). Supports --dry-run
+  (compute without writing) and --skip-ch (S3 only, skip ClickHouse). Chunks
+  large date ranges into configurable batches (--chunk-days, default 30).
+  Prints progress: "Computing snapshots for wallet 0xABC... day 1-30/365".
+  Delegates to on_demand.compute_wallet_snapshots() per chunk. mypy clean,
+  178 tests passing.
+
 ## In Progress
 
 
@@ -45,4 +53,4 @@
   filter by wallet for multi-wallet partitions.
 - Missing marks produce NaN values rather than skipping the row, so the
   position is still visible in the snapshot output.
-- The caching, cli, and testing PRD categories are not yet started.
+- The testing PRD category is not yet started (integration test for CLI).

@@ -491,6 +491,69 @@ def compute_wallet_metrics(
         raise typer.Exit(code=1)
 
 
+@app.command(name="compute-snapshot")
+def compute_snapshot(
+    wallet: str = typer.Option(..., "--wallet", help="Wallet address to compute snapshots for."),
+    start_date: str = typer.Option(
+        ..., "--start-date", help="Start of date range (YYYY-MM-DD)."
+    ),
+    end_date: str = typer.Option(
+        ..., "--end-date", help="End of date range inclusive (YYYY-MM-DD)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+    skip_ch: bool = typer.Option(
+        False, "--skip-ch", help="Write to S3 only, skip ClickHouse loading."
+    ),
+    chunk_days: int = typer.Option(
+        30, "--chunk-days", help="Max days per batch (default 30)."
+    ),
+) -> None:
+    """On-demand snapshot reconstruction for a single wallet."""
+    from datetime import date as date_cls, timedelta
+
+    from prediction_data.gold.on_demand import compute_wallet_snapshots
+
+    settings = get_settings()
+
+    s = date_cls.fromisoformat(start_date)
+    e = date_cls.fromisoformat(end_date)
+    if s > e:
+        typer.echo("Error: --start-date must be <= --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    total_days = (e - s).days + 1
+    gold_bucket = settings.gold_bucket or None
+
+    total_rows = 0
+    days_done = 0
+    chunk_start = s
+    while chunk_start <= e:
+        chunk_end = min(chunk_start + timedelta(days=chunk_days - 1), e)
+        chunk_size = (chunk_end - chunk_start).days + 1
+        typer.echo(
+            f"Computing snapshots for wallet {wallet[:10]}... "
+            f"day {days_done + 1}-{days_done + chunk_size}/{total_days}"
+        )
+        result = compute_wallet_snapshots(
+            wallet=wallet,
+            start_date=chunk_start,
+            end_date=chunk_end,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+            skip_ch=skip_ch,
+        )
+        rows = len(result)
+        total_rows += rows
+        days_done += chunk_size
+        typer.echo(
+            f"  {chunk_start} → {chunk_end}: {rows} rows"
+            f"{'  [dry-run]' if dry_run else ''}"
+        )
+        chunk_start = chunk_end + timedelta(days=1)
+
+    typer.echo(f"Done: {total_rows} rows across {total_days} day(s) for {wallet}.")
+
+
 @watchlist_app.command(name="add")
 def watchlist_add(
     address: str = typer.Argument(..., help="Wallet address to add."),
