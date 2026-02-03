@@ -248,3 +248,130 @@ class TestCheckFreshness:
     def test_empty(self, mock_ch: MagicMock) -> None:
         mock_ch.query.return_value.result_rows = []
         assert check_freshness(mock_ch) == []
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: simulate Gold processing with ops metadata
+# ---------------------------------------------------------------------------
+
+
+class TestOpsMetadataIntegration:
+    """Integration test: simulates a Gold processing job and verifies ops records.
+
+    This test uses a mock ClickHouse client to capture the records that would
+    be written to pipeline_runs, dataset_partitions, and dataset_freshness tables.
+    """
+
+    def test_gold_processing_emits_all_ops_records(self, mock_ch: MagicMock) -> None:
+        """Simulate a Gold compute job that writes to all three ops tables.
+
+        Verifies that:
+        1. pipeline_runs receives start (running) + end (success) records
+        2. dataset_partitions receives a partition record
+        3. dataset_freshness receives an update
+        """
+        # Simulate a Gold compute-marks style job
+        dt = date(2024, 6, 15)
+        dataset = "market_mark_daily"
+
+        # --- Step 1: Run the pipeline with tracking ---
+        with track_run(mock_ch, "gold") as ctx:
+            # Simulate work
+            rows_computed = 500
+            ctx["rows_written"] = rows_computed
+
+            # After processing, record the partition
+            record_partition(
+                mock_ch,
+                dataset,
+                dt,
+                row_count=rows_computed,
+                run_id=ctx["run_id"],
+            )
+
+            # Update freshness
+            now = datetime(2024, 6, 15, 12, 5, 0, tzinfo=UTC)
+            update_freshness(
+                mock_ch,
+                dataset,
+                last_success_at=now,
+                run_id=ctx["run_id"],
+                now=now,
+            )
+
+        # --- Step 2: Verify records were inserted ---
+        # Should have 4 inserts total: start_run, record_partition, update_freshness, end_run
+        assert mock_ch.insert.call_count == 4
+
+        # Collect all inserts by table
+        inserts_by_table: dict[str, list[list[object]]] = {}
+        for call in mock_ch.insert.call_args_list:
+            table = call[0][0]
+            row = call[1]["data"][0]
+            inserts_by_table.setdefault(table, []).append(row)
+
+        # Verify pipeline_runs: 2 records (running + success)
+        assert len(inserts_by_table["pipeline_runs"]) == 2
+        start_row = inserts_by_table["pipeline_runs"][0]
+        end_row = inserts_by_table["pipeline_runs"][1]
+        assert start_row[4] == "running"
+        assert end_row[4] == "success"
+        assert end_row[7] == 500  # rows_written
+
+        # Verify dataset_partitions: 1 record
+        assert len(inserts_by_table["dataset_partitions"]) == 1
+        part_row = inserts_by_table["dataset_partitions"][0]
+        assert part_row[0] == "market_mark_daily"
+        assert part_row[1] == date(2024, 6, 15)
+        assert part_row[2] == 500
+
+        # Verify dataset_freshness: 1 record
+        assert len(inserts_by_table["dataset_freshness"]) == 1
+        fresh_row = inserts_by_table["dataset_freshness"][0]
+        assert fresh_row[0] == "market_mark_daily"
+        assert fresh_row[4] == "fresh"  # state
+
+    def test_failed_pipeline_records_error(self, mock_ch: MagicMock) -> None:
+        """Verify that a failed pipeline run captures the error message."""
+        with pytest.raises(RuntimeError, match="Silver table missing"), track_run(mock_ch, "gold") as ctx:
+            ctx["rows_written"] = 10
+            raise RuntimeError("Silver table missing")
+
+        # Should have 2 inserts: start + failed end
+        assert mock_ch.insert.call_count == 2
+        end_row = mock_ch.insert.call_args_list[1][1]["data"][0]
+        assert end_row[4] == "failed"
+        assert "Silver table missing" in end_row[9]  # error column
+
+    def test_run_id_links_across_tables(self, mock_ch: MagicMock) -> None:
+        """Verify run_id consistency across pipeline_runs, partitions, and freshness."""
+        captured_run_id: str | None = None
+
+        with track_run(mock_ch, "gold") as ctx:
+            captured_run_id = ctx["run_id"]
+            record_partition(
+                mock_ch,
+                "wallet_pnl_daily",
+                date(2024, 6, 15),
+                row_count=100,
+                run_id=captured_run_id,
+            )
+            update_freshness(
+                mock_ch,
+                "wallet_pnl_daily",
+                last_success_at=datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC),
+                run_id=captured_run_id,
+            )
+
+        assert captured_run_id is not None
+
+        # Verify run_id appears in all records
+        for call in mock_ch.insert.call_args_list:
+            table = call[0][0]
+            row = call[1]["data"][0]
+            if table == "pipeline_runs":
+                assert row[0] == captured_run_id  # run_id is first column
+            elif table == "dataset_partitions":
+                assert row[5] == captured_run_id  # run_id is last column
+            elif table == "dataset_freshness":
+                assert row[5] == captured_run_id  # last_run_id is last column

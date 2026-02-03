@@ -19,6 +19,19 @@
 - [2026-02-02] dataset_freshness: Added `prediction-data gold freshness` CLI command to src/prediction_data/cli/gold.py. Displays tabular output: dataset, state, lag, SLA, last success time. Uses check_freshness() which recomputes state at query time.
 - [2026-02-02] dataset_freshness: 12 new unit tests (TestComputeFreshnessState: 6, TestUpdateFreshness: 3, TestGetAllFreshness: 1, TestCheckFreshness: 2). All 25 tests passing. mypy clean, ruff clean.
 
+- [2026-02-03] testing: Added 3 integration tests in tests/gold/test_ops_metadata.py (TestOpsMetadataIntegration class):
+  - test_gold_processing_emits_all_ops_records: Simulates a Gold compute job using track_run() + record_partition() + update_freshness(). Verifies all 4 inserts occur (start_run, record_partition, update_freshness, end_run) with correct table names and record contents.
+  - test_failed_pipeline_records_error: Verifies pipeline failure captures error message in pipeline_runs.
+  - test_run_id_links_across_tables: Verifies run_id consistency across pipeline_runs, dataset_partitions, and dataset_freshness tables.
+
+- [2026-02-03] testing: Created tests/gold/test_freshness_cli.py with 4 tests for CLI output verification:
+  - test_displays_freshness_data: Verifies tabular output contains header columns (Dataset, State, Lag, SLA, Last Success) and data rows.
+  - test_empty_freshness_data: Verifies "No freshness data recorded yet" message.
+  - test_handles_missing_last_success: Verifies None timestamps display as "—".
+  - test_output_format_alignment: Verifies header/separator/data rows are present and formatted.
+
+- [2026-02-03] testing: All 32 tests passing (28 existing + 3 integration + 4 CLI). mypy clean, ruff clean.
+
 ## In Progress
 
 - Instrumentation of Gold CLI commands (compute-marks, compute-wallet-metrics) to call record_partition() after writes is deferred to a follow-up pass. The helpers are ready to be wired in.

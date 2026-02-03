@@ -54,6 +54,6 @@
             "Write integration test: run a Gold processing job → verify pipeline_runs, dataset_partitions, and freshness records exist in CH",
             "Verify freshness CLI output matches expected format"
         ],
-        "passes": false
+        "passes": true
     }
 ]
