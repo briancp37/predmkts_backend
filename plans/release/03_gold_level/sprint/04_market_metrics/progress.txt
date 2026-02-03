@@ -27,6 +27,16 @@
   - Integration test (CH round-trip) deferred until clickhouse_mirror category is complete
   - All 841 tests pass, mypy clean
 
+- [2026-02-02] liquidity_metric: Implemented trailing 7-day avg daily volume as liquidity proxy
+  - Researched open_interest_usd: not feasible without position state tracking
+  - Added liquidity_metric (float64) field to MARKET_MARK_DAILY_SCHEMA
+  - _read_gold_marks_for_day() reads prior Gold partitions from S3
+  - _collect_prior_volumes() gathers up to 6 prior days of volume data
+  - attach_liquidity_metric() computes trailing avg and replaces null column
+  - Wired into compute_market_marks(): runs after mark computation, before S3 write
+  - 4 new unit tests: no-prior-data, with-prior-volumes, multiple-outcomes, schema-preserved
+  - All 861 tests pass, mypy clean
+
 ## In Progress
 
 
@@ -38,3 +48,7 @@
 - MIN_TRADES_FOR_VWAP = 3; below this threshold, mark_price falls back to last_trade_price
 - ClickHouse mirror not yet wired in compute_market_marks (reserved for clickhouse_mirror category)
 - CLI command not yet added (reserved for cli_and_testing category)
+- liquidity_metric uses trailing 7-day avg daily volume (LIQUIDITY_WINDOW_DAYS=7); open interest not feasible without position state data
+- attach_liquidity_metric() is called in compute_market_marks() after marks are computed, before S3 write
+- _read_gold_marks_for_day() reads prior days from S3 Gold partitions; gracefully handles missing days
+- On cold start (no prior days), liquidity_metric equals current day's volume_usd_24h

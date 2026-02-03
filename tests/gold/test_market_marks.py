@@ -9,6 +9,7 @@ import pyarrow as pa
 from prediction_data.gold.market_marks import (
     MARKET_MARK_DAILY_SCHEMA,
     MIN_TRADES_FOR_VWAP,
+    attach_liquidity_metric,
     compute_marks_for_day,
     compute_vwap,
 )
@@ -145,3 +146,57 @@ class TestComputeMarksForDay:
         ]
         result = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
         assert result.num_rows == 1
+
+    def test_liquidity_metric_defaults_to_null(self) -> None:
+        """compute_marks_for_day sets liquidity_metric to null (filled later)."""
+        trades = [_make_trade("m1", "tok1", 0.5, 100.0)]
+        result = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        row = result.to_pylist()[0]
+        assert row["liquidity_metric"] is None
+
+
+# ---------------------------------------------------------------------------
+# attach_liquidity_metric tests
+# ---------------------------------------------------------------------------
+
+
+class TestAttachLiquidityMetric:
+    def test_no_prior_data_uses_current_volume(self) -> None:
+        """With no prior days, liquidity_metric equals today's volume."""
+        trades = [_make_trade("m1", "tok1", 0.5, 200.0)]
+        marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        result = attach_liquidity_metric(marks, {})
+        row = result.to_pylist()[0]
+        assert abs(row["liquidity_metric"] - 200.0) < 1e-9
+
+    def test_with_prior_volumes(self) -> None:
+        """Trailing avg includes prior days + current day."""
+        trades = [_make_trade("m1", "tok1", 0.5, 100.0)]
+        marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        # 3 prior days with volumes 200, 300, 400; current = 100
+        prior = {("m1", "tok1"): [200.0, 300.0, 400.0]}
+        result = attach_liquidity_metric(marks, prior)
+        row = result.to_pylist()[0]
+        expected = (200.0 + 300.0 + 400.0 + 100.0) / 4
+        assert abs(row["liquidity_metric"] - expected) < 1e-9
+
+    def test_multiple_outcomes(self) -> None:
+        """Each outcome gets its own liquidity metric."""
+        trades = [
+            _make_trade("m1", "tok1", 0.5, 100.0),
+            _make_trade("m1", "tok2", 0.3, 50.0),
+        ]
+        marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        prior = {("m1", "tok1"): [300.0]}
+        result = attach_liquidity_metric(marks, prior)
+        rows = {r["outcome_id"]: r for r in result.to_pylist()}
+        # tok1: (300+100)/2 = 200
+        assert abs(rows["tok1"]["liquidity_metric"] - 200.0) < 1e-9
+        # tok2: only current day = 50
+        assert abs(rows["tok2"]["liquidity_metric"] - 50.0) < 1e-9
+
+    def test_schema_preserved(self) -> None:
+        trades = [_make_trade("m1", "tok1", 0.5, 100.0)]
+        marks = compute_marks_for_day(trades, "polymarket", date(2024, 6, 15))
+        result = attach_liquidity_metric(marks, {})
+        assert result.schema == MARKET_MARK_DAILY_SCHEMA

@@ -35,6 +35,10 @@ MARKET_MARK_DAILY_SCHEMA = pa.schema(
         pa.field("volume_usd_24h", pa.float64()),
         pa.field("trades_count_24h", pa.uint64()),
         pa.field("active_wallets_24h", pa.uint64()),
+        # Liquidity proxy: trailing 7-day average daily volume in USD.
+        # Open interest is not feasible without position state tracking,
+        # so we use trailing average volume as a liquidity proxy instead.
+        pa.field("liquidity_metric", pa.float64()),
     ]
 )
 
@@ -167,8 +171,88 @@ def compute_marks_for_day(
         rows["volume_usd_24h"].append(volume_usd)
         rows["trades_count_24h"].append(trades_count)
         rows["active_wallets_24h"].append(len(wallets))
+        # liquidity_metric is populated after compute via attach_liquidity_metric()
+        rows["liquidity_metric"].append(None)
 
     return pa.table(rows, schema=MARKET_MARK_DAILY_SCHEMA)
+
+
+# Number of days (including current) for trailing average volume liquidity proxy.
+LIQUIDITY_WINDOW_DAYS = 7
+
+
+def _read_gold_marks_for_day(
+    gold_bucket: str,
+    day: str,
+    s3_client: Any | None = None,
+) -> pa.Table | None:
+    """Read a Gold market_mark_daily partition from S3, returning None if missing."""
+    import io
+
+    import pyarrow.parquet as pq
+
+    if s3_client is None:
+        import boto3
+
+        s3_client = boto3.client("s3")
+
+    key = f"gold/market_mark_daily/day={day}/part-000.parquet"
+    try:
+        resp = s3_client.get_object(Bucket=gold_bucket, Key=key)
+        buf = io.BytesIO(resp["Body"].read())
+        return pq.read_table(buf)
+    except s3_client.exceptions.NoSuchKey:
+        return None
+    except Exception:
+        logger.debug("could_not_read_gold_marks", day=day, key=key)
+        return None
+
+
+def attach_liquidity_metric(
+    current_marks: pa.Table,
+    prior_volumes: dict[tuple[str, str], list[float]],
+) -> pa.Table:
+    """Replace the liquidity_metric column with trailing 7-day avg daily volume.
+
+    Args:
+        current_marks: Today's mark table (liquidity_metric column is all-null).
+        prior_volumes: Mapping of (market_id, outcome_id) to list of prior days'
+            volume_usd_24h values (up to 6 prior days).
+
+    Returns:
+        New table with liquidity_metric filled in.
+    """
+    rows = current_marks.to_pylist()
+    for row in rows:
+        key = (row["market_id"], row["outcome_id"])
+        prior = prior_volumes.get(key, [])
+        all_volumes = prior + [row["volume_usd_24h"]]
+        row["liquidity_metric"] = sum(all_volumes) / len(all_volumes)
+
+    return pa.table(
+        {col: [r[col] for r in rows] for col in MARKET_MARK_DAILY_COLUMNS},
+        schema=MARKET_MARK_DAILY_SCHEMA,
+    )
+
+
+def _collect_prior_volumes(
+    gold_bucket: str,
+    dt: date,
+    s3_client: Any | None = None,
+) -> dict[tuple[str, str], list[float]]:
+    """Read up to LIQUIDITY_WINDOW_DAYS-1 prior days and collect volumes per outcome."""
+    from datetime import timedelta
+
+    volumes: dict[tuple[str, str], list[float]] = {}
+    for offset in range(1, LIQUIDITY_WINDOW_DAYS):
+        prior_day = dt - timedelta(days=offset)
+        tbl = _read_gold_marks_for_day(gold_bucket, str(prior_day), s3_client=s3_client)
+        if tbl is None:
+            continue
+        for row in tbl.to_pylist():
+            key = (row["market_id"], row["outcome_id"])
+            volumes.setdefault(key, []).append(float(row["volume_usd_24h"]))
+    return volumes
 
 
 def compute_market_marks(
@@ -212,6 +296,11 @@ def compute_market_marks(
     num_rows: int = mark_table.num_rows
 
     logger.info("market_marks_computed", platform=platform, day=str(dt), rows=num_rows)
+
+    # Attach liquidity metric (trailing 7-day avg volume) if we have a gold bucket.
+    if gold_bucket and num_rows > 0:
+        prior_volumes = _collect_prior_volumes(gold_bucket, dt, s3_client=s3_client)
+        mark_table = attach_liquidity_metric(mark_table, prior_volumes)
 
     if dry_run:
         logger.info("dry_run_market_marks", rows=num_rows, day=str(dt))

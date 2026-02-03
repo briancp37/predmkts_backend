@@ -22,7 +22,7 @@
             "Add liquidity_metric field to market_mark_daily output",
             "Document the chosen liquidity proxy methodology in code comments"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "s3_gold_output",
