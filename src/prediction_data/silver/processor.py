@@ -13,21 +13,24 @@ from typing import TYPE_CHECKING, Any
 
 from prediction_data.core.logging import get_logger
 from prediction_data.silver.dedup import dedup_batch
-from prediction_data.silver.normalize import get_normalizer
-from prediction_data.silver.reader import ReadResult, read_manifest_data
+from prediction_data.silver.normalize import (
+    PolymarketTradesNormalizer,
+    get_normalizer,
+)
 from prediction_data.silver.quality import (
     QualityCheckError,
     QualityCheckResult,
     checks_for_entity,
     run_quality_checks,
 )
+from prediction_data.silver.reader import ReadResult, read_manifest_data
 from prediction_data.silver.writer import IcebergWriteError, WriteResult, merge_to_iceberg
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
 
-    from prediction_data.storage.s3 import S3Client
     from prediction_data.silver.discovery import DiscoveredManifest
+    from prediction_data.storage.s3 import S3Client
 
 logger = get_logger(__name__)
 
@@ -140,6 +143,40 @@ async def process_manifest(
         duplicates_dropped=dedup_stats.duplicates_dropped,
         records_out=dedup_stats.records_out,
     )
+
+    # --- Load markets reference for trades normalization ---
+    if isinstance(normalizer, PolymarketTradesNormalizer):
+        from prediction_data.silver.polymarket.markets_reference import (
+            load_markets_reference,
+        )
+
+        logger.info(
+            "loading_markets_reference",
+            platform=platform,
+            entity=entity,
+            run_id=run_id,
+        )
+        try:
+            lookup = await load_markets_reference(s3_client, end_date=dt)
+        except Exception as exc:
+            msg = f"Failed to load markets reference for trades processing: {exc}"
+            raise ProcessingError(msg) from exc
+
+        if len(lookup) == 0:
+            msg = (
+                "Markets reference lookup is empty — no Bronze markets data found. "
+                "Ingest and process markets before processing trades."
+            )
+            raise ProcessingError(msg)
+
+        normalizer.set_lookup(lookup)
+        logger.info(
+            "markets_reference_loaded",
+            platform=platform,
+            entity=entity,
+            run_id=run_id,
+            **lookup.coverage_stats,
+        )
 
     # --- Normalize ---
     silver_ingestion_ts = datetime.now(UTC)

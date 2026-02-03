@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,10 +12,9 @@ from prediction_data.silver.processor import (
     _build_namespace,
     process_manifest,
 )
-from prediction_data.silver.reader import ReadResult
 from prediction_data.silver.quality import QualityCheckError
+from prediction_data.silver.reader import ReadResult
 from prediction_data.silver.writer import IcebergWriteError, WriteResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -177,9 +175,8 @@ class TestProcessManifestErrors:
             "prediction_data.silver.processor.read_manifest_data",
             new_callable=AsyncMock,
             side_effect=RuntimeError("S3 down"),
-        ):
-            with pytest.raises(ProcessingError, match="Failed to read"):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+        ), pytest.raises(ProcessingError, match="Failed to read"):
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
     async def test_empty_records_raises_processing_error(self) -> None:
@@ -190,9 +187,8 @@ class TestProcessManifestErrors:
             "prediction_data.silver.processor.read_manifest_data",
             new_callable=AsyncMock,
             return_value=read_result,
-        ):
-            with pytest.raises(ProcessingError, match="No records read"):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+        ), pytest.raises(ProcessingError, match="No records read"):
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
     async def test_write_failure_raises_processing_error(self) -> None:
@@ -211,10 +207,9 @@ class TestProcessManifestErrors:
             patch(
                 "prediction_data.silver.processor.merge_to_iceberg",
                 side_effect=IcebergWriteError("schema mismatch"),
-            ),
+            ),pytest.raises(ProcessingError, match="Failed to write")
         ):
-            with pytest.raises(ProcessingError, match="Failed to write"):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
     async def test_quality_check_failure_raises_processing_error(self) -> None:
@@ -233,10 +228,9 @@ class TestProcessManifestErrors:
             patch(
                 "prediction_data.silver.processor.run_quality_checks",
                 side_effect=QualityCheckError("non_null failed"),
-            ),
+            ),pytest.raises(ProcessingError, match="Quality check failed")
         ):
-            with pytest.raises(ProcessingError, match="Quality check failed"):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
     async def test_quality_check_failure_prevents_write(self) -> None:
@@ -258,10 +252,9 @@ class TestProcessManifestErrors:
             ),
             patch(
                 "prediction_data.silver.processor.merge_to_iceberg",
-            ) as mock_write,
+            ) as mock_write,pytest.raises(ProcessingError)
         ):
-            with pytest.raises(ProcessingError):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
         mock_write.assert_not_called()
 
@@ -279,10 +272,9 @@ class TestProcessManifestErrors:
                 "prediction_data.silver.processor.read_manifest_data",
                 new_callable=AsyncMock,
                 return_value=read_result,
-            ),
+            ),pytest.raises(ProcessingError, match="All records failed normalization")
         ):
-            with pytest.raises(ProcessingError, match="All records failed normalization"):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
 
 # ---------------------------------------------------------------------------
@@ -357,10 +349,9 @@ class TestQualityLogging:
             ),
             patch(
                 "prediction_data.silver.processor.logger",
-            ) as mock_logger,
+            ) as mock_logger,pytest.raises(ProcessingError)
         ):
-            with pytest.raises(ProcessingError):
-                await process_manifest(manifest, MagicMock(), MagicMock())
+            await process_manifest(manifest, MagicMock(), MagicMock())
 
         # Quality done log should NOT appear (failure aborts before it)
         quality_done_calls = [
@@ -504,3 +495,297 @@ class TestProcessingResult:
         assert r.platform == "polymarket"
         assert r.rows_read == 100
         assert r.duplicates_dropped == 5
+
+
+# ---------------------------------------------------------------------------
+# Markets reference auto-loading for trades
+# ---------------------------------------------------------------------------
+
+
+def _raw_order_filled_records(n: int = 2) -> list[dict]:
+    """Raw Bronze OrderFilledEvent records for testing trades processing."""
+    return [
+        {
+            "id": f"fill-{i}",
+            "transactionHash": f"0xabc{i}",
+            "timestamp": "1718467200",
+            "maker": f"0xmaker{i}",
+            "taker": f"0xtaker{i}",
+            "makerAssetId": f"token-{i}",
+            "takerAssetId": "0",
+            "makerAmountFilled": "1000000",
+            "takerAmountFilled": "500000",
+        }
+        for i in range(n)
+    ]
+
+
+class TestMarketsReferenceLookupAutoLoad:
+    """Test that process_manifest auto-loads MarketsReferenceLookup for polymarket/trades."""
+
+    @pytest.mark.asyncio
+    async def test_trades_auto_loads_markets_reference(self) -> None:
+        """Processing polymarket/trades should automatically load and inject the lookup."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="trades",
+            rows_written=2,
+            snapshot_id=100,
+            duration_seconds=0.1,
+        )
+
+        # Build a mock lookup that resolves our test token IDs
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-A", side="token1"),
+            "token-1": MarketSide(market_id="market-B", side="token2"),
+        }
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ),
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                return_value=mock_lookup,
+            ) as mock_load,
+        ):
+            result = await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+        assert result.rows_written == 2
+        assert result.platform == "polymarket"
+        assert result.entity == "trades"
+        mock_load.assert_awaited_once()
+        # Verify end_date was passed to scope the lookup
+        call_kwargs = mock_load.call_args
+        assert call_kwargs.kwargs.get("end_date") == "2024-06-15"
+
+    @pytest.mark.asyncio
+    async def test_markets_reference_load_failure_raises_processing_error(self) -> None:
+        """If markets reference loading fails, should raise ProcessingError."""
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(1)
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("S3 unavailable"),
+            ),pytest.raises(ProcessingError, match="Failed to load markets reference")
+        ):
+            await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_empty_markets_reference_raises_processing_error(self) -> None:
+        """If no markets data exists, should raise ProcessingError."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(1)
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+
+        empty_lookup = MarketsReferenceLookup()
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                return_value=empty_lookup,
+            ),pytest.raises(ProcessingError, match="Markets reference lookup is empty")
+        ):
+            await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_trades_entities_skip_markets_reference(self) -> None:
+        """Markets and events should NOT trigger markets reference loading."""
+        manifest = _make_manifest(platform="polymarket", entity="markets")
+        records = _raw_market_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=2,
+            snapshot_id=99,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ),
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+            ) as mock_load,
+        ):
+            result = await process_manifest(manifest, MagicMock(), MagicMock())
+
+        assert result.rows_written == 2
+        mock_load.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_trades_normalization_uses_loaded_lookup(self) -> None:
+        """Verify that normalized trades contain market_id resolved via the lookup."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(1)
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="trades",
+            rows_written=1,
+            snapshot_id=101,
+            duration_seconds=0.1,
+        )
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="resolved-market-123", side="token1"),
+        }
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_write,
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                return_value=mock_lookup,
+            ),
+        ):
+            await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+        # Verify the normalized records passed to merge_to_iceberg have resolved market IDs
+        written_records = mock_write.call_args[0][0]
+        assert len(written_records) == 1
+        assert written_records[0]["platform_market_id"] == "resolved-market-123"
+
+    @pytest.mark.asyncio
+    async def test_trades_logs_markets_reference_loading(self) -> None:
+        """Verify structured logging for markets reference load steps."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(1)
+        read_result = ReadResult(
+            records=records, records_read=1, files_read=1, errors=0,
+        )
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="trades",
+            rows_written=1,
+            snapshot_id=102,
+            duration_seconds=0.1,
+        )
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-X", side="token1"),
+        }
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ),
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                return_value=mock_lookup,
+            ),
+            patch(
+                "prediction_data.silver.processor.logger",
+            ) as mock_logger,
+        ):
+            await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+        # Check for loading_markets_reference log
+        loading_calls = [
+            call
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0] == "loading_markets_reference"
+        ]
+        assert len(loading_calls) == 1
+
+        # Check for markets_reference_loaded log
+        loaded_calls = [
+            call
+            for call in mock_logger.info.call_args_list
+            if call.args and call.args[0] == "markets_reference_loaded"
+        ]
+        assert len(loaded_calls) == 1
+        kwargs = loaded_calls[0].kwargs
+        assert "unique_markets" in kwargs
+        assert "lookup_entries" in kwargs

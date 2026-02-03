@@ -43,12 +43,12 @@
         "category": "silver_trades_processing",
         "description": "Process historical order_filled Bronze data into Silver trades, validating the full trade derivation pipeline end-to-end with real data at scale",
         "steps": [
-            "Verify PolymarketTradesNormalizer wiring in processor: ensure MarketsReferenceLookup is automatically loaded from Silver markets data before trade normalization begins",
-            "Implement automatic MarketsReferenceLookup loading in processor.py: when processing trades, query silver_polymarket.markets to build the token-to-market mapping",
+            "[DONE] Verify PolymarketTradesNormalizer wiring in processor: ensure MarketsReferenceLookup is automatically loaded from Bronze markets data before trade normalization begins",
+            "[DONE] Implement automatic MarketsReferenceLookup loading in processor.py: when processing trades, load_markets_reference() builds the token-to-market mapping from Bronze markets manifests, scoped to end_date=dt",
             "Test trade derivation with a small sample of real order_filled Bronze data (1 day) and validate price, amounts, and market resolution",
             "Process full historical order_filled backlog into Silver trades (end-of-day model for completed days only)",
             "Validate Silver trades row counts against Bronze order_filled manifests",
-            "Handle edge cases: order_filled records referencing markets not yet in Silver markets table (log and skip vs fail)"
+            "[DONE] Handle edge cases: empty markets reference raises ProcessingError with clear message; individual order_filled records that fail token lookup are logged and skipped via NormalizationError (normalize_batch skip-on-failure behavior)"
         ],
         "passes": false
     },

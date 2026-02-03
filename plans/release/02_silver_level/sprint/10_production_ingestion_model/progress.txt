@@ -63,6 +63,49 @@ Test results: 996 passed, 0 failed (60 integration tests deselected).
 mypy: 2 pre-existing errors only (unchanged).
 ruff: clean on changed files.
 
+### silver_trades_processing — steps 1, 2, 6 (2026-02-03)
+3 of 6 steps completed (steps 1, 2, 6 — the code/architecture steps):
+1. Verified PolymarketTradesNormalizer wiring: get_normalizer() returns a bare
+   instance with _lookup=None. Calling normalize_batch() raises NormalizationError
+   because derive_trade() accesses self.lookup which raises when None. This was
+   the critical blocker for all Silver trades processing.
+2. Implemented automatic MarketsReferenceLookup loading in processor.py:
+   - After dedup and before normalization, process_manifest() checks if the
+     normalizer is an instance of PolymarketTradesNormalizer.
+   - If so, calls load_markets_reference(s3_client, end_date=dt) to build the
+     token-to-market lookup from Bronze polymarket/markets manifests.
+   - Injects the lookup via normalizer.set_lookup(lookup).
+   - The end_date parameter scopes the lookup to markets available up to the
+     trade date being processed.
+   - Structured logging at both "loading_markets_reference" and
+     "markets_reference_loaded" events with coverage stats.
+3. Edge case handling (step 6):
+   - If load_markets_reference() raises an exception (e.g., S3 unavailable),
+     it's caught and re-raised as ProcessingError with a clear message.
+   - If the lookup is empty (no Bronze markets data found), raises
+     ProcessingError with guidance to ingest markets first.
+   - Individual order_filled records that fail token ID lookup are handled by
+     the existing normalize_batch() skip-on-failure behavior — logged as
+     warnings and skipped, not fatal.
+
+Added 6 new tests in test_silver_processor.py (TestMarketsReferenceLookupAutoLoad):
+   - test_trades_auto_loads_markets_reference: happy path with resolved market IDs
+   - test_markets_reference_load_failure_raises_processing_error
+   - test_empty_markets_reference_raises_processing_error
+   - test_non_trades_entities_skip_markets_reference
+   - test_trades_normalization_uses_loaded_lookup: verifies resolved market IDs
+     in normalized output
+   - test_trades_logs_markets_reference_loading: verifies structured logging
+
+Remaining steps (3, 4, 5) require live infrastructure and real data:
+   - Test with real order_filled Bronze data sample
+   - Process full historical backlog
+   - Validate row counts against manifests
+
+Test results: 1002 passed, 0 failed (60 integration tests deselected).
+mypy: 2 pre-existing errors only (unchanged).
+ruff: clean on changed files (1 pre-existing F841 in test file).
+
 ## In Progress
 
 ## Blockers/Issues
