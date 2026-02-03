@@ -246,6 +246,47 @@ class TestDecompressJsonl:
         assert result[0]["id"] == 1
         assert result[1]["id"] == 2
 
+    def test_unicode_line_separator_u2028_preserved(self) -> None:
+        """U+2028 inside JSON string values must not cause extra splits.
+
+        The Gamma API embeds U+2028 (LINE SEPARATOR) inside market question
+        fields.  Using splitlines() would incorrectly break the JSON line at
+        that character; split('\\n') does not.
+        """
+        record = {"id": 1, "question": "Will X happen?\u2028Details here."}
+        jsonl = json.dumps(record, ensure_ascii=False) + "\n"
+        compressed = gzip.compress(jsonl.encode("utf-8"))
+
+        result = decompress_jsonl(compressed)
+        assert len(result) == 1
+        assert result[0]["question"] == "Will X happen?\u2028Details here."
+
+    def test_unicode_paragraph_separator_u2029_preserved(self) -> None:
+        """U+2029 inside JSON string values must not cause extra splits."""
+        record = {"id": 2, "description": "Paragraph one.\u2029Paragraph two."}
+        jsonl = json.dumps(record, ensure_ascii=False) + "\n"
+        compressed = gzip.compress(jsonl.encode("utf-8"))
+
+        result = decompress_jsonl(compressed)
+        assert len(result) == 1
+        assert result[0]["description"] == "Paragraph one.\u2029Paragraph two."
+
+    def test_multiple_records_with_u2028_and_u2029(self) -> None:
+        """Multiple records containing U+2028/U+2029 are parsed correctly."""
+        records = [
+            {"id": 1, "text": "line\u2028break"},
+            {"id": 2, "text": "para\u2029break"},
+            {"id": 3, "text": "both\u2028and\u2029here"},
+        ]
+        jsonl = "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n"
+        compressed = gzip.compress(jsonl.encode("utf-8"))
+
+        result = decompress_jsonl(compressed)
+        assert len(result) == 3
+        assert result[0]["text"] == "line\u2028break"
+        assert result[1]["text"] == "para\u2029break"
+        assert result[2]["text"] == "both\u2028and\u2029here"
+
 
 class TestIterJsonl:
     """Tests for iter_jsonl streaming decompression."""
@@ -272,6 +313,26 @@ class TestIterJsonl:
                 break
 
         assert count == 10
+
+    def test_unicode_line_separator_u2028_preserved(self) -> None:
+        """iter_jsonl handles U+2028 inside JSON string values correctly."""
+        record = {"id": 1, "question": "Will X happen?\u2028Details here."}
+        jsonl = json.dumps(record, ensure_ascii=False) + "\n"
+        compressed = gzip.compress(jsonl.encode("utf-8"))
+
+        result = list(iter_jsonl(compressed))
+        assert len(result) == 1
+        assert result[0]["question"] == "Will X happen?\u2028Details here."
+
+    def test_unicode_paragraph_separator_u2029_preserved(self) -> None:
+        """iter_jsonl handles U+2029 inside JSON string values correctly."""
+        record = {"id": 2, "description": "Paragraph one.\u2029Paragraph two."}
+        jsonl = json.dumps(record, ensure_ascii=False) + "\n"
+        compressed = gzip.compress(jsonl.encode("utf-8"))
+
+        result = list(iter_jsonl(compressed))
+        assert len(result) == 1
+        assert result[0]["description"] == "Paragraph one.\u2029Paragraph two."
 
 
 class TestRoundTrip:

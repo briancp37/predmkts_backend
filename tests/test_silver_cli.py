@@ -190,7 +190,7 @@ class TestDateRangeBackfill:
         ]
         fake_state = FakeStateStore()
 
-        async def process_side_effect(m: object, s3: object, catalog: object) -> FakeProcessingResult:
+        async def process_side_effect(m: object, s3: object, catalog: object, **kwargs: object) -> FakeProcessingResult:
             if getattr(m, "run_id") == "run-1":
                 raise ProcessingError("boom")
             return FakeProcessingResult()
@@ -378,7 +378,7 @@ class TestCrossRunDedup:
 
         processed_run_ids: list[str] = []
 
-        async def track_process(m: object, s3: object, catalog: object) -> FakeProcessingResult:
+        async def track_process(m: object, s3: object, catalog: object, **kwargs: object) -> FakeProcessingResult:
             processed_run_ids.append(getattr(m, "run_id"))
             return FakeProcessingResult()
 
@@ -414,7 +414,7 @@ class TestCrossRunDedup:
 
         processed_run_ids: list[str] = []
 
-        async def track_process(m: object, s3: object, catalog: object) -> FakeProcessingResult:
+        async def track_process(m: object, s3: object, catalog: object, **kwargs: object) -> FakeProcessingResult:
             processed_run_ids.append(getattr(m, "run_id"))
             return FakeProcessingResult()
 

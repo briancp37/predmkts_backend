@@ -100,6 +100,55 @@ class TestPolymarketMarketsNormalizer:
         assert result["question"] is None
         assert result["tokens"] is None
 
+    def test_camelcase_gamma_api_record(self) -> None:
+        """Gamma API returns camelCase fields; normalizer should accept them."""
+        rec = {
+            "id": "0xmarket_gamma",
+            "question": "Will it rain tomorrow?",
+            "description": "Weather market",
+            "slug": "will-it-rain",
+            "status": "open",
+            "outcome": "",
+            "updatedAt": "2026-01-20T15:30:00Z",
+            "endDateIso": "2026-06-01T00:00:00Z",
+            "conditionId": "0xcond_gamma",
+            "clobTokenIds": ["tok_yes", "tok_no"],
+            "events": [{"id": "evt-gamma-1"}],
+        }
+        result = self.norm.normalize(rec, bronze_run_id="run-gamma")
+        assert result["platform_market_id"] == "0xmarket_gamma"
+        assert result["event_ts"].year == 2026
+        assert result["updated_at"] is not None
+        assert result["tokens"] is not None
+        assert "tok_yes" in result["tokens"]
+        assert result["event_id"] == "evt-gamma-1"
+        assert result["market_slug"] == "will-it-rain"
+
+    def test_camelcase_condition_id_fallback(self) -> None:
+        """conditionId (camelCase) used when id is missing."""
+        rec = {"conditionId": "0xcamel", "updatedAt": "2026-01-01T00:00:00Z"}
+        result = self.norm.normalize(rec)
+        assert result["platform_market_id"] == "0xcamel"
+
+    def test_camelcase_endDateIso_fallback(self) -> None:
+        """endDateIso used for event_ts when updatedAt is absent."""
+        rec = {"id": "m1", "endDateIso": "2026-12-31T23:59:59Z"}
+        result = self.norm.normalize(rec)
+        assert result["event_ts"].year == 2026
+        assert result["updated_at"] is None
+
+    def test_dedup_key_camelcase(self) -> None:
+        """dedup_key uses camelCase field lookups for Gamma API records."""
+        rec = {"id": "m1", "updatedAt": "2026-01-20T15:30:00Z"}
+        key = self.norm.dedup_key(rec)
+        assert key == "polymarket:m1:2026-01-20T15:30:00Z"
+
+    def test_dedup_key_conditionId_camelcase(self) -> None:
+        """dedup_key falls back to conditionId when id is missing."""
+        rec = {"conditionId": "0xcamel", "updatedAt": "2026-02-01T00:00:00Z"}
+        key = self.norm.dedup_key(rec)
+        assert key == "polymarket:0xcamel:2026-02-01T00:00:00Z"
+
 
 # ---------------------------------------------------------------------------
 # Polymarket Events
@@ -127,6 +176,37 @@ class TestPolymarketEventsNormalizer:
     def test_missing_id_raises(self) -> None:
         with pytest.raises(NormalizationError):
             self.norm.normalize({"updated_at": "2024-01-01T00:00:00Z"})
+
+    def test_camelcase_gamma_api_record(self) -> None:
+        """Gamma API events with camelCase fields should normalize correctly."""
+        rec = {
+            "id": "0xevent_gamma",
+            "title": "Major Election",
+            "description": "Full description",
+            "slug": "major-election",
+            "status": "active",
+            "category": "Politics",
+            "updatedAt": "2026-01-20T15:30:00Z",
+            "endDateIso": "2026-11-06T00:00:00Z",
+        }
+        result = self.norm.normalize(rec)
+        assert result["platform_event_id"] == "0xevent_gamma"
+        assert result["event_ts"].year == 2026
+        assert result["updated_at"] is not None
+        assert result["title"] == "Major Election"
+
+    def test_camelcase_endDate_fallback(self) -> None:
+        """endDate used as final fallback when updatedAt and endDateIso are null."""
+        rec = {"id": "e1", "endDate": "2026-06-15T00:00:00Z"}
+        result = self.norm.normalize(rec)
+        assert result["event_ts"].year == 2026
+        assert result["updated_at"] is None
+
+    def test_dedup_key_camelcase(self) -> None:
+        """dedup_key uses camelCase updatedAt for Gamma API records."""
+        rec = {"id": "e1", "updatedAt": "2026-01-20T15:30:00Z"}
+        key = self.norm.dedup_key(rec)
+        assert key == "polymarket:e1:2026-01-20T15:30:00Z"
 
 
 # ---------------------------------------------------------------------------

@@ -173,11 +173,17 @@ def decompress_jsonl(data: bytes) -> list[dict[str, Any]]:
 
     Returns:
         List of parsed dictionaries.
+
+    Note:
+        Uses split('\\n') instead of splitlines() because API data may contain
+        Unicode line separators (U+2028, U+2029) inside JSON string values.
+        These are valid JSON but splitlines() would incorrectly treat them as
+        line boundaries.
     """
     decompressed = decompress_gzip(data)
     text = decompressed.decode("utf-8")
     records: list[dict[str, Any]] = []
-    for line in text.splitlines():
+    for line in text.split("\n"):
         if line.strip():
             records.append(json.loads(line))
     return records
@@ -194,9 +200,13 @@ def iter_jsonl(data: bytes) -> Iterator[dict[str, Any]]:
 
     Yields:
         Parsed dictionaries, one per line.
+
+    Note:
+        Uses split('\\n') instead of splitlines() because API data may contain
+        Unicode line separators (U+2028, U+2029) inside JSON string values.
     """
     decompressed = decompress_gzip(data)
     text = decompressed.decode("utf-8")
-    for line in text.splitlines():
+    for line in text.split("\n"):
         if line.strip():
             yield json.loads(line)

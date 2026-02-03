@@ -1,0 +1,81 @@
+[
+    {
+        "category": "bronze_parsing_bugfixes",
+        "description": "Fix critical bugs discovered during first Silver deployment that prevent Bronze data from being parsed and normalized correctly",
+        "steps": [
+            "Fix decompress_jsonl and iter_jsonl in core/compression.py: replace text.splitlines() with text.split('\\n') to avoid splitting on Unicode line separators (U+2028, U+2029) embedded inside JSON string values from API data",
+            "Fix PolymarketMarketsNormalizer to accept camelCase field names from Gamma API (updatedAt, endDateIso, conditionId, clobTokenIds) in addition to snake_case",
+            "Fix PolymarketEventsNormalizer to accept camelCase field names and add endDate fallback when updatedAt and endDateIso are both null",
+            "Fix dedup_key methods on both Polymarket normalizers to use camelCase field lookups",
+            "Wire skip_quality_checks parameter from CLI through _run_process to process_manifest in processor.py (parameter was defined but never passed)",
+            "Add unit tests for U+2028/U+2029 handling in decompress_jsonl",
+            "Add unit tests for camelCase Gamma API records in both normalizers"
+        ],
+        "passes": true
+    },
+    {
+        "category": "quality_checks_catalog_entities",
+        "description": "Fix quality check framework to handle catalog entities (markets, events) which are full snapshots containing records with timestamps spanning years, not scoped to a single day",
+        "steps": [
+            "Analyze timestamp_range check behavior for catalog entities: a full markets snapshot for dt=2026-02-03 contains 382K records with updatedAt timestamps from 2023 through 2026 — the current ±1 day window rejects 97% of records",
+            "Design entity-type-aware quality check configuration: catalog entities (markets, events) should either skip timestamp_range or use a much wider acceptable range",
+            "Update checks_for_entity() in quality.py to return appropriate checks based on entity type (stream vs catalog)",
+            "Ensure trades/order_filled (stream entities) retain strict timestamp_range checks",
+            "Add tests verifying catalog entities pass quality checks without --skip-quality-checks flag"
+        ],
+        "passes": false
+    },
+    {
+        "category": "continuous_ingestion_architecture",
+        "description": "Redesign Bronze ingestion and Silver processing model to support continuous/frequent ingestion where new records arrive throughout the day, not just once-daily batch snapshots",
+        "steps": [
+            "Document current limitation: order_filled ingestion reuses one run_id per dt partition, overwrites manifest after each batch flush, and Silver state store marks run_id as processed — so mid-day processing freezes Silver at that point in time",
+            "Design new ingestion model: each ingest cycle (catchup invocation) produces an independent run_id and manifest, making each batch independently processable by Silver",
+            "Update order_filled ingest to generate a new run_id per catchup invocation instead of reusing the same run_id for an entire day",
+            "Update manifest semantics: each manifest is self-contained and append-only to Silver (no full-day reprocessing needed)",
+            "Update Silver processor to handle multiple manifests per dt partition as incremental appends rather than full replacements",
+            "Update Silver state store to track per-manifest processing (not per-day)",
+            "Handle deduplication across multiple manifests for the same dt: ensure Silver dedup catches records that appear in overlapping ingestion windows"
+        ],
+        "passes": false
+    },
+    {
+        "category": "silver_trades_processing",
+        "description": "Process historical order_filled Bronze data into Silver trades, validating the full trade derivation pipeline end-to-end with real data at scale",
+        "steps": [
+            "Verify PolymarketTradesNormalizer wiring in processor: ensure MarketsReferenceLookup is automatically loaded from Silver markets data before trade normalization begins",
+            "Implement automatic MarketsReferenceLookup loading in processor.py: when processing trades, query silver_polymarket.markets to build the token-to-market mapping",
+            "Test trade derivation with a small sample of real order_filled Bronze data (1 day) and validate price, amounts, and market resolution",
+            "Process full historical order_filled backlog into Silver trades (end-of-day model for completed days only)",
+            "Validate Silver trades row counts against Bronze order_filled manifests",
+            "Handle edge cases: order_filled records referencing markets not yet in Silver markets table (log and skip vs fail)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "production_scheduling",
+        "description": "Define and implement the production scheduling model for Bronze ingestion and Silver processing triggers",
+        "steps": [
+            "Define production cadence for each entity type: catalog entities (markets, events) = daily full snapshot, stream entities (trades/order_filled) = every N minutes or on-demand catchup",
+            "Implement end-of-day Silver processing trigger: Silver processes yesterday's complete data each morning for stream entities",
+            "Implement same-day Silver processing for catalog entities: markets/events snapshots can be processed immediately after ingestion completes",
+            "Add CLI command or flag to process only 'closed' days (days before today) to prevent processing incomplete partitions",
+            "Document the production cron schedule and operational runbook for daily Silver processing",
+            "Design future path for near-real-time Silver (independent run_id per cycle) vs current end-of-day batch model"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_validation",
+        "description": "Integration tests and validation for the production ingestion model changes",
+        "steps": [
+            "Integration test: ingest order_filled with multiple catchup cycles producing independent run_ids, then process all into Silver and verify dedup correctness",
+            "Integration test: verify Silver trades processing correctly loads MarketsReferenceLookup and resolves token IDs",
+            "Integration test: process catalog entity (markets) without --skip-quality-checks after quality check fix",
+            "Test idempotency: re-running Silver process on already-processed manifests should be a no-op (state store check)",
+            "Test concurrent ingestion safety: verify two catchup runs for overlapping time windows produce correct Silver output",
+            "Run mypy and ruff on all changed modules"
+        ],
+        "passes": false
+    }
+]

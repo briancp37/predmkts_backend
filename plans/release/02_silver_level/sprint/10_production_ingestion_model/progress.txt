@@ -1,0 +1,54 @@
+# Sprint Progress: Production Ingestion Model
+# Release: 02_silver_level
+# Created: 2026-02-03
+
+## Status: In Progress
+
+## Completed Tasks
+
+### bronze_parsing_bugfixes (2026-02-03)
+All 7 steps completed:
+1. Fixed decompress_jsonl and iter_jsonl in core/compression.py: replaced
+   text.splitlines() with text.split('\n') to prevent U+2028/U+2029 Unicode
+   line separators embedded in API data from causing incorrect line splits.
+2. Fixed PolymarketMarketsNormalizer to accept camelCase field names from Gamma
+   API (updatedAt, endDateIso, conditionId, clobTokenIds) in addition to
+   snake_case. Also added event_id extraction from nested events[] array.
+3. Fixed PolymarketEventsNormalizer to accept camelCase field names and added
+   endDate fallback chain: updatedAt → endDateIso → endDate.
+4. Fixed dedup_key methods on both Polymarket normalizers to use camelCase
+   field lookups (updatedAt, conditionId).
+5. Wired skip_quality_checks parameter from CLI _run_process through to
+   process_manifest in processor.py. Added keyword-only parameter and
+   conditional quality check skip with logging.
+6. Added unit tests for U+2028/U+2029 handling in both decompress_jsonl and
+   iter_jsonl (5 tests in test_compression.py).
+7. Added unit tests for camelCase Gamma API records in both
+   PolymarketMarketsNormalizer (6 tests) and PolymarketEventsNormalizer
+   (4 tests) in test_silver_normalize.py.
+
+Also fixed 3 pre-existing test failures in test_silver_cli.py where mock
+functions for process_manifest didn't accept the new skip_quality_checks kwarg.
+
+Test results: 989 passed, 0 failed.
+mypy: 2 pre-existing errors only (unused type:ignore comments in writer.py and
+maintenance.py).
+
+## In Progress
+
+## Blockers/Issues
+
+## Notes
+
+- This sprint was created after the first live Silver deployment revealed critical bugs
+  and architectural gaps in the Bronze → Silver pipeline.
+- Key issues discovered during deployment:
+  1. decompress_jsonl used splitlines() which breaks on U+2028 Unicode line separators
+     embedded in API data (e.g., Polymarket market question fields)
+  2. Normalizers expected snake_case fields but Gamma API returns camelCase
+  3. skip_quality_checks CLI flag was defined but never wired to the processor
+  4. timestamp_range quality check rejects 97% of catalog entity records (full snapshots
+     contain records with timestamps spanning years, not scoped to one day)
+  5. Current ingestion model (one run_id per day, overwritten manifest) prevents
+     continuous Silver processing — once Silver processes a manifest, it marks it done
+     and ignores subsequent data added to the same run_id

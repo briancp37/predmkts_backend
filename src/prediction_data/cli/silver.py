@@ -302,7 +302,9 @@ async def _run_process(
             typer.echo(f"  Processing {label} ...")
 
             try:
-                result = await process_manifest(m, s3, catalog)
+                result = await process_manifest(
+                    m, s3, catalog, skip_quality_checks=skip_quality_checks
+                )
                 total_processed += 1
                 typer.echo(
                     f"    OK: {result.rows_written} rows written, "

@@ -199,8 +199,8 @@ class PolymarketMarketsNormalizer(Normalizer):
         return "markets"
 
     def dedup_key(self, record: dict[str, Any]) -> str:
-        market_id = record.get("id") or record.get("condition_id", "")
-        updated = record.get("updated_at", "")
+        market_id = record.get("id") or record.get("condition_id") or record.get("conditionId", "")
+        updated = record.get("updatedAt") or record.get("updated_at", "")
         return f"polymarket:{market_id}:{updated}"
 
     def merge_keys(self) -> list[str]:
@@ -213,25 +213,38 @@ class PolymarketMarketsNormalizer(Normalizer):
         bronze_run_id: str | None = None,
         silver_ingestion_ts: datetime | None = None,
     ) -> dict[str, Any]:
-        market_id = record.get("id") or record.get("condition_id")
+        # Support both camelCase (Gamma API) and snake_case field names
+        market_id = record.get("id") or record.get("condition_id") or record.get("conditionId")
         if not market_id:
             raise NormalizationError("Missing market id")
 
-        # event_ts: use updated_at, or fall back to end_date_iso, or error
-        raw_ts = record.get("updated_at") or record.get("end_date_iso")
+        # event_ts: use updatedAt, or fall back to endDateIso, or error
+        # Support both camelCase and snake_case
+        raw_ts = (
+            record.get("updatedAt") or record.get("updated_at") or
+            record.get("endDateIso") or record.get("end_date_iso")
+        )
         if not raw_ts:
             raise NormalizationError(f"No timestamp for market {market_id}")
         event_ts = _parse_timestamp_utc(raw_ts)
 
         # tokens: serialize list/dict to JSON string
-        tokens_raw = record.get("tokens")
+        tokens_raw = record.get("tokens") or record.get("clobTokenIds")
         tokens_str: str | None = None
         if tokens_raw is not None:
             tokens_str = json.dumps(tokens_raw) if not isinstance(tokens_raw, str) else tokens_raw
 
         updated_at: datetime | None = None
-        if record.get("updated_at"):
-            updated_at = _parse_timestamp_utc(record["updated_at"])
+        raw_updated = record.get("updatedAt") or record.get("updated_at")
+        if raw_updated:
+            updated_at = _parse_timestamp_utc(raw_updated)
+
+        # Extract event_id from events array if present (Gamma API format)
+        event_id = record.get("event_id")
+        if not event_id and record.get("events"):
+            events_list = record.get("events", [])
+            if events_list and isinstance(events_list, list) and len(events_list) > 0:
+                event_id = events_list[0].get("id")
 
         return {
             "event_ts": event_ts,
@@ -242,7 +255,7 @@ class PolymarketMarketsNormalizer(Normalizer):
             "status": _safe_str(record.get("status") or record.get("active")),
             "outcome": _safe_str(record.get("outcome")),
             "tokens": tokens_str,
-            "event_id": _safe_str(record.get("event_id")),
+            "event_id": _safe_str(event_id),
             "updated_at": updated_at,
             "bronze_run_id": bronze_run_id,
             "silver_ingestion_ts": silver_ingestion_ts,
@@ -266,7 +279,7 @@ class PolymarketEventsNormalizer(Normalizer):
 
     def dedup_key(self, record: dict[str, Any]) -> str:
         event_id = record.get("id", "")
-        updated = record.get("updated_at", "")
+        updated = record.get("updatedAt") or record.get("updated_at", "")
         return f"polymarket:{event_id}:{updated}"
 
     def merge_keys(self) -> list[str]:
@@ -283,14 +296,21 @@ class PolymarketEventsNormalizer(Normalizer):
         if not event_id:
             raise NormalizationError("Missing event id")
 
-        raw_ts = record.get("updated_at") or record.get("end_date_iso")
+        # Support both camelCase (Gamma API) and snake_case field names
+        # Fall back through: updatedAt -> endDateIso -> endDate
+        raw_ts = (
+            record.get("updatedAt") or record.get("updated_at") or
+            record.get("endDateIso") or record.get("end_date_iso") or
+            record.get("endDate") or record.get("end_date")
+        )
         if not raw_ts:
             raise NormalizationError(f"No timestamp for event {event_id}")
         event_ts = _parse_timestamp_utc(raw_ts)
 
         updated_at: datetime | None = None
-        if record.get("updated_at"):
-            updated_at = _parse_timestamp_utc(record["updated_at"])
+        raw_updated = record.get("updatedAt") or record.get("updated_at")
+        if raw_updated:
+            updated_at = _parse_timestamp_utc(raw_updated)
 
         return {
             "event_ts": event_ts,

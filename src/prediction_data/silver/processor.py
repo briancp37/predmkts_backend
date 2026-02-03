@@ -65,6 +65,8 @@ async def process_manifest(
     manifest: DiscoveredManifest,
     s3_client: S3Client,
     catalog: Catalog,
+    *,
+    skip_quality_checks: bool = False,
 ) -> ProcessingResult:
     """Process a single Bronze manifest through the Silver pipeline.
 
@@ -72,13 +74,14 @@ async def process_manifest(
         1. Read Bronze JSONL.gz data from S3.
         2. Dedup raw records using entity-specific dedup key.
         3. Normalize records to Silver schema.
-        4. Run quality checks (abort on failure).
+        4. Run quality checks (abort on failure, unless skip_quality_checks=True).
         5. Write to Iceberg table.
 
     Args:
         manifest: Discovered Bronze manifest to process.
         s3_client: S3 client for reading Bronze data.
         catalog: PyIceberg catalog for writing Silver tables.
+        skip_quality_checks: If True, skip quality checks during processing.
 
     Returns:
         A :class:`ProcessingResult` with pipeline metrics.
@@ -181,24 +184,33 @@ async def process_manifest(
         )
 
     # --- Quality checks ---
-    expected_date = datetime.strptime(dt, "%Y-%m-%d").replace(tzinfo=UTC)
-    quality_checks = checks_for_entity(platform, entity, expected_date=expected_date)
-
-    try:
-        quality_results: list[QualityCheckResult] = run_quality_checks(
-            quality_checks, normalized
+    quality_results: list[QualityCheckResult] = []
+    if skip_quality_checks:
+        logger.info(
+            "processing_quality_skipped",
+            platform=platform,
+            entity=entity,
+            run_id=run_id,
         )
-    except QualityCheckError as exc:
-        msg = f"Quality check failed for manifest {run_id}: {exc}"
-        raise ProcessingError(msg) from exc
+    else:
+        expected_date = datetime.strptime(dt, "%Y-%m-%d").replace(tzinfo=UTC)
+        quality_checks = checks_for_entity(platform, entity, expected_date=expected_date)
 
-    logger.info(
-        "processing_quality_done",
-        platform=platform,
-        entity=entity,
-        run_id=run_id,
-        checks_passed=len(quality_results),
-    )
+        try:
+            quality_results = run_quality_checks(
+                quality_checks, normalized
+            )
+        except QualityCheckError as exc:
+            msg = f"Quality check failed for manifest {run_id}: {exc}"
+            raise ProcessingError(msg) from exc
+
+        logger.info(
+            "processing_quality_done",
+            platform=platform,
+            entity=entity,
+            run_id=run_id,
+            checks_passed=len(quality_results),
+        )
 
     # --- Merge (upsert) ---
     namespace = _build_namespace(platform)
