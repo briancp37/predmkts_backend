@@ -33,7 +33,7 @@
             "Compute alerting state: fresh (within SLA), stale (> SLA and <= 2x SLA), broken (> 2x SLA or last run failed)",
             "Add CLI command: `prediction-data gold freshness` to display current freshness status of all datasets"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "data_quality_metrics",

@@ -14,6 +14,11 @@
 - [2026-02-02] dataset_partitions: Added record_partition(), get_latest_partition(), get_partitions() to src/prediction_data/gold/ops_metadata.py. record_partition() inserts/upserts via ReplacingMergeTree semantics. Query helpers use FINAL for deduplication.
 - [2026-02-02] dataset_partitions: 7 new unit tests (TestRecordPartition: 3 tests, TestGetLatestPartition: 2 tests, TestGetPartitions: 2 tests). All 13 tests passing. mypy clean, ruff clean.
 
+- [2026-02-02] dataset_freshness: Created ClickHouse DDL (docker/clickhouse/init/013_dataset_freshness.sql) — ReplacingMergeTree(last_success_at), ORDER BY dataset. Schema: dataset, last_success_at, expected_lag_seconds, actual_lag_seconds, state, last_run_id.
+- [2026-02-02] dataset_freshness: Added DEFAULT_SLAS dict, DATASET_FRESHNESS_COLUMNS, compute_freshness_state(), update_freshness(), get_all_freshness(), check_freshness() to ops_metadata.py. Default SLAs: market_mark_daily=300s, wallet_pnl_daily=600s, wallet_mtm_daily=900s, wallet_position_snapshot_daily=900s. State logic: fresh (<=SLA), stale (>SLA and <=2×SLA), broken (>2×SLA or last run failed).
+- [2026-02-02] dataset_freshness: Added `prediction-data gold freshness` CLI command to src/prediction_data/cli/gold.py. Displays tabular output: dataset, state, lag, SLA, last success time. Uses check_freshness() which recomputes state at query time.
+- [2026-02-02] dataset_freshness: 12 new unit tests (TestComputeFreshnessState: 6, TestUpdateFreshness: 3, TestGetAllFreshness: 1, TestCheckFreshness: 2). All 25 tests passing. mypy clean, ruff clean.
+
 ## In Progress
 
 - Instrumentation of Gold CLI commands (compute-marks, compute-wallet-metrics) to call record_partition() after writes is deferred to a follow-up pass. The helpers are ready to be wired in.

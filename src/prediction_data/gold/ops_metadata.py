@@ -18,6 +18,23 @@ if TYPE_CHECKING:
 
 logger = structlog.stdlib.get_logger(__name__)
 
+# Default SLA thresholds (seconds) per dataset.
+DEFAULT_SLAS: dict[str, int] = {
+    "market_mark_daily": 300,
+    "wallet_pnl_daily": 600,
+    "wallet_mtm_daily": 900,
+    "wallet_position_snapshot_daily": 900,
+}
+
+DATASET_FRESHNESS_COLUMNS = [
+    "dataset",
+    "last_success_at",
+    "expected_lag_seconds",
+    "actual_lag_seconds",
+    "state",
+    "last_run_id",
+]
+
 DATASET_PARTITIONS_COLUMNS = [
     "dataset",
     "partition_day_utc",
@@ -242,3 +259,115 @@ def get_partitions(
         parameters={"ds": dataset},
     )
     return [dict(zip(DATASET_PARTITIONS_COLUMNS, row, strict=False)) for row in result.result_rows]
+
+
+# ---------------------------------------------------------------------------
+# Dataset freshness tracking
+# ---------------------------------------------------------------------------
+
+
+def compute_freshness_state(
+    actual_lag_seconds: int,
+    expected_lag_seconds: int,
+    last_run_failed: bool = False,
+) -> str:
+    """Determine freshness state: ``fresh``, ``stale``, or ``broken``.
+
+    - **fresh**: actual lag <= SLA
+    - **stale**: actual lag > SLA and <= 2× SLA
+    - **broken**: actual lag > 2× SLA, or last run failed
+    """
+    if last_run_failed:
+        return "broken"
+    if actual_lag_seconds <= expected_lag_seconds:
+        return "fresh"
+    if actual_lag_seconds <= 2 * expected_lag_seconds:
+        return "stale"
+    return "broken"
+
+
+def update_freshness(
+    ch: Client,
+    dataset: str,
+    *,
+    last_success_at: datetime,
+    run_id: str | None = None,
+    now: datetime | None = None,
+    last_run_failed: bool = False,
+) -> dict[str, Any]:
+    """Compute and upsert a freshness record for *dataset*.
+
+    Returns the freshness record dict that was written.
+    """
+    if now is None:
+        now = datetime.now(UTC)
+    expected = DEFAULT_SLAS.get(dataset, 900)
+    actual = max(0, int((now - last_success_at).total_seconds()))
+    state = compute_freshness_state(actual, expected, last_run_failed=last_run_failed)
+
+    ch.insert(
+        "dataset_freshness",
+        data=[
+            [
+                dataset,
+                last_success_at,
+                expected,
+                actual,
+                state,
+                run_id,
+            ]
+        ],
+        column_names=DATASET_FRESHNESS_COLUMNS,
+    )
+    logger.info(
+        "dataset_freshness.updated",
+        dataset=dataset,
+        state=state,
+        actual_lag_seconds=actual,
+        expected_lag_seconds=expected,
+    )
+    return {
+        "dataset": dataset,
+        "last_success_at": last_success_at,
+        "expected_lag_seconds": expected,
+        "actual_lag_seconds": actual,
+        "state": state,
+        "last_run_id": run_id,
+    }
+
+
+def get_all_freshness(
+    ch: Client,
+) -> list[dict[str, Any]]:
+    """Return the latest freshness record for every tracked dataset."""
+    result = ch.query(
+        "SELECT dataset, last_success_at, expected_lag_seconds, "
+        "actual_lag_seconds, state, last_run_id "
+        "FROM dataset_freshness FINAL "
+        "ORDER BY dataset ASC",
+    )
+    return [dict(zip(DATASET_FRESHNESS_COLUMNS, row, strict=False)) for row in result.result_rows]
+
+
+def check_freshness(
+    ch: Client,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Re-evaluate freshness for all datasets using current time.
+
+    Reads the latest ``dataset_freshness`` rows and recomputes ``actual_lag_seconds``
+    and ``state`` based on *now*.  Does **not** write back — this is a read-only check.
+    """
+    if now is None:
+        now = datetime.now(UTC)
+    rows = get_all_freshness(ch)
+    for row in rows:
+        last_success = row["last_success_at"]
+        if hasattr(last_success, "tzinfo") and last_success.tzinfo is None:
+            last_success = last_success.replace(tzinfo=UTC)
+        actual = max(0, int((now - last_success).total_seconds()))
+        row["actual_lag_seconds"] = actual
+        row["state"] = compute_freshness_state(
+            actual, row["expected_lag_seconds"]
+        )
+    return rows

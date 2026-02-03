@@ -1,4 +1,4 @@
-"""Tests for Gold ops_metadata pipeline run tracking and dataset partition tracking."""
+"""Tests for Gold ops_metadata: pipeline runs, dataset partitions, and freshness."""
 
 from __future__ import annotations
 
@@ -10,12 +10,16 @@ import pytest
 from prediction_data.gold.ops_metadata import (
     DATASET_PARTITIONS_COLUMNS,
     PIPELINE_RUNS_COLUMNS,
+    check_freshness,
+    compute_freshness_state,
     end_run,
+    get_all_freshness,
     get_latest_partition,
     get_partitions,
     record_partition,
     start_run,
     track_run,
+    update_freshness,
 )
 
 
@@ -162,3 +166,85 @@ class TestGetPartitions:
     def test_returns_empty_list(self, mock_ch: MagicMock) -> None:
         mock_ch.query.return_value.result_rows = []
         assert get_partitions(mock_ch, "ds") == []
+
+
+class TestComputeFreshnessState:
+    def test_fresh_within_sla(self) -> None:
+        assert compute_freshness_state(100, 300) == "fresh"
+
+    def test_fresh_exactly_at_sla(self) -> None:
+        assert compute_freshness_state(300, 300) == "fresh"
+
+    def test_stale_above_sla(self) -> None:
+        assert compute_freshness_state(400, 300) == "stale"
+
+    def test_stale_at_double_sla(self) -> None:
+        assert compute_freshness_state(600, 300) == "stale"
+
+    def test_broken_above_double_sla(self) -> None:
+        assert compute_freshness_state(601, 300) == "broken"
+
+    def test_broken_on_last_run_failed(self) -> None:
+        assert compute_freshness_state(0, 300, last_run_failed=True) == "broken"
+
+
+class TestUpdateFreshness:
+    def test_inserts_freshness_record(self, mock_ch: MagicMock) -> None:
+        now = datetime(2024, 6, 15, 12, 5, 0, tzinfo=UTC)
+        last = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
+        result = update_freshness(
+            mock_ch,
+            "market_mark_daily",
+            last_success_at=last,
+            run_id="run-1",
+            now=now,
+        )
+        mock_ch.insert.assert_called_once()
+        assert result["state"] == "fresh"
+        assert result["actual_lag_seconds"] == 300
+        assert result["expected_lag_seconds"] == 300
+        assert result["dataset"] == "market_mark_daily"
+
+    def test_stale_state(self, mock_ch: MagicMock) -> None:
+        now = datetime(2024, 6, 15, 12, 8, 0, tzinfo=UTC)
+        last = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
+        result = update_freshness(
+            mock_ch, "market_mark_daily", last_success_at=last, now=now,
+        )
+        assert result["state"] == "stale"
+        assert result["actual_lag_seconds"] == 480
+
+    def test_broken_on_failure(self, mock_ch: MagicMock) -> None:
+        now = datetime(2024, 6, 15, 12, 0, 10, tzinfo=UTC)
+        last = datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
+        result = update_freshness(
+            mock_ch, "market_mark_daily", last_success_at=last, now=now,
+            last_run_failed=True,
+        )
+        assert result["state"] == "broken"
+
+
+class TestGetAllFreshness:
+    def test_returns_list(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = [
+            ("market_mark_daily", datetime(2024, 6, 15, 12, tzinfo=UTC), 300, 100, "fresh", "r1"),
+        ]
+        results = get_all_freshness(mock_ch)
+        assert len(results) == 1
+        assert results[0]["dataset"] == "market_mark_daily"
+        assert results[0]["state"] == "fresh"
+
+
+class TestCheckFreshness:
+    def test_recomputes_state(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = [
+            ("market_mark_daily", datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC), 300, 100, "fresh", "r1"),
+        ]
+        now = datetime(2024, 6, 15, 12, 10, 0, tzinfo=UTC)
+        results = check_freshness(mock_ch, now=now)
+        assert results[0]["actual_lag_seconds"] == 600
+        assert results[0]["state"] == "stale"
+
+    def test_empty(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = []
+        assert check_freshness(mock_ch) == []

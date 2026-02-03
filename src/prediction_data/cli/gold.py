@@ -554,6 +554,30 @@ def compute_snapshot(
     typer.echo(f"Done: {total_rows} rows across {total_days} day(s) for {wallet}.")
 
 
+@app.command(name="freshness")
+def freshness() -> None:
+    """Display current freshness status of all Gold datasets."""
+    from prediction_data.gold.clickhouse import get_client
+    from prediction_data.gold.ops_metadata import check_freshness
+
+    ch = get_client()
+    rows = check_freshness(ch)
+
+    if not rows:
+        typer.echo("No freshness data recorded yet.")
+        return
+
+    # Header
+    typer.echo(f"{'Dataset':<40} {'State':<8} {'Lag (s)':<10} {'SLA (s)':<10} {'Last Success'}")
+    typer.echo("-" * 100)
+    for r in rows:
+        last_ts = str(r["last_success_at"])[:19] if r["last_success_at"] else "—"
+        typer.echo(
+            f"{r['dataset']:<40} {r['state']:<8} "
+            f"{r['actual_lag_seconds']:<10} {r['expected_lag_seconds']:<10} {last_ts}"
+        )
+
+
 @watchlist_app.command(name="add")
 def watchlist_add(
     address: str = typer.Argument(..., help="Wallet address to add."),
