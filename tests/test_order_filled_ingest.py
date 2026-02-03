@@ -157,8 +157,8 @@ class TestIngestOrderFilled:
 
             await ingest_order_filled(dt="2024-11-14")
 
-            # Verify manifest was uploaded and contains correct source metadata
-            mock_s3.upload_manifest.assert_called_once()
+            # Verify manifest was uploaded (once per batch, check the last one)
+            mock_s3.upload_manifest.assert_called()
             manifest = mock_s3.upload_manifest.call_args[0][0]
             assert manifest.source.api_base_url == GOLDSKY_API_BASE_URL
             assert manifest.source.pagination == "cursor"

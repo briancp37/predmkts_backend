@@ -604,7 +604,11 @@ async def ingest_order_filled(
         incremental=since_timestamp is not None,
     )
 
-    # Fetch and upload OrderFilledEvents in batches to avoid memory exhaustion
+    # Fetch and upload OrderFilledEvents in batches to avoid memory exhaustion.
+    # After each batch flush, write an intermediate manifest so that if the
+    # process dies, the next catchup resumes from the last flushed batch.
+    from datetime import timezone as tz
+
     from prediction_data.storage.manifest import (
         FileReference,
         Manifest,
@@ -641,11 +645,31 @@ async def ingest_order_filled(
             total_row_count += row_count
             part_number += 1
 
+            # Write intermediate manifest after each batch so progress is
+            # recoverable if the process is interrupted.
+            manifest = Manifest(
+                run_id=run_ctx.run_id,
+                platform="polymarket",
+                entity="order_filled",
+                dt=dt,
+                generated_at=datetime.now(tz.utc),
+                files=list(file_refs),
+                row_count=total_row_count,
+                source=Source(
+                    api_base_url=GOLDSKY_API_BASE_URL,
+                    pagination="cursor",
+                    cursor=None,
+                    latest_timestamp=max_ts,
+                ),
+            )
+            await s3_client.upload_manifest(manifest)
+
             logger.info(
                 "Flushed order_filled batch to S3",
                 part=part_number,
                 batch_rows=row_count,
                 total_rows=total_row_count,
+                latest_timestamp=max_ts,
             )
 
     if total_row_count == 0:
@@ -654,28 +678,12 @@ async def ingest_order_filled(
         run_ctx.log_end(logger)
         return run_ctx.run_id
 
-    # Build manifest with all part files
-    from datetime import timezone as tz
-
-    manifest = Manifest(
-        run_id=run_ctx.run_id,
-        platform="polymarket",
-        entity="order_filled",
-        dt=dt,
-        generated_at=datetime.now(tz.utc),
-        files=file_refs,
-        row_count=total_row_count,
-        source=Source(
-            api_base_url=GOLDSKY_API_BASE_URL,
-            pagination="cursor",
-            cursor=None,
-            latest_timestamp=max_ts,
-        ),
+    logger.info(
+        "Order_filled ingestion complete",
+        total_rows=total_row_count,
+        parts=part_number,
+        latest_timestamp=max_ts,
     )
-
-    async with S3Client(bucket=bucket) as s3_client:
-        manifest_key = await s3_client.upload_manifest(manifest)
-        logger.info("Uploaded manifest to S3", key=manifest_key, total_rows=total_row_count)
 
     # Mark run complete
     run_ctx.mark_complete()
