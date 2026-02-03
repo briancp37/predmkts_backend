@@ -10,8 +10,13 @@
 - [2026-02-02] pipeline_runs: Created src/prediction_data/gold/ops_metadata.py with start_run(), end_run(), and track_run() context manager. track_run() yields a mutable dict for callers to set rows_written/bytes_written/output_snapshot_id; auto-marks success on clean exit, failed on exception.
 - [2026-02-02] pipeline_runs: 6 unit tests in tests/gold/test_ops_metadata.py — covers start, end, success path, failure path, context dict. All passing. mypy clean, ruff clean.
 
+- [2026-02-02] dataset_partitions: Created ClickHouse DDL (docker/clickhouse/init/012_dataset_partitions.sql) — ReplacingMergeTree(written_at), ORDER BY (dataset, partition_day_utc), schema matches PRD spec.
+- [2026-02-02] dataset_partitions: Added record_partition(), get_latest_partition(), get_partitions() to src/prediction_data/gold/ops_metadata.py. record_partition() inserts/upserts via ReplacingMergeTree semantics. Query helpers use FINAL for deduplication.
+- [2026-02-02] dataset_partitions: 7 new unit tests (TestRecordPartition: 3 tests, TestGetLatestPartition: 2 tests, TestGetPartitions: 2 tests). All 13 tests passing. mypy clean, ruff clean.
+
 ## In Progress
 
+- Instrumentation of Gold CLI commands (compute-marks, compute-wallet-metrics) to call record_partition() after writes is deferred to a follow-up pass. The helpers are ready to be wired in.
 - Instrumentation of Gold CLI commands (compute-marks, compute-wallet-metrics) to use track_run() is deferred to a follow-up pass. The helpers are ready to be wired in.
 
 ## Blockers/Issues

@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -17,6 +17,16 @@ if TYPE_CHECKING:
     from clickhouse_connect.driver.client import Client
 
 logger = structlog.stdlib.get_logger(__name__)
+
+DATASET_PARTITIONS_COLUMNS = [
+    "dataset",
+    "partition_day_utc",
+    "row_count",
+    "max_event_ts",
+    "written_at",
+    "run_id",
+]
+
 
 PIPELINE_RUNS_COLUMNS = [
     "run_id",
@@ -157,3 +167,78 @@ def track_run(
             rows_written=ctx.get("rows_written", 0),
             bytes_written=ctx.get("bytes_written", 0),
         )
+
+
+# ---------------------------------------------------------------------------
+# Dataset partition tracking
+# ---------------------------------------------------------------------------
+
+
+def record_partition(
+    ch: Client,
+    dataset: str,
+    partition_day_utc: date,
+    *,
+    row_count: int = 0,
+    max_event_ts: datetime | None = None,
+    run_id: str | None = None,
+) -> None:
+    """Record (or update) a partition entry in ``dataset_partitions``.
+
+    Uses ReplacingMergeTree(written_at) so repeated writes for the same
+    (dataset, partition_day_utc) naturally keep the latest row after merges.
+    """
+    now = datetime.now(UTC)
+    ch.insert(
+        "dataset_partitions",
+        data=[
+            [
+                dataset,
+                partition_day_utc,
+                row_count,
+                max_event_ts,
+                now,
+                run_id,
+            ]
+        ],
+        column_names=DATASET_PARTITIONS_COLUMNS,
+    )
+    logger.info(
+        "dataset_partition.recorded",
+        dataset=dataset,
+        partition_day_utc=str(partition_day_utc),
+        row_count=row_count,
+    )
+
+
+def get_latest_partition(
+    ch: Client,
+    dataset: str,
+) -> dict[str, Any] | None:
+    """Return the most recently written partition for *dataset*, or *None*."""
+    result = ch.query(
+        "SELECT dataset, partition_day_utc, row_count, max_event_ts, written_at, run_id "
+        "FROM dataset_partitions FINAL "
+        "WHERE dataset = {ds:String} "
+        "ORDER BY partition_day_utc DESC LIMIT 1",
+        parameters={"ds": dataset},
+    )
+    if not result.result_rows:
+        return None
+    row = result.result_rows[0]
+    return dict(zip(DATASET_PARTITIONS_COLUMNS, row, strict=False))
+
+
+def get_partitions(
+    ch: Client,
+    dataset: str,
+) -> list[dict[str, Any]]:
+    """Return all partitions for *dataset*, ordered by day ascending."""
+    result = ch.query(
+        "SELECT dataset, partition_day_utc, row_count, max_event_ts, written_at, run_id "
+        "FROM dataset_partitions FINAL "
+        "WHERE dataset = {ds:String} "
+        "ORDER BY partition_day_utc ASC",
+        parameters={"ds": dataset},
+    )
+    return [dict(zip(DATASET_PARTITIONS_COLUMNS, row, strict=False)) for row in result.result_rows]

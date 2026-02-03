@@ -20,7 +20,7 @@
             "Emit partition records after each Gold write (S3 or CH)",
             "Support querying: 'what partitions exist for market_mark_daily?' and 'what was the last partition written?'"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dataset_freshness",
