@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -31,6 +31,15 @@
   - test_output_format_alignment: Verifies header/separator/data rows are present and formatted.
 
 - [2026-02-03] testing: All 32 tests passing (28 existing + 3 integration + 4 CLI). mypy clean, ruff clean.
+
+- [2026-02-03] data_quality_metrics: Created ClickHouse DDL (docker/clickhouse/init/014_data_quality_metrics.sql) — MergeTree, ORDER BY (dataset, partition, run_id). Schema: dataset, partition, check_name, status (pass/fail/warn), observed_value, expected, run_id, checked_at.
+- [2026-02-03] data_quality_metrics: Added DATA_QUALITY_COLUMNS, record_quality_check(), get_quality_metrics(), get_failed_checks() to ops_metadata.py. Supports recording individual check results and querying by dataset/partition/run_id.
+- [2026-02-03] data_quality_metrics: Added run_quality_checks() orchestrator with dataset-specific check helpers:
+  - market_mark_daily: non_null_market_id, non_null_outcome_id, mark_price_range [0,1], non_negative_volume
+  - wallet_pnl_daily: non_null_wallet, pnl_sanity (|PnL| <= $1M), non_negative_volume, win_loss_consistency
+  - wallet_mtm_daily: non_null_wallet, mtm_sanity (|MTM| <= $10M)
+  - wallet_position_snapshot_daily: non_null_wallet, non_null_market_id, non_null_outcome_id, position_sanity (|position| <= 1M)
+- [2026-02-03] data_quality_metrics: 15 new unit tests (TestRecordQualityCheck: 2, TestGetQualityMetrics: 3, TestGetFailedChecks: 2, TestRunQualityChecksMarketMarks: 3, TestRunQualityChecksWalletPnl: 4, TestRunQualityChecksWalletMtm: 2, TestRunQualityChecksWalletPositions: 3). All 47 tests passing. mypy clean, ruff clean.
 
 ## In Progress
 

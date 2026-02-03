@@ -8,15 +8,20 @@ from unittest.mock import MagicMock
 import pytest
 
 from prediction_data.gold.ops_metadata import (
+    DATA_QUALITY_COLUMNS,
     DATASET_PARTITIONS_COLUMNS,
     PIPELINE_RUNS_COLUMNS,
     check_freshness,
     compute_freshness_state,
     end_run,
     get_all_freshness,
+    get_failed_checks,
     get_latest_partition,
     get_partitions,
+    get_quality_metrics,
     record_partition,
+    record_quality_check,
+    run_quality_checks,
     start_run,
     track_run,
     update_freshness,
@@ -375,3 +380,199 @@ class TestOpsMetadataIntegration:
                 assert row[5] == captured_run_id  # run_id is last column
             elif table == "dataset_freshness":
                 assert row[5] == captured_run_id  # last_run_id is last column
+
+
+# ---------------------------------------------------------------------------
+# Data quality metrics tests
+# ---------------------------------------------------------------------------
+
+
+class TestRecordQualityCheck:
+    def test_inserts_quality_record(self, mock_ch: MagicMock) -> None:
+        result = record_quality_check(
+            mock_ch,
+            "market_mark_daily",
+            date(2024, 6, 15),
+            "non_null_market_id",
+            "pass",
+            observed_value=0.0,
+            expected="0 null values",
+            run_id="run-123",
+        )
+        mock_ch.insert.assert_called_once()
+        args, kwargs = mock_ch.insert.call_args
+        assert args[0] == "data_quality_metrics"
+        row = kwargs["data"][0]
+        assert row[0] == "market_mark_daily"
+        assert row[1] == date(2024, 6, 15)
+        assert row[2] == "non_null_market_id"
+        assert row[3] == "pass"
+        assert row[4] == 0.0
+        assert row[5] == "0 null values"
+        assert row[6] == "run-123"
+        assert kwargs["column_names"] == DATA_QUALITY_COLUMNS
+        assert result["status"] == "pass"
+        assert result["check_name"] == "non_null_market_id"
+
+    def test_defaults(self, mock_ch: MagicMock) -> None:
+        record_quality_check(
+            mock_ch,
+            "wallet_pnl_daily",
+            date(2024, 6, 15),
+            "pnl_sanity",
+            "warn",
+        )
+        row = mock_ch.insert.call_args[1]["data"][0]
+        assert row[4] is None  # observed_value default
+        assert row[5] is None  # expected default
+        assert row[6] is None  # run_id default
+
+
+class TestGetQualityMetrics:
+    def test_returns_list_for_dataset(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = [
+            ("market_mark_daily", date(2024, 6, 15), "non_null_market_id", "pass", 0.0, "0 null values", "r1", datetime(2024, 6, 15, 12, tzinfo=UTC)),
+        ]
+        results = get_quality_metrics(mock_ch, "market_mark_daily")
+        assert len(results) == 1
+        assert results[0]["dataset"] == "market_mark_daily"
+        assert results[0]["status"] == "pass"
+
+    def test_filters_by_partition(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = []
+        get_quality_metrics(mock_ch, "market_mark_daily", partition=date(2024, 6, 15))
+        query = mock_ch.query.call_args[0][0]
+        assert "partition = {part:Date}" in query
+        assert mock_ch.query.call_args[1]["parameters"]["part"] == date(2024, 6, 15)
+
+    def test_filters_by_run_id(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = []
+        get_quality_metrics(mock_ch, "market_mark_daily", run_id="run-xyz")
+        query = mock_ch.query.call_args[0][0]
+        assert "run_id = {rid:String}" in query
+        assert mock_ch.query.call_args[1]["parameters"]["rid"] == "run-xyz"
+
+
+class TestGetFailedChecks:
+    def test_returns_failed_checks(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = [
+            ("market_mark_daily", date(2024, 6, 15), "non_null_market_id", "fail", 5.0, "0 null values", "r1", datetime(2024, 6, 15, 12, tzinfo=UTC)),
+        ]
+        results = get_failed_checks(mock_ch)
+        assert len(results) == 1
+        assert results[0]["status"] == "fail"
+
+    def test_filters_by_dataset(self, mock_ch: MagicMock) -> None:
+        mock_ch.query.return_value.result_rows = []
+        get_failed_checks(mock_ch, dataset="wallet_pnl_daily")
+        query = mock_ch.query.call_args[0][0]
+        assert "dataset = {ds:String}" in query
+
+
+class TestRunQualityChecksMarketMarks:
+    def test_all_pass_for_valid_data(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"market_id": "m1", "outcome_id": "o1", "mark_price": 0.5, "volume_usd_24h": 1000.0},
+            {"market_id": "m2", "outcome_id": "o2", "mark_price": 0.75, "volume_usd_24h": 500.0},
+        ]
+        results = run_quality_checks(mock_ch, "market_mark_daily", date(2024, 6, 15), data, run_id="run-1")
+        # Should have 4 checks: non_null_market_id, non_null_outcome_id, mark_price_range, non_negative_volume
+        assert len(results) == 4
+        assert all(r["status"] == "pass" for r in results)
+
+    def test_fails_on_null_market_id(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"market_id": None, "outcome_id": "o1", "mark_price": 0.5, "volume_usd_24h": 100.0},
+            {"market_id": "m2", "outcome_id": "o2", "mark_price": 0.6, "volume_usd_24h": 200.0},
+        ]
+        results = run_quality_checks(mock_ch, "market_mark_daily", date(2024, 6, 15), data)
+        market_id_check = next(r for r in results if r["check_name"] == "non_null_market_id")
+        assert market_id_check["status"] == "fail"
+        assert market_id_check["observed_value"] == 1.0
+
+    def test_warns_on_invalid_price_range(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"market_id": "m1", "outcome_id": "o1", "mark_price": 1.5, "volume_usd_24h": 100.0},  # > 1
+        ]
+        results = run_quality_checks(mock_ch, "market_mark_daily", date(2024, 6, 15), data)
+        price_check = next(r for r in results if r["check_name"] == "mark_price_range")
+        assert price_check["status"] == "warn"
+
+
+class TestRunQualityChecksWalletPnl:
+    def test_all_pass_for_valid_data(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "realized_pnl_usd": 100.0, "volume_usd": 1000.0, "wins": 5, "losses": 3, "trades_count": 10},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_pnl_daily", date(2024, 6, 15), data)
+        # Should have 4 checks
+        assert len(results) == 4
+        assert all(r["status"] == "pass" for r in results)
+
+    def test_fails_on_null_wallet(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": None, "realized_pnl_usd": 100.0, "volume_usd": 1000.0, "wins": 1, "losses": 0, "trades_count": 1},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_pnl_daily", date(2024, 6, 15), data)
+        wallet_check = next(r for r in results if r["check_name"] == "non_null_wallet")
+        assert wallet_check["status"] == "fail"
+
+    def test_warns_on_extreme_pnl(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "realized_pnl_usd": 2_000_000.0, "volume_usd": 1000.0, "wins": 1, "losses": 0, "trades_count": 1},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_pnl_daily", date(2024, 6, 15), data)
+        pnl_check = next(r for r in results if r["check_name"] == "pnl_sanity")
+        assert pnl_check["status"] == "warn"
+
+    def test_fails_on_win_loss_inconsistency(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "realized_pnl_usd": 100.0, "volume_usd": 1000.0, "wins": 10, "losses": 10, "trades_count": 5},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_pnl_daily", date(2024, 6, 15), data)
+        consistency_check = next(r for r in results if r["check_name"] == "win_loss_consistency")
+        assert consistency_check["status"] == "fail"
+
+
+class TestRunQualityChecksWalletMtm:
+    def test_all_pass_for_valid_data(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "mtm_usd": 5000.0},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_mtm_daily", date(2024, 6, 15), data)
+        assert len(results) == 2
+        assert all(r["status"] == "pass" for r in results)
+
+    def test_warns_on_extreme_mtm(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "mtm_usd": 50_000_000.0},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_mtm_daily", date(2024, 6, 15), data)
+        mtm_check = next(r for r in results if r["check_name"] == "mtm_sanity")
+        assert mtm_check["status"] == "warn"
+
+
+class TestRunQualityChecksWalletPositions:
+    def test_all_pass_for_valid_data(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "market_id": "m1", "outcome_id": "o1", "position": 100.0},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_position_snapshot_daily", date(2024, 6, 15), data)
+        assert len(results) == 4
+        assert all(r["status"] == "pass" for r in results)
+
+    def test_fails_on_null_keys(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "market_id": None, "outcome_id": "o1", "position": 100.0},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_position_snapshot_daily", date(2024, 6, 15), data)
+        market_id_check = next(r for r in results if r["check_name"] == "non_null_market_id")
+        assert market_id_check["status"] == "fail"
+
+    def test_warns_on_extreme_positions(self, mock_ch: MagicMock) -> None:
+        data = [
+            {"wallet": "0x123", "market_id": "m1", "outcome_id": "o1", "position": 5_000_000.0},
+        ]
+        results = run_quality_checks(mock_ch, "wallet_position_snapshot_daily", date(2024, 6, 15), data)
+        position_check = next(r for r in results if r["check_name"] == "position_sanity")
+        assert position_check["status"] == "warn"

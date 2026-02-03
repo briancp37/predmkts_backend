@@ -371,3 +371,510 @@ def check_freshness(
             actual, row["expected_lag_seconds"]
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Data quality metrics tracking
+# ---------------------------------------------------------------------------
+
+
+DATA_QUALITY_COLUMNS = [
+    "dataset",
+    "partition",
+    "check_name",
+    "status",
+    "observed_value",
+    "expected",
+    "run_id",
+    "checked_at",
+]
+
+
+def record_quality_check(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    check_name: str,
+    status: str,
+    *,
+    observed_value: float | None = None,
+    expected: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Record a data quality check result in ``data_quality_metrics``.
+
+    Args:
+        ch: ClickHouse client.
+        dataset: Name of the dataset (e.g., ``market_mark_daily``).
+        partition: The partition date being checked.
+        check_name: Name of the quality check (e.g., ``non_null_market_id``).
+        status: Check result: ``pass``, ``fail``, or ``warn``.
+        observed_value: The actual value observed (optional).
+        expected: Description of expected value/range (optional).
+        run_id: Associated pipeline run ID (optional).
+
+    Returns:
+        The quality record dict that was written.
+    """
+    now = datetime.now(UTC)
+    ch.insert(
+        "data_quality_metrics",
+        data=[
+            [
+                dataset,
+                partition,
+                check_name,
+                status,
+                observed_value,
+                expected,
+                run_id,
+                now,
+            ]
+        ],
+        column_names=DATA_QUALITY_COLUMNS,
+    )
+    logger.info(
+        "data_quality.recorded",
+        dataset=dataset,
+        partition=str(partition),
+        check_name=check_name,
+        status=status,
+    )
+    return {
+        "dataset": dataset,
+        "partition": partition,
+        "check_name": check_name,
+        "status": status,
+        "observed_value": observed_value,
+        "expected": expected,
+        "run_id": run_id,
+        "checked_at": now,
+    }
+
+
+def get_quality_metrics(
+    ch: Client,
+    dataset: str,
+    partition: date | None = None,
+    run_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Query data quality metrics with optional filtering.
+
+    Args:
+        ch: ClickHouse client.
+        dataset: Name of the dataset to query.
+        partition: Optional partition date filter.
+        run_id: Optional run_id filter.
+
+    Returns:
+        List of quality metric dicts, ordered by checked_at descending.
+    """
+    query = (
+        "SELECT dataset, partition, check_name, status, "
+        "observed_value, expected, run_id, checked_at "
+        "FROM data_quality_metrics "
+        "WHERE dataset = {ds:String}"
+    )
+    params: dict[str, Any] = {"ds": dataset}
+
+    if partition is not None:
+        query += " AND partition = {part:Date}"
+        params["part"] = partition
+
+    if run_id is not None:
+        query += " AND run_id = {rid:String}"
+        params["rid"] = run_id
+
+    query += " ORDER BY checked_at DESC"
+
+    result = ch.query(query, parameters=params)
+    return [dict(zip(DATA_QUALITY_COLUMNS, row, strict=False)) for row in result.result_rows]
+
+
+def get_failed_checks(
+    ch: Client,
+    dataset: str | None = None,
+    partition: date | None = None,
+) -> list[dict[str, Any]]:
+    """Query failed quality checks.
+
+    Args:
+        ch: ClickHouse client.
+        dataset: Optional dataset filter.
+        partition: Optional partition date filter.
+
+    Returns:
+        List of failed quality metric dicts, ordered by checked_at descending.
+    """
+    query = (
+        "SELECT dataset, partition, check_name, status, "
+        "observed_value, expected, run_id, checked_at "
+        "FROM data_quality_metrics "
+        "WHERE status = 'fail'"
+    )
+    params: dict[str, Any] = {}
+
+    if dataset is not None:
+        query += " AND dataset = {ds:String}"
+        params["ds"] = dataset
+
+    if partition is not None:
+        query += " AND partition = {part:Date}"
+        params["part"] = partition
+
+    query += " ORDER BY checked_at DESC"
+
+    result = ch.query(query, parameters=params)
+    return [dict(zip(DATA_QUALITY_COLUMNS, row, strict=False)) for row in result.result_rows]
+
+
+# ---------------------------------------------------------------------------
+# Quality check helpers
+# ---------------------------------------------------------------------------
+
+
+def run_quality_checks(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    data: list[dict[str, Any]],
+    *,
+    run_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Run standard quality checks for a dataset and record results.
+
+    Runs checks appropriate for the dataset:
+    - market_mark_daily: non-null keys, price ranges
+    - wallet_pnl_daily: non-null wallet, PnL sanity
+    - wallet_mtm_daily: non-null wallet, MTM sanity
+    - wallet_position_snapshot_daily: non-null keys, position sanity
+
+    Args:
+        ch: ClickHouse client.
+        dataset: Name of the dataset.
+        partition: The partition date.
+        data: List of row dicts to check.
+        run_id: Optional pipeline run ID.
+
+    Returns:
+        List of quality check result dicts.
+    """
+    results: list[dict[str, Any]] = []
+
+    if dataset == "market_mark_daily":
+        results.extend(_check_market_marks(ch, dataset, partition, data, run_id))
+    elif dataset == "wallet_pnl_daily":
+        results.extend(_check_wallet_pnl(ch, dataset, partition, data, run_id))
+    elif dataset == "wallet_mtm_daily":
+        results.extend(_check_wallet_mtm(ch, dataset, partition, data, run_id))
+    elif dataset == "wallet_position_snapshot_daily":
+        results.extend(_check_wallet_positions(ch, dataset, partition, data, run_id))
+
+    return results
+
+
+def _check_market_marks(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    data: list[dict[str, Any]],
+    run_id: str | None,
+) -> list[dict[str, Any]]:
+    """Quality checks for market_mark_daily."""
+    results: list[dict[str, Any]] = []
+
+    # Check 1: Non-null market_id
+    null_market_ids = sum(1 for row in data if not row.get("market_id"))
+    status = "pass" if null_market_ids == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_market_id",
+            status,
+            observed_value=float(null_market_ids),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 2: Non-null outcome_id
+    null_outcome_ids = sum(1 for row in data if not row.get("outcome_id"))
+    status = "pass" if null_outcome_ids == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_outcome_id",
+            status,
+            observed_value=float(null_outcome_ids),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 3: Mark price in valid range [0, 1]
+    invalid_prices = sum(
+        1
+        for row in data
+        if row.get("mark_price") is not None
+        and (row["mark_price"] < 0 or row["mark_price"] > 1)
+    )
+    status = "pass" if invalid_prices == 0 else "warn"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "mark_price_range",
+            status,
+            observed_value=float(invalid_prices),
+            expected="prices in [0, 1]",
+            run_id=run_id,
+        )
+    )
+
+    # Check 4: Non-negative volume
+    negative_volume = sum(
+        1
+        for row in data
+        if row.get("volume_usd_24h") is not None and row["volume_usd_24h"] < 0
+    )
+    status = "pass" if negative_volume == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_negative_volume",
+            status,
+            observed_value=float(negative_volume),
+            expected="0 negative values",
+            run_id=run_id,
+        )
+    )
+
+    return results
+
+
+def _check_wallet_pnl(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    data: list[dict[str, Any]],
+    run_id: str | None,
+) -> list[dict[str, Any]]:
+    """Quality checks for wallet_pnl_daily."""
+    results: list[dict[str, Any]] = []
+
+    # Check 1: Non-null wallet
+    null_wallets = sum(1 for row in data if not row.get("wallet"))
+    status = "pass" if null_wallets == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_wallet",
+            status,
+            observed_value=float(null_wallets),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 2: PnL sanity - warn if any wallet has extreme PnL (> $1M)
+    extreme_pnl = sum(
+        1
+        for row in data
+        if row.get("realized_pnl_usd") is not None
+        and abs(row["realized_pnl_usd"]) > 1_000_000
+    )
+    status = "pass" if extreme_pnl == 0 else "warn"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "pnl_sanity",
+            status,
+            observed_value=float(extreme_pnl),
+            expected="|PnL| <= $1M per wallet",
+            run_id=run_id,
+        )
+    )
+
+    # Check 3: Non-negative volume
+    negative_volume = sum(
+        1
+        for row in data
+        if row.get("volume_usd") is not None and row["volume_usd"] < 0
+    )
+    status = "pass" if negative_volume == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_negative_volume",
+            status,
+            observed_value=float(negative_volume),
+            expected="0 negative values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 4: Wins + losses <= trades_count
+    invalid_win_loss = sum(
+        1
+        for row in data
+        if (row.get("wins") or 0) + (row.get("losses") or 0)
+        > (row.get("trades_count") or 0)
+    )
+    status = "pass" if invalid_win_loss == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "win_loss_consistency",
+            status,
+            observed_value=float(invalid_win_loss),
+            expected="wins + losses <= trades_count",
+            run_id=run_id,
+        )
+    )
+
+    return results
+
+
+def _check_wallet_mtm(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    data: list[dict[str, Any]],
+    run_id: str | None,
+) -> list[dict[str, Any]]:
+    """Quality checks for wallet_mtm_daily."""
+    results: list[dict[str, Any]] = []
+
+    # Check 1: Non-null wallet
+    null_wallets = sum(1 for row in data if not row.get("wallet"))
+    status = "pass" if null_wallets == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_wallet",
+            status,
+            observed_value=float(null_wallets),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 2: MTM sanity - warn if any wallet has extreme MTM (> $10M)
+    extreme_mtm = sum(
+        1
+        for row in data
+        if row.get("mtm_usd") is not None and abs(row["mtm_usd"]) > 10_000_000
+    )
+    status = "pass" if extreme_mtm == 0 else "warn"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "mtm_sanity",
+            status,
+            observed_value=float(extreme_mtm),
+            expected="|MTM| <= $10M per wallet",
+            run_id=run_id,
+        )
+    )
+
+    return results
+
+
+def _check_wallet_positions(
+    ch: Client,
+    dataset: str,
+    partition: date,
+    data: list[dict[str, Any]],
+    run_id: str | None,
+) -> list[dict[str, Any]]:
+    """Quality checks for wallet_position_snapshot_daily."""
+    results: list[dict[str, Any]] = []
+
+    # Check 1: Non-null wallet
+    null_wallets = sum(1 for row in data if not row.get("wallet"))
+    status = "pass" if null_wallets == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_wallet",
+            status,
+            observed_value=float(null_wallets),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 2: Non-null market_id
+    null_market_ids = sum(1 for row in data if not row.get("market_id"))
+    status = "pass" if null_market_ids == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_market_id",
+            status,
+            observed_value=float(null_market_ids),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 3: Non-null outcome_id
+    null_outcome_ids = sum(1 for row in data if not row.get("outcome_id"))
+    status = "pass" if null_outcome_ids == 0 else "fail"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "non_null_outcome_id",
+            status,
+            observed_value=float(null_outcome_ids),
+            expected="0 null values",
+            run_id=run_id,
+        )
+    )
+
+    # Check 4: Position sanity - warn if extreme positions (> 1M contracts)
+    extreme_positions = sum(
+        1
+        for row in data
+        if row.get("position") is not None and abs(row["position"]) > 1_000_000
+    )
+    status = "pass" if extreme_positions == 0 else "warn"
+    results.append(
+        record_quality_check(
+            ch,
+            dataset,
+            partition,
+            "position_sanity",
+            status,
+            observed_value=float(extreme_positions),
+            expected="|position| <= 1M",
+            run_id=run_id,
+        )
+    )
+
+    return results

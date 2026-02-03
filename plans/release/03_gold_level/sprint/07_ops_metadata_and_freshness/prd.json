@@ -44,7 +44,7 @@
             "Add quality checks to Gold processing: non-null keys, reasonable price ranges, PnL sanity",
             "Emit quality records after each processing run"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",
