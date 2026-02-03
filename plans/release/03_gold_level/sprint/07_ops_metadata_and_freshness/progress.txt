@@ -2,15 +2,22 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [2026-02-02] pipeline_runs: Created ClickHouse DDL (docker/clickhouse/init/011_pipeline_runs.sql) — MergeTree, ORDER BY (stage, started_at), schema matches PRD spec.
+- [2026-02-02] pipeline_runs: Created src/prediction_data/gold/ops_metadata.py with start_run(), end_run(), and track_run() context manager. track_run() yields a mutable dict for callers to set rows_written/bytes_written/output_snapshot_id; auto-marks success on clean exit, failed on exception.
+- [2026-02-02] pipeline_runs: 6 unit tests in tests/gold/test_ops_metadata.py — covers start, end, success path, failure path, context dict. All passing. mypy clean, ruff clean.
 
 ## In Progress
 
+- Instrumentation of Gold CLI commands (compute-marks, compute-wallet-metrics) to use track_run() is deferred to a follow-up pass. The helpers are ready to be wired in.
 
 ## Blockers/Issues
 
 
 ## Notes
+
+- ops_metadata.py uses a two-insert pattern (one at start, one at end) rather than upsert, since pipeline_runs uses MergeTree (not ReplacingMergeTree). The "running" row persists alongside the completion row; queries should filter on status or use ORDER BY ended_at DESC LIMIT 1.
+- The track_run() context manager is the recommended interface for callers — handles error capture and status automatically.

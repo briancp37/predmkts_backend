@@ -9,7 +9,7 @@
             "Instrument Gold process-trades, compute-marks, compute-wallet-metrics to emit pipeline_runs records",
             "Write helper: start_run() returns run context, end_run() writes completion record"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "dataset_partitions",
