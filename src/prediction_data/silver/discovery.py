@@ -167,6 +167,47 @@ async def discover_manifests(
     return results
 
 
+# Catalog entities use snapshot-supersedes-delta selection.
+# Stream entities process every manifest independently.
+CATALOG_ENTITIES: frozenset[str] = frozenset({"markets", "events"})
+
+
+def select_manifests_for_day(
+    manifests: list[DiscoveredManifest],
+    entity: str,
+) -> list[DiscoveredManifest]:
+    """Select which manifests to process for a single day.
+
+    For catalog entities (markets, events), uses snapshot-supersedes-delta
+    logic: pick the latest snapshot and any subsequent deltas.
+
+    For stream entities (trades, order_filled), returns all manifests because
+    each represents an independent ingestion batch that should be processed
+    as an incremental append.
+
+    Args:
+        manifests: All discovered manifests for a single day, sorted by
+            ``generated_at``.
+        entity: Entity identifier (e.g. ``"trades"``, ``"markets"``).
+
+    Returns:
+        Ordered list of manifests to process.
+    """
+    if not manifests:
+        return []
+
+    if entity in CATALOG_ENTITIES:
+        return select_snapshot_and_deltas(manifests)
+
+    # Stream entity: process all manifests independently.
+    logger.info(
+        "Stream entity — processing all manifests",
+        entity=entity,
+        total=len(manifests),
+    )
+    return list(manifests)
+
+
 def select_snapshot_and_deltas(
     manifests: list[DiscoveredManifest],
 ) -> list[DiscoveredManifest]:

@@ -366,13 +366,13 @@ class TestForceReprocess:
 
 
 class TestCrossRunDedup:
-    def test_snapshot_supersedes_prior_deltas(self) -> None:
-        """When a snapshot exists, deltas generated before it are skipped."""
+    def test_snapshot_supersedes_prior_deltas_for_catalog_entity(self) -> None:
+        """For catalog entities, snapshot supersedes prior deltas."""
         t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
         manifests = [
-            _manifest(run_id="delta-1", dt="2024-06-15", snapshot_type="delta", generated_at=t0),
-            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
-            _manifest(run_id="delta-2", dt="2024-06-15", snapshot_type="delta", generated_at=t0 + timedelta(hours=2)),
+            _manifest(run_id="delta-1", dt="2024-06-15", entity="markets", snapshot_type="delta", generated_at=t0),
+            _manifest(run_id="snap-1", dt="2024-06-15", entity="markets", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+            _manifest(run_id="delta-2", dt="2024-06-15", entity="markets", snapshot_type="delta", generated_at=t0 + timedelta(hours=2)),
         ]
         fake_state = FakeStateStore()
 
@@ -392,7 +392,7 @@ class TestCrossRunDedup:
         ):
             result = runner.invoke(
                 app,
-                ["process", "--platform", "polymarket", "--entity", "trades", "--dt", "2024-06-15"],
+                ["process", "--platform", "polymarket", "--entity", "markets", "--dt", "2024-06-15"],
                 env=_base_env(),
             )
 
@@ -403,12 +403,45 @@ class TestCrossRunDedup:
         assert "delta-2" in processed_run_ids
         assert "superseded by snapshot" in result.output
 
-    def test_all_snapshots_no_deltas_skipped(self) -> None:
-        """Multiple snapshots for same day — only latest is processed."""
+    def test_catalog_entity_keeps_only_latest_snapshot(self) -> None:
+        """Multiple snapshots for same day on catalog entity — only latest is processed."""
         t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
         manifests = [
-            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0),
-            _manifest(run_id="snap-2", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+            _manifest(run_id="snap-1", dt="2024-06-15", entity="markets", snapshot_type="snapshot", generated_at=t0),
+            _manifest(run_id="snap-2", dt="2024-06-15", entity="markets", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+        ]
+        fake_state = FakeStateStore()
+
+        processed_run_ids: list[str] = []
+
+        async def track_process(m: object, s3: object, catalog: object, **kwargs: object) -> FakeProcessingResult:
+            processed_run_ids.append(getattr(m, "run_id"))
+            return FakeProcessingResult()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(_PROCESS, new_callable=AsyncMock, side_effect=track_process),
+        ):
+            result = runner.invoke(
+                app,
+                ["process", "--platform", "polymarket", "--entity", "markets", "--dt", "2024-06-15"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        # select_manifests_for_day uses snapshot-supersedes-delta for catalog entities
+        assert processed_run_ids == ["snap-2"]
+
+    def test_stream_entity_processes_all_manifests(self) -> None:
+        """Multiple manifests for same day on stream entity — all are processed."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        manifests = [
+            _manifest(run_id="run-1", dt="2024-06-15", entity="trades", snapshot_type="snapshot", generated_at=t0),
+            _manifest(run_id="run-2", dt="2024-06-15", entity="trades", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
         ]
         fake_state = FakeStateStore()
 
@@ -433,8 +466,8 @@ class TestCrossRunDedup:
             )
 
         assert result.exit_code == 0
-        # select_snapshot_and_deltas keeps only the latest snapshot
-        assert processed_run_ids == ["snap-2"]
+        # Stream entities process all manifests — each is an independent batch
+        assert processed_run_ids == ["run-1", "run-2"]
 
     def test_reprocessing_same_manifest_is_idempotent(self) -> None:
         """Processing the same manifest twice is prevented by state tracking."""
@@ -481,12 +514,12 @@ class TestCrossRunDedup:
         assert "No unprocessed manifests remaining" in result2.output
         mock_process.assert_not_awaited()
 
-    def test_dry_run_shows_snapshot_selection(self) -> None:
-        """Dry run output reflects snapshot/delta selection."""
+    def test_dry_run_shows_snapshot_selection_for_catalog_entity(self) -> None:
+        """Dry run output reflects snapshot/delta selection for catalog entities."""
         t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
         manifests = [
-            _manifest(run_id="delta-1", dt="2024-06-15", snapshot_type="delta", generated_at=t0),
-            _manifest(run_id="snap-1", dt="2024-06-15", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
+            _manifest(run_id="delta-1", dt="2024-06-15", entity="markets", snapshot_type="delta", generated_at=t0),
+            _manifest(run_id="snap-1", dt="2024-06-15", entity="markets", snapshot_type="snapshot", generated_at=t0 + timedelta(hours=1)),
         ]
         fake_state = FakeStateStore()
 
@@ -501,7 +534,7 @@ class TestCrossRunDedup:
                 [
                     "process",
                     "--platform", "polymarket",
-                    "--entity", "trades",
+                    "--entity", "markets",
                     "--dt", "2024-06-15",
                     "--dry-run",
                 ],
@@ -509,6 +542,6 @@ class TestCrossRunDedup:
             )
 
         assert result.exit_code == 0
-        assert "1 delta(s) superseded by snapshot" in result.output
+        assert "1 superseded by snapshot" in result.output
         assert "snap-1" in result.output
         assert "[snapshot]" in result.output

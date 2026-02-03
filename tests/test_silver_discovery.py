@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
 
 from prediction_data.silver.discovery import (
+    CATALOG_ENTITIES,
     DiscoveredManifest,
     discover_manifests,
+    select_manifests_for_day,
     select_snapshot_and_deltas,
 )
-from prediction_data.storage.manifest import Manifest, FileReference, Source
+from prediction_data.storage.manifest import FileReference, Manifest, Source
 
 
 def _make_manifest(
@@ -314,3 +316,83 @@ class TestSelectSnapshotAndDeltas:
         result = select_snapshot_and_deltas([s1, s2])
         assert len(result) == 1
         assert result[0].run_id == "s2"
+
+
+class TestSelectManifestsForDay:
+    """Tests for entity-aware manifest selection."""
+
+    def test_empty_list(self) -> None:
+        assert select_manifests_for_day([], "trades") == []
+        assert select_manifests_for_day([], "markets") == []
+
+    def test_catalog_entity_uses_snapshot_logic(self) -> None:
+        """Catalog entities (markets, events) use snapshot-supersedes-delta."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        s1 = _dm(_make_manifest(
+            run_id="s1", entity="markets",
+            generated_at=t0,
+        ))
+        s2 = _dm(_make_manifest(
+            run_id="s2", entity="markets",
+            generated_at=t0 + timedelta(hours=1),
+        ))
+        result = select_manifests_for_day([s1, s2], "markets")
+        assert len(result) == 1
+        assert result[0].run_id == "s2"
+
+    def test_stream_entity_returns_all_manifests(self) -> None:
+        """Stream entities (trades, order_filled) process all manifests."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        m1 = _dm(_make_manifest(
+            run_id="run-1", entity="trades",
+            generated_at=t0,
+        ))
+        m2 = _dm(_make_manifest(
+            run_id="run-2", entity="trades",
+            generated_at=t0 + timedelta(hours=1),
+        ))
+        result = select_manifests_for_day([m1, m2], "trades")
+        assert len(result) == 2
+        assert result[0].run_id == "run-1"
+        assert result[1].run_id == "run-2"
+
+    def test_order_filled_returns_all_manifests(self) -> None:
+        """order_filled is a stream entity — multiple catchup runs are all kept."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        m1 = _dm(_make_manifest(
+            run_id="catchup-1", entity="order_filled",
+            generated_at=t0,
+        ))
+        m2 = _dm(_make_manifest(
+            run_id="catchup-2", entity="order_filled",
+            generated_at=t0 + timedelta(hours=2),
+        ))
+        m3 = _dm(_make_manifest(
+            run_id="catchup-3", entity="order_filled",
+            generated_at=t0 + timedelta(hours=4),
+        ))
+        result = select_manifests_for_day([m1, m2, m3], "order_filled")
+        assert len(result) == 3
+
+    def test_events_uses_snapshot_logic(self) -> None:
+        """events is a catalog entity — snapshot supersedes earlier data."""
+        t0 = datetime(2024, 6, 15, 10, 0, 0, tzinfo=UTC)
+        snap = _dm(_make_manifest(
+            run_id="snap", entity="events", snapshot_type="snapshot",
+            generated_at=t0,
+        ))
+        delta = _dm(_make_manifest(
+            run_id="delta", entity="events", snapshot_type="delta",
+            generated_at=t0 + timedelta(hours=1),
+        ))
+        result = select_manifests_for_day([snap, delta], "events")
+        assert len(result) == 2
+        assert result[0].run_id == "snap"
+        assert result[1].run_id == "delta"
+
+    def test_catalog_entities_set(self) -> None:
+        """Verify CATALOG_ENTITIES contains expected values."""
+        assert "markets" in CATALOG_ENTITIES
+        assert "events" in CATALOG_ENTITIES
+        assert "trades" not in CATALOG_ENTITIES
+        assert "order_filled" not in CATALOG_ENTITIES

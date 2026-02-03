@@ -106,6 +106,53 @@ Test results: 1002 passed, 0 failed (60 integration tests deselected).
 mypy: 2 pre-existing errors only (unchanged).
 ruff: clean on changed files (1 pre-existing F841 in test file).
 
+### continuous_ingestion_architecture (2026-02-03)
+All 7 steps completed:
+1. Documented current limitation: order_filled catchup used date-scoped backfill
+   (find latest date, backfill missing days). This meant: (a) if today's data was
+   already ingested, catchup skipped it even though new records arrived; (b) Silver
+   used select_snapshot_and_deltas() which for stream entities picked only the
+   latest manifest per day, dropping earlier independent ingestion batches.
+2. Designed new model: order_filled catchup now uses incremental timestamp-based
+   ingestion. Each invocation finds the latest timestamp from existing manifests
+   and fetches only records newer than that timestamp into today's dt partition
+   with a fresh run_id.
+3. order_filled already generated a new run_id per invocation (via RunContext()).
+   The key change was in the catchup CLI — switching from date-scoped backfill
+   to incremental timestamp-based mode using find_latest_timestamp().
+4. Manifest semantics are already self-contained per run_id. Each catchup produces
+   its own manifest under a unique run_id directory, making them independently
+   processable.
+5. Updated Silver processor's manifest selection: added select_manifests_for_day()
+   in discovery.py which is entity-type-aware. Stream entities (trades,
+   order_filled) process ALL manifests per day as independent batches. Catalog
+   entities (markets, events) continue using snapshot-supersedes-delta logic.
+   Added CATALOG_ENTITIES frozenset to discovery.py.
+6. Silver state store already tracks by run_id (not per-day), so each manifest
+   from each catchup invocation is independently trackable. No change needed.
+7. Cross-manifest dedup is handled by the existing Iceberg merge/upsert with
+   dedup keys. Records appearing in overlapping ingestion windows are deduplicated
+   at the Iceberg level during merge_to_iceberg().
+
+Files changed:
+   - src/prediction_data/cli/main.py: order_filled catchup branch uses
+     find_latest_timestamp() + ingest_order_filled(since_timestamp=...)
+   - src/prediction_data/silver/discovery.py: added CATALOG_ENTITIES frozenset
+     and select_manifests_for_day() function
+   - src/prediction_data/cli/silver.py: replaced select_snapshot_and_deltas()
+     calls with select_manifests_for_day() in _run_process()
+
+Tests updated:
+   - tests/test_silver_discovery.py: added TestSelectManifestsForDay class (6 tests)
+   - tests/test_silver_cli.py: updated TestCrossRunDedup to use catalog entities for
+     snapshot-supersedes tests, added test_stream_entity_processes_all_manifests
+   - tests/test_backfill.py: updated order_filled catchup tests to expect incremental
+     timestamp-based behavior instead of date-scoped backfill
+
+Test results: 1009 passed, 0 failed (60 integration tests deselected).
+mypy: 2 pre-existing errors only (unchanged).
+ruff: clean on changed files.
+
 ## In Progress
 
 ## Blockers/Issues

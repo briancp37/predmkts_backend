@@ -29,15 +29,15 @@
         "category": "continuous_ingestion_architecture",
         "description": "Redesign Bronze ingestion and Silver processing model to support continuous/frequent ingestion where new records arrive throughout the day, not just once-daily batch snapshots",
         "steps": [
-            "Document current limitation: order_filled ingestion reuses one run_id per dt partition, overwrites manifest after each batch flush, and Silver state store marks run_id as processed — so mid-day processing freezes Silver at that point in time",
-            "Design new ingestion model: each ingest cycle (catchup invocation) produces an independent run_id and manifest, making each batch independently processable by Silver",
-            "Update order_filled ingest to generate a new run_id per catchup invocation instead of reusing the same run_id for an entire day",
-            "Update manifest semantics: each manifest is self-contained and append-only to Silver (no full-day reprocessing needed)",
-            "Update Silver processor to handle multiple manifests per dt partition as incremental appends rather than full replacements",
-            "Update Silver state store to track per-manifest processing (not per-day)",
-            "Handle deduplication across multiple manifests for the same dt: ensure Silver dedup catches records that appear in overlapping ingestion windows"
+            "[DONE] Document current limitation: order_filled ingestion reuses one run_id per dt partition, overwrites manifest after each batch flush, and Silver state store marks run_id as processed — so mid-day processing freezes Silver at that point in time",
+            "[DONE] Design new ingestion model: each ingest cycle (catchup invocation) produces an independent run_id and manifest, making each batch independently processable by Silver",
+            "[DONE] Update order_filled ingest to generate a new run_id per catchup invocation instead of reusing the same run_id for an entire day",
+            "[DONE] Update manifest semantics: each manifest is self-contained and append-only to Silver (no full-day reprocessing needed)",
+            "[DONE] Update Silver processor to handle multiple manifests per dt partition as incremental appends rather than full replacements",
+            "[DONE] Update Silver state store to track per-manifest processing (not per-day)",
+            "[DONE] Handle deduplication across multiple manifests for the same dt: ensure Silver dedup catches records that appear in overlapping ingestion windows"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "silver_trades_processing",

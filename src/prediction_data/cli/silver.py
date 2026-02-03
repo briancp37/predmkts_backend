@@ -213,7 +213,7 @@ async def _run_process(
     from prediction_data.silver.catalog import get_catalog
     from prediction_data.silver.discovery import (
         discover_manifests,
-        select_snapshot_and_deltas,
+        select_manifests_for_day,
     )
     from prediction_data.silver.processor import ProcessingError, process_manifest
     from prediction_data.storage import S3Client
@@ -263,9 +263,9 @@ async def _run_process(
     if dry_run:
         typer.echo(f"\nDry run — {len(manifests)} manifest(s) across {total_days} day(s):")
         for dt, day_manifests in days:
-            selected = select_snapshot_and_deltas(day_manifests)
+            selected = select_manifests_for_day(day_manifests, entity)
             skipped = len(day_manifests) - len(selected)
-            suffix = f" ({skipped} delta(s) superseded by snapshot)" if skipped else ""
+            suffix = f" ({skipped} superseded by snapshot)" if skipped else ""
             typer.echo(f"  {dt}: {len(selected)} manifest(s){suffix}")
             for m in selected:
                 typer.echo(f"    run_id={m.run_id} [{m.snapshot_type}]")
@@ -278,13 +278,13 @@ async def _run_process(
     day_failures: list[tuple[str, list[tuple[str, str]]]] = []
 
     for day_idx, (dt, day_manifests) in enumerate(days, 1):
-        # Apply snapshot-supersedes-deltas selection per day.
+        # Apply entity-aware manifest selection per day.
         before_selection = len(day_manifests)
-        day_manifests = select_snapshot_and_deltas(day_manifests)
+        day_manifests = select_manifests_for_day(day_manifests, entity)
         skipped_by_snapshot = before_selection - len(day_manifests)
         if skipped_by_snapshot:
             typer.echo(
-                f"  Skipped {skipped_by_snapshot} delta(s) superseded by snapshot "
+                f"  Skipped {skipped_by_snapshot} manifest(s) superseded by snapshot "
                 f"for {dt}."
             )
 
