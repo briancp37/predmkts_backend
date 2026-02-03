@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -152,11 +153,23 @@ def process(
             help="Skip quality checks during processing.",
         ),
     ] = False,
+    closed_days_only: Annotated[
+        bool,
+        typer.Option(
+            "--closed-days-only",
+            help=(
+                "Only process completed days (before today). "
+                "Use for end-of-day batch processing of stream entities."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Process Bronze manifests into Silver Iceberg tables.
 
     Specify either --dt for a single day, or --start-date/--end-date for a
-    date range.
+    date range.  Use --closed-days-only to restrict processing to days before
+    today (useful for end-of-day batch processing of stream entities like
+    trades and order_filled).
     """
     from prediction_data.core.logging import configure_logging
 
@@ -178,6 +191,19 @@ def process(
 
     assert resolved_start is not None
     assert resolved_end is not None
+
+    if closed_days_only:
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        if resolved_start > yesterday:
+            typer.echo(
+                f"No closed days to process (start={resolved_start}, today={date.today().isoformat()})."
+            )
+            return
+        if resolved_end > yesterday:
+            typer.echo(
+                f"Clamping end date from {resolved_end} to {yesterday} (--closed-days-only)."
+            )
+            resolved_end = yesterday
 
     resolved_bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
     if not resolved_bucket:

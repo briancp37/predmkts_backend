@@ -545,3 +545,127 @@ class TestCrossRunDedup:
         assert "1 superseded by snapshot" in result.output
         assert "snap-1" in result.output
         assert "[snapshot]" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Test: --closed-days-only flag
+# ---------------------------------------------------------------------------
+
+
+class TestClosedDaysOnly:
+    def test_closed_days_only_clamps_end_date_to_yesterday(self) -> None:
+        """--closed-days-only clamps end date so today is excluded."""
+        from datetime import date as dt_date
+
+        today = dt_date.today().isoformat()
+        yesterday = (dt_date.today() - timedelta(days=1)).isoformat()
+
+        m = _manifest(run_id="run-1", dt=yesterday)
+        fake_state = FakeStateStore()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(
+                _DISCOVER, new_callable=AsyncMock, return_value=[m]
+            ) as mock_discover,
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(
+                _PROCESS,
+                new_callable=AsyncMock,
+                return_value=FakeProcessingResult(),
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "process",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--start-date", yesterday,
+                    "--end-date", today,
+                    "--closed-days-only",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        # discover_manifests should be called with clamped end_date
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["end_date"] == yesterday
+        assert "Clamping end date" in result.output
+
+    def test_closed_days_only_skips_when_start_is_today(self) -> None:
+        """--closed-days-only with --dt today produces no processing."""
+        from datetime import date as dt_date
+
+        today = dt_date.today().isoformat()
+
+        with patch(_LOGGING):
+            result = runner.invoke(
+                app,
+                [
+                    "process",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--dt", today,
+                    "--closed-days-only",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        assert "No closed days to process" in result.output
+
+    def test_closed_days_only_processes_past_dates_normally(self) -> None:
+        """--closed-days-only with all-past dates processes normally."""
+        m = _manifest(run_id="run-1", dt="2024-06-15")
+        fake_state = FakeStateStore()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=[m]),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(
+                _PROCESS,
+                new_callable=AsyncMock,
+                return_value=FakeProcessingResult(),
+            ) as mock_process,
+        ):
+            result = runner.invoke(
+                app,
+                [
+                    "process",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--dt", "2024-06-15",
+                    "--closed-days-only",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_process.assert_awaited_once()
+        assert "Clamping" not in result.output
+        assert "No closed days" not in result.output
+
+    def test_closed_days_only_with_future_start_date(self) -> None:
+        """--closed-days-only with a future start date skips entirely."""
+        with patch(_LOGGING):
+            result = runner.invoke(
+                app,
+                [
+                    "process",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--dt", "2099-12-31",
+                    "--closed-days-only",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        assert "No closed days to process" in result.output

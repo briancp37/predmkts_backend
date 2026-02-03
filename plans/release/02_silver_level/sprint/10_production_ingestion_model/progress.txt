@@ -195,6 +195,53 @@ Test results: 1017 passed, 0 failed (60 integration tests deselected).
 mypy: 2 pre-existing errors only (unchanged).
 ruff: clean on new code.
 
+### production_scheduling (2026-02-03)
+All 6 steps completed:
+1. Defined production cadence for each entity type in OPERATIONS.md:
+   - Stream entities (trades, order_filled): Bronze ingestion every 5-15 min,
+     Silver processing uses end-of-day batch model (process yesterday's complete
+     data each morning via --closed-days-only flag).
+   - Catalog entities (markets, events): Bronze ingestion daily (full snapshot or
+     incremental delta), Silver processing runs same-day after ingestion completes.
+2. End-of-day Silver processing trigger: implemented via --closed-days-only flag
+   on `silver process` command. Stream entities use a 7-day lookback window with
+   --closed-days-only to process only completed days. Scheduled at 06:00 UTC daily.
+3. Same-day Silver processing for catalog entities: no --closed-days-only needed.
+   Catalog snapshots are complete upon ingestion — processed immediately via
+   `silver process --dt {today}`. Scheduled at 07:00 UTC daily (after ingestion).
+4. Added --closed-days-only CLI flag to `silver process` command in silver.py:
+   - Computes yesterday's date and clamps the end_date if it exceeds yesterday.
+   - If start_date is also >= today, returns immediately with informative message.
+   - Prevents processing incomplete partitions for stream entities.
+5. Documented full production cron schedule in OPERATIONS.md:
+   - Silver Processing section with production cadence by entity type
+   - Complete EventBridge cron schedule table (Bronze + Silver jobs)
+   - Example CLI commands for end-of-day and same-day processing
+   - EventBridge cron expressions for AWS Scheduler
+   - Silver maintenance schedule (daily compact, weekly full)
+6. Designed future near-real-time Silver path in OPERATIONS.md:
+   - Architecture already supports it: independent run_ids, per-manifest state
+     tracking, Iceberg upsert dedup.
+   - Near-real-time = run `silver process` more frequently without --closed-days-only.
+   - Trade-off: more small files requiring more frequent compaction.
+   - This is a scheduling change, not a code change.
+
+Files changed:
+   - src/prediction_data/cli/silver.py: added --closed-days-only flag with
+     date clamping logic
+   - OPERATIONS.md: added Silver Processing section with production cadence,
+     cron schedules, example commands, and near-real-time design notes
+
+Added 4 new tests in test_silver_cli.py (TestClosedDaysOnly):
+   - test_closed_days_only_clamps_end_date_to_yesterday
+   - test_closed_days_only_skips_when_start_is_today
+   - test_closed_days_only_processes_past_dates_normally
+   - test_closed_days_only_with_future_start_date
+
+Test results: 1021 passed, 0 failed (60 integration tests deselected).
+mypy: 2 pre-existing errors only (unchanged).
+ruff: clean on new code; 3 pre-existing errors in silver.py.
+
 ## In Progress
 
 ## Blockers/Issues
