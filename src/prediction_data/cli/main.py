@@ -759,7 +759,46 @@ def backfill_catchup(
                     continue
 
                 try:
-                    if _is_date_scoped_entity(e):
+                    if e == "order_filled":
+                        # order_filled: timestamp-incremental via Goldsky
+                        today_str = today.isoformat()
+                        latest_date, latest_ts = await find_latest_manifest_source(
+                            s3, p, e
+                        )
+
+                        if latest_date is None:
+                            typer.echo(
+                                f"SKIP {label}: no existing data found "
+                                "(run initial backfill first)"
+                            )
+                            continue
+
+                        if dry_run:
+                            if latest_ts is not None:
+                                typer.echo(
+                                    f"[dry-run] Would incrementally ingest {label} "
+                                    f"since_timestamp={latest_ts}"
+                                )
+                            else:
+                                typer.echo(
+                                    f"[dry-run] Would ingest {label} "
+                                    f"(full day for {today_str}, "
+                                    f"no timestamp in latest manifest)"
+                                )
+                            continue
+
+                        from prediction_data.bronze.polymarket import (
+                            ingest as pm_ingest,
+                        )
+
+                        run_id = await pm_ingest.ingest_order_filled(
+                            today_str,
+                            bucket=bucket,
+                            since_timestamp=latest_ts,
+                        )
+                        typer.echo(f"OK {label} dt={today_str} run_id={run_id}")
+
+                    elif _is_date_scoped_entity(e):
                         # Date-scoped: find latest date, backfill missing days
                         latest = await find_latest_date(s3, p, e)
                         if latest is None:

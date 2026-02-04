@@ -670,26 +670,47 @@ class TestCatchupCLI:
             result = self._invoke(["--platform", "polymarket", "--entity", "trades"])
         assert result.exit_code == 1
 
-    def test_dry_run_order_filled_date_scoped(self) -> None:
-        """order_filled uses date-scoped catchup (same as trades)."""
+    def test_dry_run_order_filled_incremental(self) -> None:
+        """order_filled uses timestamp-incremental catchup via Goldsky."""
         from prediction_data.cli.main import app
 
         with (
             patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
-            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
             patch("prediction_data.storage.S3Client"),
             patch("prediction_data.cli.main.date") as mock_date,
         ):
             mock_date.today.return_value = date(2025, 6, 20)
             mock_date.fromisoformat = date.fromisoformat
-            mock_dt.return_value = "2025-06-17"
+            mock_src.return_value = ("2025-06-20", 1750444800)
             result = runner.invoke(
                 app,
                 ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--dry-run", "--bucket", "test-bucket"],
             )
         assert result.exit_code == 0
         assert "[dry-run]" in result.output
-        assert "3 day(s)" in result.output
+        assert "since_timestamp=1750444800" in result.output
+
+    def test_dry_run_order_filled_no_timestamp(self) -> None:
+        """order_filled dry-run when manifest exists but has no timestamp."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.cli.main.date") as mock_date,
+        ):
+            mock_date.today.return_value = date(2025, 6, 20)
+            mock_date.fromisoformat = date.fromisoformat
+            mock_src.return_value = ("2025-06-20", None)
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "[dry-run]" in result.output
+        assert "no timestamp in latest manifest" in result.output
 
     def test_dry_run_trades_date_scoped(self) -> None:
         from prediction_data.cli.main import app
@@ -717,10 +738,10 @@ class TestCatchupCLI:
 
         with (
             patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
-            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
             patch("prediction_data.storage.S3Client"),
         ):
-            mock_dt.return_value = None
+            mock_src.return_value = (None, None)
             result = runner.invoke(
                 app,
                 ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--bucket", "test-bucket"],
@@ -767,28 +788,33 @@ class TestCatchupCLI:
         assert result.exit_code == 0
         assert "already up to date" in result.output
 
-    def test_order_filled_date_scoped_executes(self) -> None:
-        """order_filled catchup uses date-scoped backfill (same as trades)."""
+    def test_order_filled_incremental_executes(self) -> None:
+        """order_filled catchup uses timestamp-incremental ingest."""
         from prediction_data.cli.main import app
 
         with (
             patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
-            patch("prediction_data.storage.discovery.find_latest_date", new_callable=AsyncMock) as mock_dt,
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
             patch("prediction_data.storage.S3Client"),
             patch("prediction_data.bronze.polymarket.ingest.ingest_order_filled", new_callable=AsyncMock) as mock_ingest,
             patch("prediction_data.cli.main.date") as mock_date,
         ):
             mock_date.today.return_value = date(2025, 6, 20)
             mock_date.fromisoformat = date.fromisoformat
-            mock_dt.return_value = "2025-06-18"  # 2 days behind
+            mock_src.return_value = ("2025-06-20", 1750444800)
             mock_ingest.return_value = "test-run-id"
             result = runner.invoke(
                 app,
                 ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--bucket", "test-bucket"],
             )
         assert result.exit_code == 0
-        # Should call ingest for each missing day (June 19 and 20)
-        assert mock_ingest.call_count == 2
+        # Should call ingest once with since_timestamp
+        assert mock_ingest.call_count == 1
+        mock_ingest.assert_called_once_with(
+            "2025-06-20",
+            bucket="test-bucket",
+            since_timestamp=1750444800,
+        )
         assert "OK" in result.output
 
     def test_failure_continues_to_next_entity(self) -> None:
