@@ -13,7 +13,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome", "dim_wallet", "dim_event")
+LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome", "dim_wallet", "dim_event", "dim_category")
 
 
 @app.command(name="status")
@@ -33,6 +33,7 @@ def load_dims(
 ) -> None:
     """Load Gold dimension tables into S3 and ClickHouse."""
     from prediction_data.gold.dimensions import (
+        load_dim_category,
         load_dim_event,
         load_dim_market,
         load_dim_outcome,
@@ -79,6 +80,12 @@ def load_dims(
                 dry_run=dry_run,
             )
             typer.echo(f"dim_event: {rows} rows loaded.")
+        elif tbl == "dim_category":
+            rows = load_dim_category(
+                gold_bucket=settings.gold_bucket or None,
+                dry_run=dry_run,
+            )
+            typer.echo(f"dim_category: {rows} rows loaded.")
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +503,194 @@ def compute_wallet_metrics(
         for f in failures:
             typer.echo(f"  {f}", err=True)
         raise typer.Exit(code=1)
+
+
+@app.command(name="daily-run")
+def daily_run(
+    dt: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        help="Date to process (YYYY-MM-DD). Defaults to yesterday UTC.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+    stop_on_error: bool = typer.Option(
+        False, "--stop-on-error", help="Halt on first step failure instead of continuing."
+    ),
+) -> None:
+    """Run all daily Gold processing steps in order.
+
+    Executes: 1) load-dims, 2) process-trades, 3) compute-marks, 4) compute-wallet-metrics.
+
+    By default, failures are logged and execution continues to the next step
+    (fail-forward). Use --stop-on-error to halt on first failure.
+    """
+    from datetime import UTC, date as date_cls, datetime, timedelta
+
+    import structlog
+
+    log = structlog.stdlib.get_logger("gold.daily_run")
+
+    settings = get_settings()
+    gold_bucket = settings.gold_bucket or None
+
+    # Default to yesterday UTC.
+    if dt:
+        target_date = date_cls.fromisoformat(dt)
+    else:
+        target_date = datetime.now(UTC).date() - timedelta(days=1)
+
+    typer.echo(f"Gold daily-run for {target_date}{'  [dry-run]' if dry_run else ''}")
+
+    # Define steps in execution order.
+    steps: list[tuple[str, str]] = [
+        ("load-dims", "Loading dimension tables"),
+        ("process-trades", "Processing trades into position ledger"),
+        ("compute-marks", "Computing market marks"),
+        ("compute-wallet-metrics", "Computing wallet metrics (pnl, mtm, snapshots)"),
+    ]
+
+    results: list[dict[str, object]] = []
+    failed: list[dict[str, object]] = []
+    total_rows = 0
+
+    for step_name, step_desc in steps:
+        typer.echo(f"\n--- Step: {step_name} ({step_desc}) ---")
+        log.info("step.start", step=step_name, dt=str(target_date))
+
+        try:
+            rows = _run_daily_step(
+                step_name, target_date, gold_bucket=gold_bucket, dry_run=dry_run
+            )
+            total_rows += rows
+            results.append({"step": step_name, "status": "success", "rows": rows})
+            typer.echo(f"  {step_name}: {rows} rows{'  [dry-run]' if dry_run else ''}")
+            log.info("step.success", step=step_name, rows=rows)
+        except Exception as exc:
+            entry = {"step": step_name, "status": "failed", "error": str(exc)}
+            results.append(entry)
+            failed.append(entry)
+            typer.echo(f"  {step_name}: FAILED ({exc})", err=True)
+            log.error("step.failed", step=step_name, error=str(exc))
+            if stop_on_error:
+                typer.echo("Halting due to --stop-on-error.", err=True)
+                break
+
+    # Summary.
+    succeeded = [r for r in results if r["status"] == "success"]
+    typer.echo(f"\n{'=' * 60}")
+    typer.echo(f"Daily-run summary for {target_date}:")
+    typer.echo(f"  Steps succeeded: {len(succeeded)}/{len(results)}")
+    typer.echo(f"  Total rows: {total_rows}")
+    if failed:
+        typer.echo("  Failed steps:", err=True)
+        for r in failed:
+            typer.echo(f"    {r['step']}: {r['error']}", err=True)
+
+    # Emit pipeline_runs metadata if ClickHouse is available.
+    _emit_daily_run_metadata(
+        log, total_rows=total_rows, has_failures=bool(failed)
+    )
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _emit_daily_run_metadata(
+    log: object,  # structlog logger
+    *,
+    total_rows: int,
+    has_failures: bool,
+) -> None:
+    """Best-effort pipeline_runs record for the daily-run."""
+    try:
+        from prediction_data.gold.clickhouse import get_client
+        from prediction_data.gold.ops_metadata import end_run, start_run
+
+        ch = get_client()
+        run_id = start_run(ch, "gold.daily_run")
+        from datetime import UTC, datetime
+
+        started_at = datetime.now(UTC)
+        end_run(
+            ch,
+            run_id,
+            "gold.daily_run",
+            started_at,
+            status="failed" if has_failures else "success",
+            rows_written=total_rows,
+            error="one or more steps failed" if has_failures else None,
+        )
+    except Exception:
+        if hasattr(log, "debug"):
+            log.debug("clickhouse_unavailable_for_tracking", exc_info=True)  # type: ignore[union-attr]
+
+
+def _run_daily_step(
+    step_name: str,
+    dt: object,
+    *,
+    gold_bucket: str | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Execute a single daily-run step and return the number of rows produced."""
+    if step_name == "load-dims":
+        from prediction_data.gold.dimensions import (
+            load_dim_category,
+            load_dim_event,
+            load_dim_market,
+            load_dim_outcome,
+            load_dim_platform,
+            load_dim_wallet,
+        )
+
+        total = 0
+        total += load_dim_platform(gold_bucket=gold_bucket, dry_run=dry_run)
+        total += load_dim_market(gold_bucket=gold_bucket, dry_run=dry_run)
+        total += load_dim_outcome(gold_bucket=gold_bucket, dry_run=dry_run)
+        total += load_dim_wallet(gold_bucket=gold_bucket, dry_run=dry_run)
+        total += load_dim_event(gold_bucket=gold_bucket, dry_run=dry_run)
+        total += load_dim_category(gold_bucket=gold_bucket, dry_run=dry_run)
+        return total
+
+    elif step_name == "process-trades":
+        # Position accounting engine (sprint 03). Call if available,
+        # otherwise raise NotImplementedError so fail-forward kicks in.
+        try:
+            from prediction_data.gold.trade_processor import process_day
+
+            return process_day(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
+        except ImportError:
+            raise NotImplementedError(
+                "process-trades requires the position accounting engine "
+                "(gold.trade_processor) which is not yet implemented."
+            )
+
+    elif step_name == "compute-marks":
+        from prediction_data.gold.market_marks import compute_market_marks
+
+        return compute_market_marks(
+            platform="polymarket",
+            dt=dt,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+        )
+
+    elif step_name == "compute-wallet-metrics":
+        from prediction_data.gold.wallet_mtm import compute_wallet_mtm
+        from prediction_data.gold.wallet_pnl import compute_wallet_pnl
+        from prediction_data.gold.wallet_position_snapshot import (
+            compute_wallet_position_snapshot,
+        )
+
+        total = 0
+        total += compute_wallet_pnl(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
+        total += compute_wallet_mtm(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
+        total += compute_wallet_position_snapshot(
+            dt=dt, gold_bucket=gold_bucket, dry_run=dry_run
+        )
+        return total
+
+    else:
+        raise ValueError(f"Unknown step: {step_name}")
 
 
 @app.command(name="compute-snapshot")

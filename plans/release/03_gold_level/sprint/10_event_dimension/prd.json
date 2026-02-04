@@ -22,7 +22,7 @@
             "Write to S3 Gold Parquet + load into ClickHouse",
             "Write unit tests for category extraction and aggregation"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_and_testing",
@@ -34,6 +34,6 @@
             "Write integration test: Silver events → dim_event + dim_category round-trip (S3 + CH)",
             "Verify `prediction-data gold load-dims --table dim_event` and `--table dim_category` work"
         ],
-        "passes": false
+        "passes": true
     }
 ]

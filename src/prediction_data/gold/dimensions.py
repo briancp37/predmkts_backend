@@ -579,3 +579,101 @@ def load_dim_event(
 
     logger.info("loaded_dim_event", rows=num_rows, day=day)
     return num_rows
+
+
+# ---------------------------------------------------------------------------
+# dim_category
+# ---------------------------------------------------------------------------
+
+DIM_CATEGORY_SCHEMA = pa.schema(
+    [
+        pa.field("platform", pa.string()),
+        pa.field("category", pa.string()),
+        pa.field("event_count", pa.uint64()),
+    ]
+)
+
+DIM_CATEGORY_COLUMNS = [f.name for f in DIM_CATEGORY_SCHEMA]
+
+
+def _silver_events_to_dim_category(
+    arrow: pa.Table,
+    platform: str,
+) -> pa.Table:
+    """Extract distinct categories from Silver events with event counts.
+
+    Groups events by category and counts occurrences.  Deduplicates events
+    by platform_event_id before counting so that delta duplicates don't
+    inflate the totals.
+    """
+    records = arrow.to_pylist()
+
+    # Deduplicate events by platform_event_id first (same as dim_event).
+    seen: dict[str, dict[str, Any]] = {}
+    for rec in records:
+        pid = str(rec.get("platform_event_id", "") or "")
+        seen[pid] = rec
+
+    # Count events per category.
+    counts: dict[str, int] = {}
+    for rec in seen.values():
+        cat = str(rec.get("category", "") or "")
+        counts[cat] = counts.get(cat, 0) + 1
+
+    rows: dict[str, list[Any]] = {col: [] for col in DIM_CATEGORY_COLUMNS}
+    for cat, count in sorted(counts.items()):
+        rows["platform"].append(platform)
+        rows["category"].append(cat)
+        rows["event_count"].append(count)
+
+    return pa.table(rows, schema=DIM_CATEGORY_SCHEMA)
+
+
+def load_dim_category(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Load the dim_category dimension table.
+
+    Reads Silver polymarket.events, extracts distinct categories with
+    event counts, and writes to S3 Gold Parquet + ClickHouse.
+
+    Returns:
+        Number of rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    silver_arrow = _read_silver_events("polymarket", catalog=catalog)
+    dim_table = _silver_events_to_dim_category(silver_arrow, "polymarket")
+
+    num_rows: int = dim_table.num_rows
+    logger.info("dim_category_transformed", platform="polymarket", rows=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_category", rows=num_rows, day=day)
+        return num_rows
+
+    # Write to S3 if bucket configured.
+    if gold_bucket:
+        write_gold_parquet(
+            dim_table,
+            gold_bucket,
+            "dim_category",
+            day,
+            s3_client=s3_client,
+        )
+
+    # Insert into ClickHouse.
+    ch = clickhouse_client or get_client()
+    ch.insert(
+        "dim_category",
+        data=dim_table.to_pylist(),
+        column_names=DIM_CATEGORY_COLUMNS,
+    )
+
+    logger.info("loaded_dim_category", rows=num_rows, day=day)
+    return num_rows

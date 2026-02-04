@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-04
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 - [dim_event] Created ClickHouse DDL: docker/clickhouse/init/015_dim_event.sql
@@ -38,4 +38,32 @@
 - Markets already reference events via event_id in dim_market; dim_event completes the hierarchy
 - Follows the same pattern as dim_market/dim_outcome from sprint 02_dimension_tables
 - Kalshi events are scaffolded in Silver but have no data yet; dim_event loader should be platform-agnostic
-- dim_category and cli_and_testing categories remain to be completed
+
+## Session 2 — dim_category + CLI/testing (2026-02-04)
+
+Completed remaining PRD categories (dim_category + cli_and_testing):
+
+### dim_category
+- Created ClickHouse DDL: docker/clickhouse/init/016_dim_category.sql
+  - ReplacingMergeTree(version), ORDER BY (platform, category)
+- Defined DIM_CATEGORY_SCHEMA in src/prediction_data/gold/dimensions.py
+  - Fields: platform, category, event_count (UInt64)
+- Implemented _silver_events_to_dim_category() transform
+  - Deduplicates events by platform_event_id before counting (same as dim_event)
+  - Groups by category, computes event_count per category
+  - Output sorted by category for deterministic results
+- Implemented load_dim_category() loader with S3 + ClickHouse write
+  - Follows same pattern as all other dim loaders
+  - Supports --dry-run
+
+### CLI & testing
+- Registered dim_category in LOADABLE_DIMS tuple (6 dims total)
+- Wired CLI dispatch to call load_dim_category()
+- Added dim_category to _run_daily_step() in daily-run command
+- Wrote comprehensive unit tests:
+  - TestSilverEventsToDimCategory: schema match, row count, platform column, event counts,
+    multiple events same category, dedup before counting, null handling, empty input, sorted output
+  - TestLoadDimCategory: dry run, S3 + CH write, skip S3 when no bucket
+- Updated integration tests (TestFullPipelineAllDims) for 6 dims total
+- Updated CLI tests (TestLoadDimsCLI) to verify dim_category in load-all output
+- All 1048 tests pass, mypy clean on changed files

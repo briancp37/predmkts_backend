@@ -9,6 +9,8 @@ import pytest
 
 from prediction_data.gold.canonical import CanonicalResolver
 from prediction_data.gold.dimensions import (
+    DIM_CATEGORY_COLUMNS,
+    DIM_CATEGORY_SCHEMA,
     DIM_EVENT_COLUMNS,
     DIM_EVENT_SCHEMA,
     DIM_MARKET_COLUMNS,
@@ -20,10 +22,12 @@ from prediction_data.gold.dimensions import (
     DIM_WALLET_SCHEMA,
     PLATFORMS,
     _platforms_to_arrow,
+    _silver_events_to_dim_category,
     _silver_to_dim_event,
     _silver_to_dim_market,
     _silver_to_dim_outcome,
     _silver_trades_to_dim_wallet,
+    load_dim_category,
     load_dim_event,
     load_dim_market,
     load_dim_outcome,
@@ -806,12 +810,198 @@ class TestLoadDimEvent:
 
 
 # ---------------------------------------------------------------------------
+# dim_category tests
+# ---------------------------------------------------------------------------
+
+
+class TestSilverEventsToDimCategory:
+    def test_schema_matches(self) -> None:
+        result = _silver_events_to_dim_category(_fake_silver_events(), "polymarket")
+        assert result.schema.equals(DIM_CATEGORY_SCHEMA)
+
+    def test_row_count_matches_distinct_categories(self) -> None:
+        result = _silver_events_to_dim_category(_fake_silver_events(), "polymarket")
+        # _fake_silver_events has categories: "politics", "sports" → 2 distinct
+        assert result.num_rows == 2
+
+    def test_platform_column(self) -> None:
+        result = _silver_events_to_dim_category(_fake_silver_events(), "polymarket")
+        assert all(p == "polymarket" for p in result.column("platform").to_pylist())
+
+    def test_event_counts(self) -> None:
+        result = _silver_events_to_dim_category(_fake_silver_events(), "polymarket")
+        rows = {r["category"]: r for r in result.to_pylist()}
+        assert rows["politics"]["event_count"] == 1
+        assert rows["sports"]["event_count"] == 1
+
+    def test_multiple_events_same_category(self) -> None:
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_event_id": ["evt-1", "evt-2", "evt-3"],
+                "title": ["A", "B", "C"],
+                "description": ["a", "b", "c"],
+                "slug": ["a", "b", "c"],
+                "status": ["active", "active", "closed"],
+                "category": ["politics", "politics", "sports"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2", "run3"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+            }
+        )
+        result = _silver_events_to_dim_category(arrow, "polymarket")
+        rows = {r["category"]: r for r in result.to_pylist()}
+        assert rows["politics"]["event_count"] == 2
+        assert rows["sports"]["event_count"] == 1
+
+    def test_dedup_before_counting(self) -> None:
+        """Duplicate event IDs should be deduplicated before category counting."""
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_event_id": ["evt-1", "evt-1"],
+                "title": ["Old", "New"],
+                "description": ["old", "new"],
+                "slug": ["old", "new"],
+                "status": ["active", "closed"],
+                "category": ["politics", "politics"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+                "bronze_run_id": ["run1", "run2"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_events_to_dim_category(arrow, "polymarket")
+        rows = {r["category"]: r for r in result.to_pylist()}
+        # Only 1 unique event, so count should be 1 not 2.
+        assert rows["politics"]["event_count"] == 1
+
+    def test_null_category_becomes_empty_string(self) -> None:
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_event_id": ["evt-x"],
+                "title": ["T"],
+                "description": ["D"],
+                "slug": ["s"],
+                "status": ["active"],
+                "category": [None],
+                "updated_at": pa.array([None], type=pa.timestamp("us", tz="UTC")),
+                "bronze_run_id": [None],
+                "silver_ingestion_ts": pa.array(
+                    [None], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_events_to_dim_category(arrow, "polymarket")
+        assert result.num_rows == 1
+        row = result.to_pylist()[0]
+        assert row["category"] == ""
+        assert row["event_count"] == 1
+
+    def test_empty_events(self) -> None:
+        empty = pa.table(
+            {
+                "event_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "platform_event_id": pa.array([], type=pa.string()),
+                "title": pa.array([], type=pa.string()),
+                "description": pa.array([], type=pa.string()),
+                "slug": pa.array([], type=pa.string()),
+                "status": pa.array([], type=pa.string()),
+                "category": pa.array([], type=pa.string()),
+                "updated_at": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "bronze_run_id": pa.array([], type=pa.string()),
+                "silver_ingestion_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+            }
+        )
+        result = _silver_events_to_dim_category(empty, "polymarket")
+        assert result.num_rows == 0
+        assert result.schema.equals(DIM_CATEGORY_SCHEMA)
+
+    def test_categories_are_sorted(self) -> None:
+        result = _silver_events_to_dim_category(_fake_silver_events(), "polymarket")
+        categories = result.column("category").to_pylist()
+        assert categories == sorted(categories)
+
+
+class TestLoadDimCategory:
+    def test_dry_run_returns_count(self) -> None:
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        rows = load_dim_category(catalog=mock_catalog, dry_run=True)
+        assert rows == 2  # 2 distinct categories
+
+    def test_writes_to_s3_and_clickhouse(self, mock_s3_gold: MagicMock) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            rows = load_dim_category(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        assert rows == 2
+        mock_write.assert_called_once()
+        mock_ch.insert.assert_called_once()
+
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_category"
+        assert len(call_args[1]["data"]) == 2
+
+    def test_skips_s3_when_no_bucket(self) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            load_dim_category(
+                gold_bucket=None,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        mock_write.assert_not_called()
+        mock_ch.insert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Integration tests: full pipeline Silver → S3 + ClickHouse for all dims
 # ---------------------------------------------------------------------------
 
 
 class TestFullPipelineAllDims:
-    """Test loading all five dimension tables through a single pipeline run.
+    """Test loading all six dimension tables through a single pipeline run.
 
     Verifies that each loader reads Silver data, writes S3 Parquet, and
     inserts into ClickHouse with correct table names and row counts.
@@ -876,6 +1066,12 @@ class TestFullPipelineAllDims:
                 clickhouse_client=mock_ch,
                 catalog=catalog,
             )
+            c_rows = load_dim_category(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
 
         # All loaders returned rows.
         assert p_rows == len(PLATFORMS)
@@ -883,9 +1079,10 @@ class TestFullPipelineAllDims:
         assert o_rows == 4
         assert w_rows == 3
         assert e_rows == 2
+        assert c_rows == 2  # 2 distinct categories
 
-        # S3 written for all five tables.
-        assert mock_write.call_count == 5
+        # S3 written for all six tables.
+        assert mock_write.call_count == 6
         s3_table_names = [c.args[2] for c in mock_write.call_args_list]
         assert s3_table_names == [
             "dim_platform",
@@ -893,10 +1090,11 @@ class TestFullPipelineAllDims:
             "dim_outcome",
             "dim_wallet",
             "dim_event",
+            "dim_category",
         ]
 
         # ClickHouse insert called for each table.
-        assert mock_ch.insert.call_count == 5
+        assert mock_ch.insert.call_count == 6
         ch_table_names = [c.args[0] for c in mock_ch.insert.call_args_list]
         assert ch_table_names == [
             "dim_platform",
@@ -904,6 +1102,7 @@ class TestFullPipelineAllDims:
             "dim_outcome",
             "dim_wallet",
             "dim_event",
+            "dim_category",
         ]
 
     def test_clickhouse_receives_correct_columns(
@@ -943,6 +1142,12 @@ class TestFullPipelineAllDims:
                 clickhouse_client=mock_ch,
                 catalog=catalog,
             )
+            load_dim_category(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
 
         calls = mock_ch.insert.call_args_list
         # dim_platform
@@ -955,6 +1160,8 @@ class TestFullPipelineAllDims:
         assert calls[3][1]["column_names"] == DIM_WALLET_COLUMNS
         # dim_event
         assert calls[4][1]["column_names"] == DIM_EVENT_COLUMNS
+        # dim_category
+        assert calls[5][1]["column_names"] == DIM_CATEGORY_COLUMNS
 
     def test_clickhouse_data_is_queryable(self, mock_s3_gold: MagicMock) -> None:
         """Verify inserted data has correct structure for ClickHouse queries.
@@ -990,6 +1197,12 @@ class TestFullPipelineAllDims:
                 catalog=catalog,
             )
             load_dim_event(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_category(
                 gold_bucket="test-gold",
                 s3_client=mock_s3_gold,
                 clickhouse_client=mock_ch,
@@ -1032,6 +1245,14 @@ class TestFullPipelineAllDims:
             assert set(row.keys()) == set(DIM_EVENT_COLUMNS)
             assert isinstance(row["platform"], str)
             assert isinstance(row["category"], str)
+
+        # dim_category: list of dicts with all expected keys
+        category_data = calls[5][1]["data"]
+        assert len(category_data) == 2
+        for row in category_data:
+            assert set(row.keys()) == set(DIM_CATEGORY_COLUMNS)
+            assert isinstance(row["category"], str)
+            assert isinstance(row["event_count"], int)
 
 
 # ---------------------------------------------------------------------------
@@ -1095,6 +1316,7 @@ class TestLoadDimsCLI:
         assert "dim_outcome" in result.output
         assert "dim_wallet" in result.output
         assert "dim_event" in result.output
+        assert "dim_category" in result.output
 
     def test_unknown_table_fails(self) -> None:
         from typer.testing import CliRunner
