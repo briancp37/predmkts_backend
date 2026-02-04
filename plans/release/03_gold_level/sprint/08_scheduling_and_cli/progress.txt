@@ -31,6 +31,20 @@
 - All 1082 tests pass, mypy clean
 - Note: wallet_position_ledger omitted from loadable tables since it has no ClickHouse DDL or S3 writer yet (sprint 03 dependency). Can be added when the position accounting engine is implemented.
 
+### rebuild_command (2026-02-04)
+- Implemented `prediction-data gold rebuild --table TABLE --start-date YYYY-MM-DD --end-date YYYY-MM-DD` CLI command
+- Supports all Gold fact tables: market_mark_daily, wallet_pnl_daily, wallet_mtm_daily, wallet_position_snapshot_daily
+- `--force` flag overwrites existing S3 Gold partitions; without it, existing partitions are skipped (checked via S3 head_object)
+- Cumulative tables (wallet_pnl_daily, wallet_mtm_daily, wallet_position_snapshot_daily) always process dates sequentially from earliest to latest
+- market_mark_daily can rebuild individual days independently (no cross-day state)
+- Dependency warnings: wallet_mtm/snapshot warn about market marks + position state; wallet_pnl warns about ledger
+- Fail-forward: on day failure, logs error and continues to next day; reports summary at end with exit code 1
+- Progress logging: shows [N/M] day progress for each day, plus rebuild summary (processed, skipped, failed counts)
+- `_rebuild_day()` is a pure dispatch function that delegates to existing compute functions (compute_market_marks, compute_wallet_pnl, etc.)
+- `_gold_partition_exists()` helper checks S3 for existing partitions via head_object
+- 18 unit tests covering: help output, unknown table error, date validation, dry-run single day, date range processing, failure continues and reports, skip existing without force, force overwrite, cumulative table note, dependency notes (mtm, pnl), _rebuild_day dispatch for all 4 tables, unknown table raises, _gold_partition_exists true/false
+- All 1100 tests pass, mypy clean
+
 ## In Progress
 
 

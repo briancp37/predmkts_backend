@@ -36,7 +36,7 @@
             "Add --force flag to overwrite existing S3 Gold partitions",
             "Log rebuild progress and summary"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "scheduling",

@@ -778,6 +778,211 @@ def _run_daily_step(
         raise ValueError(f"Unknown step: {step_name}")
 
 
+# ---------------------------------------------------------------------------
+# Rebuild tables
+# ---------------------------------------------------------------------------
+
+# Tables that can be rebuilt independently per day (no cross-day state).
+_INDEPENDENT_TABLES = {"market_mark_daily"}
+
+# Tables that depend on cumulative position state and should be rebuilt
+# sequentially from earliest date.
+_CUMULATIVE_TABLES = {
+    "wallet_pnl_daily",
+    "wallet_mtm_daily",
+    "wallet_position_snapshot_daily",
+}
+
+REBUILDABLE_TABLES = sorted(_INDEPENDENT_TABLES | _CUMULATIVE_TABLES)
+
+
+def _gold_partition_exists(
+    s3_client: Any,
+    bucket: str,
+    table_name: str,
+    day: str,
+) -> bool:
+    """Check whether a Gold partition already exists in S3."""
+    key = f"gold/{table_name}/day={day}/part-000.parquet"
+    try:
+        s3_client.head_object(Bucket=bucket, Key=key)
+        return True
+    except Exception:
+        return False
+
+
+def _rebuild_day(
+    table_name: str,
+    dt: date,
+    *,
+    gold_bucket: str | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Rebuild a single Gold table for one day. Returns row count."""
+    if table_name == "market_mark_daily":
+        from prediction_data.gold.market_marks import compute_market_marks
+
+        return compute_market_marks(
+            platform="polymarket",
+            dt=dt,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+        )
+    elif table_name == "wallet_pnl_daily":
+        from prediction_data.gold.wallet_pnl import compute_wallet_pnl
+
+        return compute_wallet_pnl(
+            dt=dt,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+        )
+    elif table_name == "wallet_mtm_daily":
+        from prediction_data.gold.wallet_mtm import compute_wallet_mtm
+
+        return compute_wallet_mtm(
+            dt=dt,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+        )
+    elif table_name == "wallet_position_snapshot_daily":
+        from prediction_data.gold.wallet_position_snapshot import compute_wallet_position_snapshot
+
+        return compute_wallet_position_snapshot(
+            dt=dt,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+        )
+    else:
+        raise ValueError(f"Unknown rebuild table: {table_name}")
+
+
+@app.command(name="rebuild")
+def rebuild(
+    table: str = typer.Option(
+        ...,
+        help=f"Gold table to rebuild. Options: {', '.join(REBUILDABLE_TABLES)}.",
+    ),
+    start_date: str = typer.Option(
+        ..., "--start-date", help="Start of date range (YYYY-MM-DD)."
+    ),
+    end_date: str = typer.Option(
+        ..., "--end-date", help="End of date range inclusive (YYYY-MM-DD)."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing S3 Gold partitions."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+) -> None:
+    """Rebuild Gold tables from Silver for a date range.
+
+    Reprocesses the specified Gold table for each day in the date range.
+    Without --force, days that already have data in S3 are skipped.
+
+    For cumulative tables (wallet_pnl_daily, wallet_mtm_daily,
+    wallet_position_snapshot_daily), dates are always processed sequentially
+    from earliest to latest because position state is cumulative.
+
+    For market_mark_daily, each day can be rebuilt independently.
+    """
+    from datetime import date as date_cls, timedelta
+
+    import structlog
+
+    log = structlog.stdlib.get_logger("gold.rebuild")
+
+    if table not in REBUILDABLE_TABLES:
+        typer.echo(
+            f"Error: unknown table '{table}'. "
+            f"Options: {', '.join(REBUILDABLE_TABLES)}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    s = date_cls.fromisoformat(start_date)
+    e = date_cls.fromisoformat(end_date)
+    if s > e:
+        typer.echo("Error: --start-date must be <= --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    settings = get_settings()
+    gold_bucket = settings.gold_bucket or None
+
+    # Build date list (always earliest-first for cumulative tables).
+    dates: list[date] = []
+    cur = s
+    while cur <= e:
+        dates.append(cur)
+        cur += timedelta(days=1)
+
+    is_cumulative = table in _CUMULATIVE_TABLES
+
+    typer.echo(
+        f"Rebuild {table}: {len(dates)} day(s) from {s} to {e}"
+        f"{'  [cumulative — sequential]' if is_cumulative else ''}"
+        f"{'  [force]' if force else ''}"
+        f"{'  [dry-run]' if dry_run else ''}"
+    )
+
+    # Warn about dependencies for wallet metrics tables.
+    if table in ("wallet_mtm_daily", "wallet_position_snapshot_daily"):
+        typer.echo(
+            "Note: this table depends on market marks and position state. "
+            "Ensure market_mark_daily and wallet_position_ledger are up-to-date."
+        )
+    elif table == "wallet_pnl_daily":
+        typer.echo(
+            "Note: this table depends on wallet_position_ledger. "
+            "Ensure the position ledger is up-to-date."
+        )
+
+    total_rows = 0
+    skipped = 0
+    failures: list[str] = []
+
+    # Prepare S3 client for existence checks (only when not forcing).
+    s3_client: Any = None
+    if not force and not dry_run and gold_bucket:
+        import boto3
+
+        s3_client = boto3.client("s3")
+
+    for i, d in enumerate(dates, 1):
+        # Skip existing partitions unless --force.
+        if not force and not dry_run and gold_bucket and s3_client is not None:
+            if _gold_partition_exists(s3_client, gold_bucket, table, str(d)):
+                skipped += 1
+                log.info("partition_exists_skipping", table=table, day=str(d))
+                typer.echo(f"  [{i}/{len(dates)}] {d}: skipped (exists)")
+                continue
+
+        try:
+            rows = _rebuild_day(
+                table, d, gold_bucket=gold_bucket, dry_run=dry_run
+            )
+            total_rows += rows
+            typer.echo(
+                f"  [{i}/{len(dates)}] {d}: {rows} rows"
+                f"{'  [dry-run]' if dry_run else ''}"
+            )
+            log.info("rebuild_day_done", table=table, day=str(d), rows=rows)
+        except Exception as exc:
+            failures.append(f"{d}: {exc}")
+            typer.echo(f"  [{i}/{len(dates)}] {d}: FAILED ({exc})", err=True)
+            log.error("rebuild_day_failed", table=table, day=str(d), error=str(exc))
+
+    # Summary.
+    typer.echo(f"\nRebuild summary for {table}:")
+    typer.echo(f"  Days processed: {len(dates) - skipped - len(failures)}/{len(dates)}")
+    typer.echo(f"  Total rows: {total_rows}")
+    if skipped:
+        typer.echo(f"  Skipped (already exist): {skipped}")
+    if failures:
+        typer.echo(f"  Failed: {len(failures)}", err=True)
+        for f in failures:
+            typer.echo(f"    {f}", err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command(name="compute-snapshot")
 def compute_snapshot(
     wallet: str = typer.Option(..., "--wallet", help="Wallet address to compute snapshots for."),
