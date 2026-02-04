@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-02-04
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -59,6 +59,14 @@
   - Updated dashboard alarm widget ARN from missing-polymarket-trades to missing-polymarket-order-filled
   - Updated Outputs: renamed MissingPolymarketTradesAlarmArn to MissingPolymarketOrderFilledAlarmArn
   - All 1137 tests pass, mypy clean (pre-existing silver issues only), no new ruff issues
+
+- [check_script_and_verification] Updated check_setup_release_01.py to validate specific schedule names
+  - Added expected_schedules list with all 6 schedule names (polymarket-order-filled-prod replaces polymarket-trades-prod)
+  - Script now validates each expected schedule exists and is ENABLED, rather than just counting >= 4
+  - Added explicit check that warns if old polymarket-trades-prod schedule is still present
+  - Still expects 6 total schedules (count unchanged, just name updated)
+  - All 1137 tests pass, mypy clean (pre-existing silver issues only), no new ruff issues
+  - Remaining steps (dry-run, post-deploy verification) are deployment-time tasks
 
 ## Blockers/Issues
 

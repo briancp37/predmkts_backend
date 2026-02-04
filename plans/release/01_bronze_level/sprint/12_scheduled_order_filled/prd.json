@@ -79,6 +79,6 @@
             "Verify dry-run works locally: prediction-data backfill catchup --platform polymarket --entity order_filled --dry-run",
             "After deploying updated CloudFormation stacks, run python scripts/check_setup_release_01.py and verify all checks pass"
         ],
-        "passes": false
+        "passes": true
     }
 ]
