@@ -30,6 +30,102 @@ Operational procedures for the prediction data pipeline (Bronze ingestion and Si
 | Silver Maintenance (compact) | `prediction-data silver maintain --op compact` | Daily 08:00 UTC | `/ecs/prediction-data-{env}` |
 | Silver Maintenance (full) | `prediction-data silver maintain` | Weekly Sun 08:00 UTC | `/ecs/prediction-data-{env}` |
 
+### Gold Processing Jobs
+
+| Job | Command | Schedule | Log Group |
+|-----|---------|----------|-----------|
+| Gold Daily Run | `prediction-data gold daily-run` | Daily 00:00 UTC | `/ecs/prediction-data-{env}` |
+| Gold CH Load | `prediction-data gold ch-load --all --lookback-days 90` | Daily 00:30 UTC | `/ecs/prediction-data-{env}` |
+| Gold Freshness Check | `prediction-data gold freshness` | Daily 01:00 UTC | `/ecs/prediction-data-{env}` |
+
+**Gold scheduling logic:**
+- 00:00 UTC: `gold daily-run` executes 4 steps in order: load-dims, process-trades, compute-marks, compute-wallet-metrics. Fail-forward by default (logs errors, continues to next step).
+- 00:30 UTC: `gold ch-load --all` reads S3 Gold Parquet within 90-day lookback window and inserts into ClickHouse. ReplacingMergeTree handles deduplication; TTL handles expiry.
+- 01:00 UTC: `gold freshness` verifies all Gold datasets are fresh and within SLA. Reports stale/broken datasets.
+
+**ECS task definition overrides for Gold commands:**
+
+Gold commands reuse the same ECS task definition as Bronze/Silver. Override the container command via EventBridge or manual `aws ecs run-task`:
+
+```bash
+# Manual Gold daily-run via ECS
+aws ecs run-task \
+  --cluster prediction-data-$ENV \
+  --task-definition prediction-data-ingest-$ENV \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+  --overrides '{
+    "containerOverrides": [{
+      "name": "prediction-data",
+      "command": ["gold", "daily-run"]
+    }]
+  }'
+
+# Manual CH load for a specific table
+aws ecs run-task \
+  --cluster prediction-data-$ENV \
+  --task-definition prediction-data-ingest-$ENV \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+  --overrides '{
+    "containerOverrides": [{
+      "name": "prediction-data",
+      "command": ["gold", "ch-load", "--table", "market_mark_daily", "--lookback-days", "90"]
+    }]
+  }'
+
+# Manual rebuild for a date range
+aws ecs run-task \
+  --cluster prediction-data-$ENV \
+  --task-definition prediction-data-ingest-$ENV \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+  --overrides '{
+    "containerOverrides": [{
+      "name": "prediction-data",
+      "command": ["gold", "rebuild", "--table", "market_mark_daily", "--start-date", "2026-01-01", "--end-date", "2026-01-31", "--force"]
+    }]
+  }'
+```
+
+**Wrapper script for cron execution:**
+
+```bash
+# Run the full Gold daily pipeline locally or from cron
+./scripts/gold_daily_cron.sh
+
+# With options
+./scripts/gold_daily_cron.sh --dt 2026-02-01 --lookback-days 30
+./scripts/gold_daily_cron.sh --dry-run
+```
+
+**EventBridge cron schedules (Gold):**
+
+```
+# Gold daily-run: midnight UTC (after Silver processing completes)
+cron(0 0 * * ? *)
+
+# Gold CH load: 00:30 UTC (after daily-run writes S3 Gold)
+cron(30 0 * * ? *)
+
+# Gold freshness check: 01:00 UTC (verify all datasets fresh)
+cron(0 1 * * ? *)
+```
+
+Deploy Gold schedules via CloudFormation:
+```bash
+aws cloudformation deploy \
+  --template-file infrastructure/eventbridge-gold-schedules.yaml \
+  --stack-name prediction-data-gold-schedules \
+  --parameter-overrides \
+    Environment=$ENV \
+    ECSClusterArn=$CLUSTER_ARN \
+    TaskDefinitionArn=$TASK_DEF_ARN \
+    SubnetIds=<your-subnet-ids> \
+    SecurityGroupIds=<your-security-group-id> \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
 ## Polymarket Order Filled Ingestion
 
 The `order_filled` entity uses the Goldsky GraphQL subgraph to fetch OrderFilledEvents. Due to the high volume (~313M historical records), it uses streaming batch uploads to S3 rather than accumulating everything in memory.

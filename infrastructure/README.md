@@ -50,6 +50,7 @@ CloudFormation templates for the Bronze-level prediction data ingestion pipeline
 | `iam-ecs-roles.yaml` | `prediction-data-iam-roles` | Task execution role and task role (least-privilege) |
 | `ecs-cluster.yaml` | `prediction-data-ecs` | ECS cluster, task definition, log group |
 | `eventbridge-schedules.yaml` | `prediction-data-schedules` | 4 scheduled ingestion jobs |
+| `eventbridge-gold-schedules.yaml` | `prediction-data-gold-schedules` | 3 Gold layer daily processing schedules |
 | `cloudwatch-monitoring.yaml` | `prediction-data-monitoring` | Alarms, metric filters, dashboard, SNS alerts |
 
 ## Deployment Order
@@ -116,6 +117,18 @@ aws cloudformation deploy \
     SecurityGroupIds=<your-security-group-id> \
   --capabilities CAPABILITY_NAMED_IAM
 
+# 5b. EventBridge Gold Schedules (needs ECS cluster and task definition ARNs, VPC config)
+aws cloudformation deploy \
+  --template-file infrastructure/eventbridge-gold-schedules.yaml \
+  --stack-name prediction-data-gold-schedules \
+  --parameter-overrides \
+    Environment=$ENV \
+    ECSClusterArn=$CLUSTER_ARN \
+    TaskDefinitionArn=$TASK_DEF_ARN \
+    SubnetIds=<your-subnet-ids> \
+    SecurityGroupIds=<your-security-group-id> \
+  --capabilities CAPABILITY_NAMED_IAM
+
 # 6. CloudWatch Monitoring (needs log group and cluster name)
 aws cloudformation deploy \
   --template-file infrastructure/cloudwatch-monitoring.yaml \
@@ -172,6 +185,7 @@ All resources are parameterized by environment (`dev`, `staging`, `prod`).
 | Log Group | `/ecs/prediction-data-{env}` |
 | SNS Topic | `prediction-data-alerts-{env}` |
 | Dashboard | `prediction-data-{env}` |
-| Schedule Group | `prediction-data-{env}` |
+| Schedule Group (Bronze/Silver) | `prediction-data-{env}` |
+| Schedule Group (Gold) | `prediction-data-gold-{env}` |
 | IAM Execution Role | `prediction-data-execution-{env}` |
 | IAM Task Role | `prediction-data-task-{env}` |

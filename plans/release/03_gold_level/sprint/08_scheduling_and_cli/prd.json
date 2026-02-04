@@ -49,7 +49,7 @@
             "Create scripts/gold_daily_cron.sh wrapper script for cron execution",
             "Document ECS task definition overrides for Gold commands (same pattern as Bronze)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing",

@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EventBridge Scheduler schedules for Gold layer daily processing
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  ECSClusterArn:
+    Type: String
+    Description: ARN of the ECS cluster (from ecs-cluster stack)
+
+  TaskDefinitionArn:
+    Type: String
+    Description: ARN of the ECS task definition (from ecs-cluster stack)
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs for the ECS tasks (must have internet access)
+
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: List of security group IDs for the ECS tasks
+
+  ScheduleTimezone:
+    Type: String
+    Default: UTC
+    Description: Timezone for schedule expressions
+
+  DailyRunSchedule:
+    Type: String
+    Default: 'cron(0 0 * * ? *)'
+    Description: Schedule for Gold daily-run (default midnight UTC)
+
+  CHLoadSchedule:
+    Type: String
+    Default: 'cron(30 0 * * ? *)'
+    Description: Schedule for Gold CH loading (default 00:30 UTC)
+
+  FreshnessCheckSchedule:
+    Type: String
+    Default: 'cron(0 1 * * ? *)'
+    Description: Schedule for Gold freshness check (default 01:00 UTC)
+
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Description: Whether schedules are enabled or disabled
+
+Resources:
+  # IAM Role for EventBridge Scheduler to invoke ECS tasks
+  GoldSchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'prediction-data-gold-scheduler-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSRunTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource:
+                  - !Ref TaskDefinitionArn
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Ref ECSClusterArn
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Layer
+          Value: gold
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Schedule Group for Gold schedules
+  GoldScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: !Sub 'prediction-data-gold-${Environment}'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Layer
+          Value: gold
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Gold Daily Run - midnight UTC
+  # Executes: load-dims, process-trades, compute-marks, compute-wallet-metrics
+  GoldDailyRunSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'gold-daily-run-${Environment}'
+      GroupName: !Ref GoldScheduleGroup
+      Description: Run all daily Gold processing (dims, trades, marks, wallet metrics)
+      ScheduleExpression: !Ref DailyRunSchedule
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt GoldSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["gold", "daily-run"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 1800
+          MaximumRetryAttempts: 2
+
+  # Gold CH Load - 00:30 UTC (after daily-run completes)
+  # Loads all Gold tables from S3 into ClickHouse with 90-day lookback
+  GoldCHLoadSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'gold-ch-load-${Environment}'
+      GroupName: !Ref GoldScheduleGroup
+      Description: Load all Gold tables from S3 into ClickHouse
+      ScheduleExpression: !Ref CHLoadSchedule
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt GoldSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["gold", "ch-load", "--all", "--lookback-days", "90"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 1800
+          MaximumRetryAttempts: 2
+
+  # Gold Freshness Check - 01:00 UTC (1 hour after daily-run)
+  # Verifies all Gold datasets are fresh and within SLA
+  GoldFreshnessCheckSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'gold-freshness-check-${Environment}'
+      GroupName: !Ref GoldScheduleGroup
+      Description: Verify all Gold datasets are fresh and within SLA
+      ScheduleExpression: !Ref FreshnessCheckSchedule
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt GoldSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["gold", "freshness"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+Outputs:
+  GoldScheduleGroupArn:
+    Description: ARN of the Gold schedule group
+    Value: !GetAtt GoldScheduleGroup.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GoldScheduleGroupArn'
+
+  GoldScheduleGroupName:
+    Description: Name of the Gold schedule group
+    Value: !Ref GoldScheduleGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-GoldScheduleGroupName'
+
+  GoldSchedulerRoleArn:
+    Description: ARN of the Gold scheduler execution role
+    Value: !GetAtt GoldSchedulerExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GoldSchedulerRoleArn'
+
+  DeploymentCommand:
+    Description: Example AWS CLI command to deploy this stack
+    Value: !Sub |
+      aws cloudformation deploy \
+        --template-file infrastructure/eventbridge-gold-schedules.yaml \
+        --stack-name prediction-data-gold-schedules \
+        --parameter-overrides \
+          Environment=dev \
+          ECSClusterArn=<cluster-arn-from-ecs-stack> \
+          TaskDefinitionArn=<task-def-arn-from-ecs-stack> \
+          SubnetIds=subnet-xxx,subnet-yyy \
+          SecurityGroupIds=sg-xxx \
+        --capabilities CAPABILITY_NAMED_IAM

@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -51,6 +51,30 @@
 - Unit tests: ch-load lookback window — verifies only N days are scanned (lookback=5 scans 5 days, lookback=1 scans only today), and only days with actual data are inserted into ClickHouse
 - Unit tests: rebuild cumulative table ordering — verifies wallet_pnl_daily, wallet_mtm_daily, and wallet_position_snapshot_daily all process dates sequentially from earliest to latest with "cumulative" note. Also verifies market_mark_daily (independent) processes chronologically but without the cumulative note.
 - Comprehensive --help tests: 18 tests verifying every Gold CLI command/subcommand shows correct --help output (daily-run, ch-load, rebuild, load-dims, compute-marks, compute-pnl, compute-mtm, compute-position-snapshot, compute-wallet-metrics, load-marks-ch, status, freshness, compute-snapshot, watchlist, watchlist add/remove/list)
+- All 1127 tests pass, mypy clean (2 pre-existing unused type-ignore warnings in silver module)
+
+### scheduling (2026-02-04)
+- Created `scripts/gold_daily_cron.sh` wrapper script for cron/EventBridge execution
+  - Runs 3 steps in order: 1) `gold daily-run`, 2) `gold ch-load --all`, 3) `gold freshness`
+  - Supports `--dt`, `--dry-run`, `--lookback-days` flags
+  - Loads `.env` file, validates GOLD_BUCKET, fail-forward with summary
+  - Follows same pattern as `scripts/backfill_polymarket.sh`
+- Created `infrastructure/eventbridge-gold-schedules.yaml` CloudFormation template
+  - 3 EventBridge Scheduler schedules: daily-run (00:00 UTC), ch-load (00:30 UTC), freshness (01:00 UTC)
+  - Follows same pattern as `infrastructure/eventbridge-schedules.yaml` (Bronze)
+  - Separate schedule group `prediction-data-gold-{env}` with dedicated IAM role
+  - Parameterized: Environment, ECSClusterArn, TaskDefinitionArn, SubnetIds, SecurityGroupIds, ScheduleState
+  - All schedules reuse the existing ECS task definition with container command overrides
+  - Retry policies: 30min max age / 2 retries for daily-run and ch-load; 5min / 1 retry for freshness
+- Updated OPERATIONS.md with Gold Processing Jobs section
+  - Schedule table: daily-run (00:00 UTC), ch-load (00:30 UTC), freshness (01:00 UTC)
+  - ECS task definition override examples for all Gold commands (daily-run, ch-load, rebuild)
+  - Wrapper script usage examples
+  - EventBridge cron expressions and CloudFormation deployment command
+- Updated `infrastructure/README.md`
+  - Added `eventbridge-gold-schedules.yaml` to templates table
+  - Added step 5b deployment command for Gold schedules
+  - Added Gold schedule group to resource summary
 - All 1127 tests pass, mypy clean (2 pre-existing unused type-ignore warnings in silver module)
 
 ## In Progress
