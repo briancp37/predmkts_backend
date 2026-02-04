@@ -463,3 +463,119 @@ def load_dim_wallet(
 
     logger.info("loaded_dim_wallet", rows=num_rows, day=day)
     return num_rows
+
+
+# ---------------------------------------------------------------------------
+# dim_event
+# ---------------------------------------------------------------------------
+
+DIM_EVENT_SCHEMA = pa.schema(
+    [
+        pa.field("platform", pa.string()),
+        pa.field("platform_event_id", pa.string()),
+        pa.field("title", pa.string()),
+        pa.field("description", pa.string()),
+        pa.field("slug", pa.string()),
+        pa.field("status", pa.string()),
+        pa.field("category", pa.string()),
+    ]
+)
+
+DIM_EVENT_COLUMNS = [f.name for f in DIM_EVENT_SCHEMA]
+
+
+def _read_silver_events(
+    platform: str,
+    catalog: Catalog | None = None,
+) -> pa.Table:
+    """Read the Silver events table for *platform* via PyIceberg."""
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "events"))
+    return table.scan().to_arrow()
+
+
+def _silver_to_dim_event(
+    arrow: pa.Table,
+    platform: str,
+) -> pa.Table:
+    """Transform Silver events Arrow table into dim_event rows.
+
+    Deduplicates by platform_event_id, keeping the last occurrence
+    (which has the most recent updated_at in a sorted Silver table).
+    """
+    records = arrow.to_pylist()
+
+    # Deduplicate by platform_event_id (last-write-wins).
+    seen: dict[str, dict[str, Any]] = {}
+    for rec in records:
+        pid = str(rec.get("platform_event_id", "") or "")
+        seen[pid] = rec
+
+    rows: dict[str, list[Any]] = {col: [] for col in DIM_EVENT_COLUMNS}
+
+    for pid, rec in seen.items():
+        rows["platform"].append(platform)
+        rows["platform_event_id"].append(pid)
+        rows["title"].append(str(rec.get("title", "") or ""))
+        rows["description"].append(str(rec.get("description", "") or ""))
+        rows["slug"].append(str(rec.get("slug", "") or ""))
+        rows["status"].append(str(rec.get("status", "") or ""))
+        rows["category"].append(str(rec.get("category", "") or ""))
+
+    return pa.table(rows, schema=DIM_EVENT_SCHEMA)
+
+
+def load_dim_event(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+) -> int:
+    """Load the dim_event dimension table.
+
+    Reads Silver polymarket.events, transforms to dim_event rows,
+    and writes to S3 Gold Parquet + ClickHouse.
+
+    Returns:
+        Number of rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Read and transform Polymarket events.
+    silver_arrow = _read_silver_events("polymarket", catalog=catalog)
+    dim_table = _silver_to_dim_event(silver_arrow, "polymarket")
+
+    num_rows: int = dim_table.num_rows
+    logger.info("dim_event_transformed", platform="polymarket", rows=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_event", rows=num_rows, day=day)
+        return num_rows
+
+    # Write to S3 if bucket configured.
+    if gold_bucket:
+        write_gold_parquet(
+            dim_table,
+            gold_bucket,
+            "dim_event",
+            day,
+            s3_client=s3_client,
+        )
+
+    # Insert into ClickHouse.
+    ch = clickhouse_client or get_client()
+    ch.insert(
+        "dim_event",
+        data=dim_table.to_pylist(),
+        column_names=DIM_EVENT_COLUMNS,
+    )
+
+    logger.info("loaded_dim_event", rows=num_rows, day=day)
+    return num_rows

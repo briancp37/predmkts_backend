@@ -1,0 +1,41 @@
+# Sprint Progress: Event Dimension
+# Release: 03_gold_level
+# Created: 2026-02-04
+
+## Status: In Progress
+
+## Completed Tasks
+- [dim_event] Created ClickHouse DDL: docker/clickhouse/init/015_dim_event.sql
+  - ReplacingMergeTree(updated_at), ORDER BY (platform, platform_event_id)
+- [dim_event] Defined DIM_EVENT_SCHEMA in src/prediction_data/gold/dimensions.py
+  - Fields: platform, platform_event_id, title, description, slug, status, category
+  - Drops lineage columns (bronze_run_id, silver_ingestion_ts, event_ts) from Silver
+- [dim_event] Implemented _read_silver_events() and _silver_to_dim_event() transform
+  - Reads Silver events via PyIceberg, maps fields, converts nulls to empty strings
+  - Deduplicates by platform_event_id (last-write-wins)
+- [dim_event] Implemented load_dim_event() loader with S3 + ClickHouse write
+  - Follows same pattern as load_dim_market: read Silver, transform, write S3, insert CH
+  - Supports --dry-run
+- [dim_event] DDL is platform-agnostic (Kalshi scaffolded, no data)
+- [dim_event] Registered dim_event in CLI: LOADABLE_DIMS in src/prediction_data/cli/gold.py
+  - Wired dispatch to call load_dim_event()
+- [dim_event] Wrote comprehensive unit tests in tests/gold/test_dimensions.py
+  - TestSilverToDimEvent: schema match, row count, platform column, field mapping, null handling, dedup, empty input
+  - TestLoadDimEvent: dry run, S3 + CH write, skip S3 when no bucket
+  - Updated TestFullPipelineAllDims integration tests to include dim_event (5 dims total)
+  - Updated TestLoadDimsCLI to include dim_event in load-all and mock catalog
+- All 1036 tests pass, mypy clean
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- dim_event maps Silver events fields to a Gold dimension table, dropping lineage columns (bronze_run_id, silver_ingestion_ts, event_ts)
+- dim_category is a lightweight lookup derived from the category field on Silver events
+- Markets already reference events via event_id in dim_market; dim_event completes the hierarchy
+- Follows the same pattern as dim_market/dim_outcome from sprint 02_dimension_tables
+- Kalshi events are scaffolded in Silver but have no data yet; dim_event loader should be platform-agnostic
+- dim_category and cli_and_testing categories remain to be completed

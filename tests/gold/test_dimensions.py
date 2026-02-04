@@ -9,6 +9,8 @@ import pytest
 
 from prediction_data.gold.canonical import CanonicalResolver
 from prediction_data.gold.dimensions import (
+    DIM_EVENT_COLUMNS,
+    DIM_EVENT_SCHEMA,
     DIM_MARKET_COLUMNS,
     DIM_MARKET_SCHEMA,
     DIM_OUTCOME_COLUMNS,
@@ -18,9 +20,11 @@ from prediction_data.gold.dimensions import (
     DIM_WALLET_SCHEMA,
     PLATFORMS,
     _platforms_to_arrow,
+    _silver_to_dim_event,
     _silver_to_dim_market,
     _silver_to_dim_outcome,
     _silver_trades_to_dim_wallet,
+    load_dim_event,
     load_dim_market,
     load_dim_outcome,
     load_dim_platform,
@@ -622,20 +626,200 @@ class TestLoadDimWallet:
 
 
 # ---------------------------------------------------------------------------
+# dim_event tests
+# ---------------------------------------------------------------------------
+
+
+def _fake_silver_events() -> pa.Table:
+    """Build a small Arrow table mimicking Silver polymarket.events."""
+    return pa.table(
+        {
+            "event_ts": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+            "platform_event_id": ["evt-1", "evt-2"],
+            "title": ["US Election", "Super Bowl"],
+            "description": ["Presidential election", "Football championship"],
+            "slug": ["us-election", "super-bowl"],
+            "status": ["active", "closed"],
+            "category": ["politics", "sports"],
+            "updated_at": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+            "bronze_run_id": ["run1", "run2"],
+            "silver_ingestion_ts": pa.array(
+                [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+            ),
+        }
+    )
+
+
+class TestSilverToDimEvent:
+    def test_schema_matches(self) -> None:
+        result = _silver_to_dim_event(_fake_silver_events(), "polymarket")
+        assert result.schema.equals(DIM_EVENT_SCHEMA)
+
+    def test_row_count(self) -> None:
+        result = _silver_to_dim_event(_fake_silver_events(), "polymarket")
+        assert result.num_rows == 2
+
+    def test_platform_column(self) -> None:
+        result = _silver_to_dim_event(_fake_silver_events(), "polymarket")
+        assert result.column("platform").to_pylist() == ["polymarket", "polymarket"]
+
+    def test_field_mapping(self) -> None:
+        result = _silver_to_dim_event(_fake_silver_events(), "polymarket")
+        rows = result.to_pylist()
+        assert rows[0]["title"] == "US Election"
+        assert rows[0]["category"] == "politics"
+        assert rows[1]["slug"] == "super-bowl"
+        assert rows[1]["status"] == "closed"
+
+    def test_null_fields_become_empty_strings(self) -> None:
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_event_id": ["evt-x"],
+                "title": [None],
+                "description": [None],
+                "slug": [None],
+                "status": [None],
+                "category": [None],
+                "updated_at": pa.array([None], type=pa.timestamp("us", tz="UTC")),
+                "bronze_run_id": [None],
+                "silver_ingestion_ts": pa.array(
+                    [None], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_to_dim_event(arrow, "polymarket")
+        row = result.to_pylist()[0]
+        assert row["title"] == ""
+        assert row["description"] == ""
+        assert row["slug"] == ""
+        assert row["status"] == ""
+        assert row["category"] == ""
+
+    def test_dedup_by_platform_event_id(self) -> None:
+        """Duplicate event IDs are deduplicated (last-write-wins)."""
+        arrow = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+                "platform_event_id": ["evt-1", "evt-1"],
+                "title": ["Old Title", "New Title"],
+                "description": ["Old", "New"],
+                "slug": ["old-slug", "new-slug"],
+                "status": ["active", "closed"],
+                "category": ["politics", "politics"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+                "bronze_run_id": ["run1", "run2"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
+                ),
+            }
+        )
+        result = _silver_to_dim_event(arrow, "polymarket")
+        assert result.num_rows == 1
+        row = result.to_pylist()[0]
+        assert row["title"] == "New Title"
+        assert row["status"] == "closed"
+
+    def test_empty_events(self) -> None:
+        empty = pa.table(
+            {
+                "event_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "platform_event_id": pa.array([], type=pa.string()),
+                "title": pa.array([], type=pa.string()),
+                "description": pa.array([], type=pa.string()),
+                "slug": pa.array([], type=pa.string()),
+                "status": pa.array([], type=pa.string()),
+                "category": pa.array([], type=pa.string()),
+                "updated_at": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "bronze_run_id": pa.array([], type=pa.string()),
+                "silver_ingestion_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+            }
+        )
+        result = _silver_to_dim_event(empty, "polymarket")
+        assert result.num_rows == 0
+        assert result.schema.equals(DIM_EVENT_SCHEMA)
+
+
+class TestLoadDimEvent:
+    def test_dry_run_returns_count(self) -> None:
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        rows = load_dim_event(catalog=mock_catalog, dry_run=True)
+        assert rows == 2
+
+    def test_writes_to_s3_and_clickhouse(self, mock_s3_gold: MagicMock) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            rows = load_dim_event(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        assert rows == 2
+        mock_write.assert_called_once()
+        mock_ch.insert.assert_called_once()
+
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_event"
+        assert len(call_args[1]["data"]) == 2
+
+    def test_skips_s3_when_no_bucket(self) -> None:
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow.return_value = _fake_silver_events()
+
+        with patch(
+            "prediction_data.gold.dimensions.write_gold_parquet"
+        ) as mock_write:
+            load_dim_event(
+                gold_bucket=None,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        mock_write.assert_not_called()
+        mock_ch.insert.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Integration tests: full pipeline Silver → S3 + ClickHouse for all dims
 # ---------------------------------------------------------------------------
 
 
 class TestFullPipelineAllDims:
-    """Test loading all four dimension tables through a single pipeline run.
+    """Test loading all five dimension tables through a single pipeline run.
 
     Verifies that each loader reads Silver data, writes S3 Parquet, and
     inserts into ClickHouse with correct table names and row counts.
     """
 
     def _mock_catalog(self) -> MagicMock:
-        """Return a catalog that serves markets for dim_market/dim_outcome
-        and trades for dim_wallet."""
+        """Return a catalog that serves markets for dim_market/dim_outcome,
+        trades for dim_wallet, and events for dim_event."""
         catalog = MagicMock()
 
         def _load_table(identifier: tuple[str, str]) -> MagicMock:
@@ -647,6 +831,8 @@ class TestFullPipelineAllDims:
                 )
             elif table_name == "trades":
                 tbl.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+            elif table_name == "events":
+                tbl.scan.return_value.to_arrow.return_value = _fake_silver_events()
             return tbl
 
         catalog.load_table.side_effect = _load_table
@@ -684,31 +870,40 @@ class TestFullPipelineAllDims:
                 clickhouse_client=mock_ch,
                 catalog=catalog,
             )
+            e_rows = load_dim_event(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
 
         # All loaders returned rows.
         assert p_rows == len(PLATFORMS)
         assert m_rows == 2
         assert o_rows == 4
         assert w_rows == 3
+        assert e_rows == 2
 
-        # S3 written for all four tables.
-        assert mock_write.call_count == 4
+        # S3 written for all five tables.
+        assert mock_write.call_count == 5
         s3_table_names = [c.args[2] for c in mock_write.call_args_list]
         assert s3_table_names == [
             "dim_platform",
             "dim_market",
             "dim_outcome",
             "dim_wallet",
+            "dim_event",
         ]
 
         # ClickHouse insert called for each table.
-        assert mock_ch.insert.call_count == 4
+        assert mock_ch.insert.call_count == 5
         ch_table_names = [c.args[0] for c in mock_ch.insert.call_args_list]
         assert ch_table_names == [
             "dim_platform",
             "dim_market",
             "dim_outcome",
             "dim_wallet",
+            "dim_event",
         ]
 
     def test_clickhouse_receives_correct_columns(
@@ -742,6 +937,12 @@ class TestFullPipelineAllDims:
                 clickhouse_client=mock_ch,
                 catalog=catalog,
             )
+            load_dim_event(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
 
         calls = mock_ch.insert.call_args_list
         # dim_platform
@@ -752,6 +953,8 @@ class TestFullPipelineAllDims:
         assert calls[2][1]["column_names"] == DIM_OUTCOME_COLUMNS
         # dim_wallet
         assert calls[3][1]["column_names"] == DIM_WALLET_COLUMNS
+        # dim_event
+        assert calls[4][1]["column_names"] == DIM_EVENT_COLUMNS
 
     def test_clickhouse_data_is_queryable(self, mock_s3_gold: MagicMock) -> None:
         """Verify inserted data has correct structure for ClickHouse queries.
@@ -781,6 +984,12 @@ class TestFullPipelineAllDims:
                 catalog=catalog,
             )
             load_dim_wallet(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=catalog,
+            )
+            load_dim_event(
                 gold_bucket="test-gold",
                 s3_client=mock_s3_gold,
                 clickhouse_client=mock_ch,
@@ -816,6 +1025,14 @@ class TestFullPipelineAllDims:
             assert set(row.keys()) == set(DIM_WALLET_COLUMNS)
             assert isinstance(row["trade_count"], int)
 
+        # dim_event: list of dicts with all expected keys
+        event_data = calls[4][1]["data"]
+        assert len(event_data) == 2
+        for row in event_data:
+            assert set(row.keys()) == set(DIM_EVENT_COLUMNS)
+            assert isinstance(row["platform"], str)
+            assert isinstance(row["category"], str)
+
 
 # ---------------------------------------------------------------------------
 # CLI integration tests
@@ -837,6 +1054,8 @@ class TestLoadDimsCLI:
                 )
             elif table_name == "trades":
                 tbl.scan.return_value.to_arrow.return_value = _fake_silver_trades()
+            elif table_name == "events":
+                tbl.scan.return_value.to_arrow.return_value = _fake_silver_events()
             return tbl
 
         catalog.load_table.side_effect = _load_table
@@ -859,14 +1078,15 @@ class TestLoadDimsCLI:
         from prediction_data.cli.main import app as cli_app
 
         runner = CliRunner()
-        catalog = self._mock_catalog()
 
         with (
             patch("prediction_data.gold.dimensions._read_silver_markets") as mock_markets,
             patch("prediction_data.gold.dimensions._read_silver_trades") as mock_trades,
+            patch("prediction_data.gold.dimensions._read_silver_events") as mock_events,
         ):
             mock_markets.return_value = _fake_silver_markets_with_tokens()
             mock_trades.return_value = _fake_silver_trades()
+            mock_events.return_value = _fake_silver_events()
             result = runner.invoke(cli_app, ["gold", "load-dims", "--dry-run"])
 
         assert result.exit_code == 0
@@ -874,6 +1094,7 @@ class TestLoadDimsCLI:
         assert "dim_market" in result.output
         assert "dim_outcome" in result.output
         assert "dim_wallet" in result.output
+        assert "dim_event" in result.output
 
     def test_unknown_table_fails(self) -> None:
         from typer.testing import CliRunner

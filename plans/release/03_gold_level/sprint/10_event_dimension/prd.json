@@ -1,0 +1,39 @@
+[
+    {
+        "category": "dim_event",
+        "description": "Event dimension table from Silver events with category and hierarchy",
+        "steps": [
+            "Create ClickHouse DDL for dim_event (ReplacingMergeTree(updated_at), ORDER BY (platform, platform_event_id))",
+            "Define schema: platform, platform_event_id, title, description, slug, status, category, updated_at",
+            "Read Silver polymarket.events via PyIceberg and transform to dim_event rows",
+            "Write to S3 Gold Parquet + load into ClickHouse",
+            "Scaffold Kalshi dim_event (DDL supports any platform, loader stubbed, no data)",
+            "Write unit tests for Silver events → dim_event transform (field mapping, nulls, dedup by platform_event_id)"
+        ],
+        "passes": true
+    },
+    {
+        "category": "dim_category",
+        "description": "Category dimension derived from Silver events category field",
+        "steps": [
+            "Create ClickHouse DDL for dim_category (ReplacingMergeTree(version), ORDER BY (platform, category))",
+            "Define schema: platform, category, event_count",
+            "Extract distinct categories from Silver events, compute event_count per category",
+            "Write to S3 Gold Parquet + load into ClickHouse",
+            "Write unit tests for category extraction and aggregation"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_and_testing",
+        "description": "CLI registration and integration testing for event dimension loading",
+        "steps": [
+            "Register dim_event and dim_category in LOADABLE_DIMS in src/prediction_data/cli/gold.py",
+            "Wire CLI dispatch to call load_dim_event() and load_dim_category()",
+            "Add --dry-run support to both loaders",
+            "Write integration test: Silver events → dim_event + dim_category round-trip (S3 + CH)",
+            "Verify `prediction-data gold load-dims --table dim_event` and `--table dim_category` work"
+        ],
+        "passes": false
+    }
+]
