@@ -164,7 +164,7 @@ class TestIngestMarketsIncremental:
 
     @pytest.mark.asyncio
     async def test_full_snapshot_writes_snapshot_manifest(self) -> None:
-        """Full snapshot writes manifest with snapshot_type='snapshot'."""
+        """Full snapshot writes manifest with snapshot_type='snapshot' and latest_timestamp from records."""
         with (
             patch("prediction_data.bronze.polymarket.ingest.PolymarketClient") as mock_client_class,
             patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
@@ -182,7 +182,8 @@ class TestIngestMarketsIncremental:
 
             manifest_kwargs = mock_manifest.call_args.kwargs
             assert manifest_kwargs["snapshot_type"] == "snapshot"
-            assert manifest_kwargs["latest_timestamp"] is None
+            # Full snapshots now extract max updatedAt for cursor tracking
+            assert manifest_kwargs["latest_timestamp"] == _iso_to_epoch("2026-02-01T15:00:00Z")
 
     @pytest.mark.asyncio
     async def test_zero_change_incremental_preserves_cursor(self) -> None:
@@ -268,6 +269,29 @@ class TestIngestEventsIncremental:
 
             manifest_kwargs = mock_manifest.call_args.kwargs
             assert manifest_kwargs["snapshot_type"] == "delta"
+            assert manifest_kwargs["latest_timestamp"] == _iso_to_epoch("2026-02-01T18:00:00Z")
+
+    @pytest.mark.asyncio
+    async def test_full_snapshot_writes_latest_timestamp(self) -> None:
+        """Full snapshot events writes manifest with latest_timestamp from records."""
+        with (
+            patch("prediction_data.bronze.polymarket.ingest.PolymarketClient") as mock_client_class,
+            patch("prediction_data.bronze.polymarket.ingest.S3Client") as mock_s3_class,
+            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
+            patch("prediction_data.bronze.polymarket.ingest.create_manifest") as mock_manifest,
+        ):
+            _setup_mocks(mock_s3_class, mock_settings, entity="events")
+            mock_manifest.return_value = AsyncMock()
+
+            mock_client = AsyncMock()
+            mock_client.fetch_all_events.return_value = SAMPLE_EVENTS
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            await ingest_events(dt="2026-02-02")
+
+            manifest_kwargs = mock_manifest.call_args.kwargs
+            assert manifest_kwargs["snapshot_type"] == "snapshot"
+            # Full snapshots now extract max updatedAt for cursor tracking
             assert manifest_kwargs["latest_timestamp"] == _iso_to_epoch("2026-02-01T18:00:00Z")
 
     @pytest.mark.asyncio

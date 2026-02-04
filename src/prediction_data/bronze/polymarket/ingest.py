@@ -337,6 +337,13 @@ async def ingest_markets(
             )
         else:
             markets = await client.fetch_all_markets(include_closed=include_closed)
+            # Extract max updatedAt from full snapshot for cursor tracking
+            # so subsequent catchup runs can use incremental mode.
+            if markets:
+                updated_values = [m.get("updatedAt", "") for m in markets]
+                max_val = max((v for v in updated_values if v), default=None)
+                if max_val:
+                    max_updated_at = max_val
 
     logger.info(
         "Fetched markets from API",
@@ -451,6 +458,13 @@ async def ingest_events(
             )
         else:
             events = await client.fetch_all_events(include_closed=include_closed)
+            # Extract max updatedAt from full snapshot for cursor tracking
+            # so subsequent catchup runs can use incremental mode.
+            if events:
+                updated_values = [e.get("updatedAt", "") for e in events]
+                max_val = max((v for v in updated_values if v), default=None)
+                if max_val:
+                    max_updated_at = max_val
 
     logger.info(
         "Fetched events from API",
@@ -624,6 +638,10 @@ async def ingest_order_filled(
         async for batch in client.iter_order_filled_batches(
             timestamp_gte=start_ts, timestamp_lte=end_ts,
         ):
+            # Reset S3 client to get fresh connection pool, avoiding staleness
+            # issues that can occur during long-running batch operations.
+            s3_client.reset_client()
+
             # Track max timestamp across all batches
             for evt in batch:
                 ts_val = evt.get("timestamp")
