@@ -21,13 +21,13 @@ def _create_mock_response(data: dict[str, Any]) -> MagicMock:
     return mock_response
 
 
-def _make_event(event_id: str) -> dict[str, Any]:
+def _make_event(event_id: str, timestamp: str = "1700000000") -> dict[str, Any]:
     """Create a test OrderFilledEvent."""
     return {
         "id": event_id,
         "transactionHash": "0xabc",
         "orderHash": "0xdef",
-        "timestamp": "1700000000",
+        "timestamp": timestamp,
         "maker": "0xmaker",
         "taker": "0xtaker",
         "makerAssetId": "123",
@@ -41,25 +41,18 @@ def _make_event(event_id: str) -> dict[str, Any]:
 class TestBuildQueryVariables:
     """Tests for GraphQL query variable construction."""
 
-    def test_default_cursor(self) -> None:
-        result = build_query_variables(timestamp_gte=100, timestamp_lte=200)
-        assert result["cursor"] == ""
+    def test_default_page_size(self) -> None:
+        result = build_query_variables(timestamp_gt=100, timestamp_lte=200)
         assert result["first"] == DEFAULT_PAGE_SIZE
 
-    def test_custom_cursor(self) -> None:
-        result = build_query_variables(
-            cursor="abc123", timestamp_gte=100, timestamp_lte=200
-        )
-        assert result["cursor"] == "abc123"
-
     def test_timestamps_as_strings(self) -> None:
-        result = build_query_variables(timestamp_gte=1700000000, timestamp_lte=1700086400)
-        assert result["timestamp_gte"] == "1700000000"
+        result = build_query_variables(timestamp_gt=1700000000, timestamp_lte=1700086400)
+        assert result["timestamp_gt"] == "1700000000"
         assert result["timestamp_lte"] == "1700086400"
 
     def test_custom_page_size(self) -> None:
         result = build_query_variables(
-            timestamp_gte=100, timestamp_lte=200, page_size=500
+            timestamp_gt=100, timestamp_lte=200, page_size=500
         )
         assert result["first"] == 500
 
@@ -72,7 +65,7 @@ class TestGoldskyClientContextManager:
         client = GoldskyClient()
         with pytest.raises(RuntimeError, match="must be used as async context manager"):
             await client.fetch_order_filled_page(
-                timestamp_gte=100, timestamp_lte=200
+                timestamp_gt=100, timestamp_lte=200
             )
 
     @pytest.mark.asyncio
@@ -104,7 +97,7 @@ class TestFetchOrderFilledPage:
 
             async with GoldskyClient() as client:
                 result = await client.fetch_order_filled_page(
-                    timestamp_gte=1700000000, timestamp_lte=1700086400
+                    timestamp_gt=1699999999, timestamp_lte=1700086400
                 )
 
             assert result == events
@@ -123,7 +116,7 @@ class TestFetchOrderFilledPage:
 
             async with GoldskyClient() as client:
                 await client.fetch_order_filled_page(
-                    timestamp_gte=100, timestamp_lte=200
+                    timestamp_gt=100, timestamp_lte=200
                 )
 
             call_args = mock_client.post.call_args
@@ -142,33 +135,14 @@ class TestFetchOrderFilledPage:
 
             async with GoldskyClient() as client:
                 await client.fetch_order_filled_page(
-                    timestamp_gte=1700000000, timestamp_lte=1700086400
+                    timestamp_gt=1699999999, timestamp_lte=1700086400
                 )
 
             call_kwargs = mock_client.post.call_args[1]
             payload = call_kwargs["json"]
             assert payload["query"] == ORDER_FILLED_QUERY
-            assert payload["variables"]["timestamp_gte"] == "1700000000"
+            assert payload["variables"]["timestamp_gt"] == "1699999999"
             assert payload["variables"]["timestamp_lte"] == "1700086400"
-
-    @pytest.mark.asyncio
-    async def test_passes_cursor(self) -> None:
-        response_data = {"data": {"orderFilledEvents": []}}
-
-        with patch("prediction_data.bronze.polymarket.goldsky.HttpClient") as mock_http:
-            mock_client = AsyncMock()
-            mock_http.return_value = mock_client
-            mock_client.post = AsyncMock(
-                return_value=_create_mock_response(response_data)
-            )
-
-            async with GoldskyClient() as client:
-                await client.fetch_order_filled_page(
-                    timestamp_gte=100, timestamp_lte=200, cursor="mycursor"
-                )
-
-            call_kwargs = mock_client.post.call_args[1]
-            assert call_kwargs["json"]["variables"]["cursor"] == "mycursor"
 
     @pytest.mark.asyncio
     async def test_raises_on_graphql_errors(self) -> None:
@@ -184,7 +158,7 @@ class TestFetchOrderFilledPage:
             async with GoldskyClient() as client:
                 with pytest.raises(RuntimeError, match="Goldsky GraphQL error"):
                     await client.fetch_order_filled_page(
-                        timestamp_gte=100, timestamp_lte=200
+                        timestamp_gt=100, timestamp_lte=200
                     )
 
     @pytest.mark.asyncio
@@ -200,7 +174,7 @@ class TestFetchOrderFilledPage:
 
             async with GoldskyClient() as client:
                 result = await client.fetch_order_filled_page(
-                    timestamp_gte=100, timestamp_lte=200
+                    timestamp_gt=100, timestamp_lte=200
                 )
 
             assert result == []
@@ -232,8 +206,10 @@ class TestFetchAllOrderFilledEvents:
 
     @pytest.mark.asyncio
     async def test_multi_page_pagination(self) -> None:
-        page1 = [_make_event(str(i)) for i in range(DEFAULT_PAGE_SIZE)]
-        page2 = [_make_event(str(DEFAULT_PAGE_SIZE + i)) for i in range(5)]
+        # Page 1: full page with incrementing timestamps
+        page1 = [_make_event(str(i), timestamp=str(1000 + i)) for i in range(DEFAULT_PAGE_SIZE)]
+        # Page 2: partial page with higher timestamps
+        page2 = [_make_event(str(DEFAULT_PAGE_SIZE + i), timestamp=str(2000 + i)) for i in range(5)]
 
         with patch("prediction_data.bronze.polymarket.goldsky.HttpClient") as mock_http:
             mock_client = AsyncMock()
@@ -247,7 +223,7 @@ class TestFetchAllOrderFilledEvents:
 
             async with GoldskyClient(page_delay=0) as client:
                 result = await client.fetch_all_order_filled_events(
-                    timestamp_gte=100, timestamp_lte=200
+                    timestamp_gte=100, timestamp_lte=3000
                 )
 
             assert len(result) == DEFAULT_PAGE_SIZE + 5
@@ -273,9 +249,10 @@ class TestFetchAllOrderFilledEvents:
             assert mock_client.post.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_cursor_forwarded_between_pages(self) -> None:
-        # Full page triggers pagination; last id becomes cursor for next page
-        page1 = [_make_event(f"event_{i}") for i in range(DEFAULT_PAGE_SIZE)]
+    async def test_timestamp_cursor_forwarded_between_pages(self) -> None:
+        # Full page triggers pagination; last timestamp becomes cursor for next page
+        page1 = [_make_event(f"event_{i}", timestamp=str(1000 + i)) for i in range(DEFAULT_PAGE_SIZE)]
+        last_timestamp = str(1000 + DEFAULT_PAGE_SIZE - 1)
 
         with patch("prediction_data.bronze.polymarket.goldsky.HttpClient") as mock_http:
             mock_client = AsyncMock()
@@ -289,13 +266,13 @@ class TestFetchAllOrderFilledEvents:
 
             async with GoldskyClient(page_delay=0) as client:
                 await client.fetch_all_order_filled_events(
-                    timestamp_gte=100, timestamp_lte=200
+                    timestamp_gte=100, timestamp_lte=3000
                 )
 
-            # First call: empty cursor
+            # First call: timestamp_gt = timestamp_gte - 1 = 99
             first_vars = mock_client.post.call_args_list[0][1]["json"]["variables"]
-            assert first_vars["cursor"] == ""
+            assert first_vars["timestamp_gt"] == "99"
 
-            # Second call: uses last event id as cursor
+            # Second call: uses last event timestamp as cursor
             second_vars = mock_client.post.call_args_list[1][1]["json"]["variables"]
-            assert second_vars["cursor"] == f"event_{DEFAULT_PAGE_SIZE - 1}"
+            assert second_vars["timestamp_gt"] == last_timestamp

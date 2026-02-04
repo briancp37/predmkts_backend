@@ -77,7 +77,7 @@ class TestDeriveTradeBasic:
         assert result["maker"] == "0xmaker"
         assert result["taker"] == "0xtaker"
         assert result["transaction_hash"] == "0xabc"
-        assert result["trade_id"] == "0xabc"
+        assert result["trade_id"] == "evt-1"
 
 
 class TestDeriveTradeReversed:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import itertools
 import os
 from datetime import date, timedelta
@@ -168,8 +169,9 @@ def process(
         typer.Option(
             "--append-only",
             help=(
-                "Use fast append writes instead of merge/upsert. "
-                "Use for initial bulk loads where no existing data needs updating."
+                "Force append writes instead of merge/upsert. "
+                "Stream entities (trades, order_filled) already default to "
+                "append; this flag forces append for catalog entities too."
             ),
         ),
     ] = False,
@@ -262,10 +264,15 @@ async def _run_process(
     """Discover and process Bronze manifests for the given scope."""
     from prediction_data.silver.catalog import get_catalog
     from prediction_data.silver.discovery import (
+        CATALOG_ENTITIES,
         discover_manifests,
         select_manifests_for_day,
     )
-    from prediction_data.silver.processor import ProcessingError, process_manifest
+    from prediction_data.silver.processor import (
+        ProcessingError,
+        process_manifest,
+        process_manifest_chunked,
+    )
     from prediction_data.storage import S3Client
 
     s3 = S3Client(bucket=bucket)
@@ -371,6 +378,8 @@ async def _run_process(
 
         day_errors: list[tuple[str, str]] = []
 
+        is_stream = entity not in CATALOG_ENTITIES
+
         for m in day_manifests:
             total_processed_so_far = total_processed + len(day_errors)
             progress = total_processed_so_far + 1
@@ -378,13 +387,20 @@ async def _run_process(
             typer.echo(f"  Processing {label} ...")
 
             try:
-                result = await process_manifest(
-                    m, s3, catalog,
-                    skip_quality_checks=skip_quality_checks,
-                    markets_lookup=markets_lookup,
-                    append_only=append_only,
-                    overwrite=overwrite,
-                )
+                if is_stream:
+                    result = await process_manifest_chunked(
+                        m, s3, catalog,
+                        skip_quality_checks=skip_quality_checks,
+                        markets_lookup=markets_lookup,
+                    )
+                else:
+                    result = await process_manifest(
+                        m, s3, catalog,
+                        skip_quality_checks=skip_quality_checks,
+                        markets_lookup=markets_lookup,
+                        append_only=append_only,
+                        overwrite=overwrite,
+                    )
                 total_processed += 1
                 typer.echo(
                     f"    OK: {result.rows_written} rows written, "
@@ -401,6 +417,8 @@ async def _run_process(
             except ProcessingError as exc:
                 day_errors.append((m.run_id, str(exc)))
                 typer.echo(f"    FAILED: {exc}", err=True)
+            finally:
+                gc.collect()
 
         if day_errors:
             day_failures.append((dt, day_errors))
@@ -415,6 +433,287 @@ async def _run_process(
         typer.echo(f"Failed days: {len(day_failures)}")
         for dt, errs in day_failures:
             typer.echo(f"  {dt}:")
+            for run_id, err in errs:
+                typer.echo(f"    {run_id}: {err}")
+        raise typer.Exit(code=1)
+    else:
+        typer.echo("All manifests processed successfully.")
+
+
+@app.command(name="catchup")
+def catchup(
+    platform: Annotated[
+        str,
+        typer.Option(
+            "--platform",
+            help=f"Platform to catch up ({', '.join(_VALID_PLATFORMS)}).",
+        ),
+    ],
+    entity: Annotated[
+        str,
+        typer.Option(
+            "--entity",
+            help=f"Entity to catch up ({', '.join(_VALID_ENTITIES)}).",
+        ),
+    ],
+    from_date: Annotated[
+        str | None,
+        typer.Option(
+            "--from-date",
+            help="Override start date instead of auto-detecting (YYYY-MM-DD).",
+        ),
+    ] = None,
+    bucket: Annotated[
+        str | None,
+        typer.Option(
+            "--bucket",
+            help="S3 bucket name (defaults to BRONZE_BUCKET env var).",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview manifests that would be processed without writing.",
+        ),
+    ] = False,
+    force_reprocess: Annotated[
+        bool,
+        typer.Option(
+            "--force-reprocess",
+            help="Reprocess manifests even if already processed.",
+        ),
+    ] = False,
+    skip_quality_checks: Annotated[
+        bool,
+        typer.Option(
+            "--skip-quality-checks",
+            help="Skip quality checks during processing.",
+        ),
+    ] = False,
+) -> None:
+    """Catch up Silver processing to present.
+
+    Auto-detects the latest processed date from the state store and
+    discovers only new Bronze manifests from that date forward. Uses
+    memory-efficient file-by-file processing for stream entities.
+
+    \b
+    Examples:
+      prediction-data silver catchup --platform polymarket --entity trades
+      prediction-data silver catchup --platform polymarket --entity trades --dry-run
+      prediction-data silver catchup --platform polymarket --entity trades --from-date 2025-01-15
+    """
+    from prediction_data.core.logging import configure_logging
+
+    configure_logging()
+
+    _validate_platform_entity(platform, entity)
+
+    resolved_bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
+    if not resolved_bucket:
+        typer.echo("Error: --bucket or BRONZE_BUCKET env var required.", err=True)
+        raise typer.Exit(code=1)
+
+    asyncio.run(
+        _run_catchup(
+            platform=platform,
+            entity=entity,
+            from_date=from_date,
+            bucket=resolved_bucket,
+            dry_run=dry_run,
+            force_reprocess=force_reprocess,
+            skip_quality_checks=skip_quality_checks,
+        )
+    )
+
+
+async def _run_catchup(
+    *,
+    platform: str,
+    entity: str,
+    from_date: str | None,
+    bucket: str,
+    dry_run: bool,
+    force_reprocess: bool,
+    skip_quality_checks: bool,
+) -> None:
+    """Auto-detect latest processed date and catch up to present."""
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.discovery import (
+        CATALOG_ENTITIES,
+        discover_manifests,
+        select_manifests_for_day,
+    )
+    from prediction_data.silver.processor import (
+        ProcessingError,
+        process_manifest,
+        process_manifest_chunked,
+    )
+    from prediction_data.silver.state import SilverStateStore
+    from prediction_data.storage import S3Client
+
+    s3 = S3Client(bucket=bucket)
+
+    # Load state store to find latest processed date
+    state_store = SilverStateStore(s3, platform, entity)
+    await state_store.load()
+
+    if from_date:
+        start_date = from_date
+        typer.echo(f"Using override start date: {start_date}")
+    else:
+        latest = state_store.latest_processed_date()
+        if latest:
+            start_date = latest
+            typer.echo(f"Latest processed date: {latest}")
+        else:
+            start_date = "2022-01-01"
+            typer.echo("No prior processing found — starting from 2022-01-01")
+
+    end_date = date.today().isoformat()
+
+    typer.echo(
+        f"Discovering manifests for {platform}/{entity} "
+        f"({start_date} to {end_date})..."
+    )
+
+    manifests = await discover_manifests(
+        s3, platform, entity, start_date=start_date, end_date=end_date
+    )
+
+    if not manifests:
+        typer.echo("No manifests found.")
+        return
+
+    typer.echo(f"Found {len(manifests)} manifest(s).")
+
+    # Filter out already-processed manifests unless --force-reprocess
+    if not force_reprocess:
+        before = len(manifests)
+        manifests = [m for m in manifests if not state_store.is_processed(m.run_id)]
+        skipped = before - len(manifests)
+        if skipped:
+            typer.echo(f"Skipping {skipped} already-processed manifest(s).")
+
+    if not manifests:
+        typer.echo("All manifests already processed. Silver is up to date.")
+        return
+
+    # Group manifests by day
+    days = [
+        (dt_val, list(group))
+        for dt_val, group in itertools.groupby(manifests, key=lambda m: m.dt)
+    ]
+    total_days = len(days)
+
+    if dry_run:
+        total_unprocessed = sum(
+            len(select_manifests_for_day(dm, entity)) for _, dm in days
+        )
+        typer.echo(
+            f"\nDry run — {total_unprocessed} manifest(s) to process "
+            f"across {total_days} day(s):"
+        )
+        for dt_val, day_manifests in days:
+            selected = select_manifests_for_day(day_manifests, entity)
+            typer.echo(f"  {dt_val}: {len(selected)} manifest(s)")
+            for m in selected:
+                typer.echo(f"    run_id={m.run_id} rows={m.row_count}")
+        return
+
+    catalog = get_catalog()
+    is_stream = entity not in CATALOG_ENTITIES
+
+    # Pre-load markets reference for trades processing
+    markets_lookup = None
+    if entity == "trades":
+        from prediction_data.silver.polymarket.markets_reference import (
+            load_markets_reference,
+        )
+
+        typer.echo("Pre-loading markets reference for trades processing...")
+        try:
+            markets_lookup = await load_markets_reference(s3)
+        except Exception as e:
+            typer.echo(f"Error loading markets reference: {e}", err=True)
+            raise typer.Exit(code=1) from e
+
+        if len(markets_lookup) == 0:
+            typer.echo(
+                "Error: Markets reference is empty — no Bronze markets data found. "
+                "Ingest markets before processing trades.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        typer.echo(f"Markets reference loaded: {markets_lookup.coverage_stats}")
+
+    total_processed = 0
+    total_manifests = sum(
+        len(select_manifests_for_day(dm, entity)) for _, dm in days
+    )
+    day_failures: list[tuple[str, list[tuple[str, str]]]] = []
+
+    for day_idx, (dt_val, day_manifests) in enumerate(days, 1):
+        day_manifests = select_manifests_for_day(day_manifests, entity)
+        if not day_manifests:
+            continue
+
+        typer.echo(
+            f"\n=== Day {day_idx}/{total_days}: {dt_val} "
+            f"({len(day_manifests)} manifest(s)) ==="
+        )
+
+        day_errors: list[tuple[str, str]] = []
+
+        for m in day_manifests:
+            progress = total_processed + len(day_errors) + 1
+            label = f"[{progress}/{total_manifests}]"
+            typer.echo(f"  {label} Processing dt={m.dt} run_id={m.run_id} ...")
+
+            try:
+                if is_stream:
+                    result = await process_manifest_chunked(
+                        m, s3, catalog,
+                        skip_quality_checks=skip_quality_checks,
+                        markets_lookup=markets_lookup,
+                    )
+                else:
+                    result = await process_manifest(
+                        m, s3, catalog,
+                        skip_quality_checks=skip_quality_checks,
+                        markets_lookup=markets_lookup,
+                    )
+                total_processed += 1
+                typer.echo(
+                    f"    OK: {result.rows_written} rows, "
+                    f"{result.duplicates_dropped} dupes, "
+                    f"{result.duration_seconds:.1f}s"
+                )
+                await state_store.mark_processed(
+                    run_id=m.run_id,
+                    platform=m.platform,
+                    entity=m.entity,
+                    dt=m.dt,
+                )
+            except ProcessingError as exc:
+                day_errors.append((m.run_id, str(exc)))
+                typer.echo(f"    FAILED: {exc}", err=True)
+            finally:
+                gc.collect()
+
+        if day_errors:
+            day_failures.append((dt_val, day_errors))
+
+    # Summary
+    typer.echo("\n--- Summary ---")
+    typer.echo(f"Days:      {total_days}")
+    typer.echo(f"Processed: {total_processed}/{total_manifests}")
+    if day_failures:
+        typer.echo(f"Failed days: {len(day_failures)}")
+        for dt_val, errs in day_failures:
+            typer.echo(f"  {dt_val}:")
             for run_id, err in errs:
                 typer.echo(f"    {run_id}: {err}")
         raise typer.Exit(code=1)

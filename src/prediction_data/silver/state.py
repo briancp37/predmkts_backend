@@ -78,6 +78,7 @@ class SilverStateStore:
         self._entity = entity
         self._key = _state_key(platform, entity)
         self._processed_run_ids: set[str] = set()
+        self._processed_dates: set[str] = set()
         self._loaded = False
 
     async def load(self) -> None:
@@ -90,6 +91,8 @@ class SilverStateStore:
                 if line.strip():
                     entry = json.loads(line)
                     self._processed_run_ids.add(entry["run_id"])
+                    if entry.get("dt"):
+                        self._processed_dates.add(entry["dt"])
         except client.exceptions.NoSuchKey:
             pass
         except Exception:
@@ -110,6 +113,14 @@ class SilverStateStore:
         if not self._loaded:
             raise RuntimeError("State not loaded. Call load() first.")
         return run_id in self._processed_run_ids
+
+    def latest_processed_date(self) -> str | None:
+        """Return the max dt (YYYY-MM-DD) across all processed entries, or None."""
+        if not self._loaded:
+            raise RuntimeError("State not loaded. Call load() first.")
+        if not self._processed_dates:
+            return None
+        return max(self._processed_dates)
 
     async def mark_processed(
         self,
@@ -156,6 +167,8 @@ class SilverStateStore:
         )
 
         self._processed_run_ids.add(run_id)
+        if dt:
+            self._processed_dates.add(dt)
 
         logger.info(
             "state_marked_processed",

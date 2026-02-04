@@ -17,6 +17,7 @@ from prediction_data.core.compression import decompress_jsonl
 
 if TYPE_CHECKING:
     from prediction_data.silver.discovery import DiscoveredManifest
+    from prediction_data.storage.manifest import FileReference
     from prediction_data.storage.s3 import S3Client
 
 logger = structlog.stdlib.get_logger(__name__)
@@ -37,6 +38,33 @@ class ReadResult:
     records_read: int = 0
     files_read: int = 0
     errors: int = 0
+
+
+def read_single_file(
+    s3_client: S3Client,
+    file_ref: FileReference,
+) -> list[dict[str, Any]]:
+    """Read and decompress a single Bronze JSONL.gz file.
+
+    Args:
+        s3_client: Initialised S3Client bound to the Bronze bucket.
+        file_ref: Reference to the S3 file to read.
+
+    Returns:
+        List of parsed record dicts from the file.
+
+    Raises:
+        RuntimeError: If the file cannot be read or decompressed.
+    """
+    key = file_ref.key
+    try:
+        compressed = s3_client._get_client().get_object(
+            Bucket=file_ref.bucket, Key=key,
+        )["Body"].read()
+        return decompress_jsonl(compressed)
+    except Exception as exc:
+        msg = f"Failed to read Bronze file {key}: {exc}"
+        raise RuntimeError(msg) from exc
 
 
 async def read_manifest_data(

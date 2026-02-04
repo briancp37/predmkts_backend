@@ -74,12 +74,12 @@ class TestDiscoverManifests:
     @pytest.mark.asyncio
     async def test_discovers_single_manifest(self) -> None:
         manifest = _make_manifest()
-        mk = "bronze/polymarket/trades/dt=2024-06-15/run_id=run-001/manifest.json"
+        mk = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=run-001/manifest.json"
         client = _mock_s3_client(
-            date_prefixes=["bronze/polymarket/trades/dt=2024-06-15/"],
+            date_prefixes=["bronze/polymarket/order_filled/dt=2024-06-15/"],
             keys_by_prefix={
-                "bronze/polymarket/trades/dt=2024-06-15/": [
-                    "bronze/polymarket/trades/dt=2024-06-15/run_id=run-001/part-000.jsonl.gz",
+                "bronze/polymarket/order_filled/dt=2024-06-15/": [
+                    "bronze/polymarket/order_filled/dt=2024-06-15/run_id=run-001/part-000.jsonl.gz",
                     mk,
                 ],
             },
@@ -97,16 +97,16 @@ class TestDiscoverManifests:
     async def test_filters_by_start_date(self) -> None:
         m1 = _make_manifest(dt="2024-06-10", run_id="r1")
         m2 = _make_manifest(dt="2024-06-15", run_id="r2")
-        mk1 = "bronze/polymarket/trades/dt=2024-06-10/run_id=r1/manifest.json"
-        mk2 = "bronze/polymarket/trades/dt=2024-06-15/run_id=r2/manifest.json"
+        mk1 = "bronze/polymarket/order_filled/dt=2024-06-10/run_id=r1/manifest.json"
+        mk2 = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=r2/manifest.json"
         client = _mock_s3_client(
             date_prefixes=[
-                "bronze/polymarket/trades/dt=2024-06-10/",
-                "bronze/polymarket/trades/dt=2024-06-15/",
+                "bronze/polymarket/order_filled/dt=2024-06-10/",
+                "bronze/polymarket/order_filled/dt=2024-06-15/",
             ],
             keys_by_prefix={
-                "bronze/polymarket/trades/dt=2024-06-10/": [mk1],
-                "bronze/polymarket/trades/dt=2024-06-15/": [mk2],
+                "bronze/polymarket/order_filled/dt=2024-06-10/": [mk1],
+                "bronze/polymarket/order_filled/dt=2024-06-15/": [mk2],
             },
             manifests_by_key={mk1: m1, mk2: m2},
         )
@@ -120,16 +120,16 @@ class TestDiscoverManifests:
     async def test_filters_by_end_date(self) -> None:
         m1 = _make_manifest(dt="2024-06-10", run_id="r1")
         m2 = _make_manifest(dt="2024-06-15", run_id="r2")
-        mk1 = "bronze/polymarket/trades/dt=2024-06-10/run_id=r1/manifest.json"
-        mk2 = "bronze/polymarket/trades/dt=2024-06-15/run_id=r2/manifest.json"
+        mk1 = "bronze/polymarket/order_filled/dt=2024-06-10/run_id=r1/manifest.json"
+        mk2 = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=r2/manifest.json"
         client = _mock_s3_client(
             date_prefixes=[
-                "bronze/polymarket/trades/dt=2024-06-10/",
-                "bronze/polymarket/trades/dt=2024-06-15/",
+                "bronze/polymarket/order_filled/dt=2024-06-10/",
+                "bronze/polymarket/order_filled/dt=2024-06-15/",
             ],
             keys_by_prefix={
-                "bronze/polymarket/trades/dt=2024-06-10/": [mk1],
-                "bronze/polymarket/trades/dt=2024-06-15/": [mk2],
+                "bronze/polymarket/order_filled/dt=2024-06-10/": [mk1],
+                "bronze/polymarket/order_filled/dt=2024-06-15/": [mk2],
             },
             manifests_by_key={mk1: m1, mk2: m2},
         )
@@ -147,9 +147,9 @@ class TestDiscoverManifests:
         for day in ["05", "10", "15", "20"]:
             dt = f"2024-06-{day}"
             rid = f"r-{day}"
-            mk = f"bronze/polymarket/trades/dt={dt}/run_id={rid}/manifest.json"
+            mk = f"bronze/polymarket/order_filled/dt={dt}/run_id={rid}/manifest.json"
             manifests[mk] = _make_manifest(dt=dt, run_id=rid)
-            dp = f"bronze/polymarket/trades/dt={dt}/"
+            dp = f"bronze/polymarket/order_filled/dt={dt}/"
             date_prefixes.append(dp)
             keys_by_prefix[dp] = [mk]
 
@@ -172,12 +172,12 @@ class TestDiscoverManifests:
             dt="2024-06-15", run_id="late",
             generated_at=datetime(2024, 6, 15, 20, 0, 0, tzinfo=UTC),
         )
-        mk1 = "bronze/polymarket/trades/dt=2024-06-15/run_id=early/manifest.json"
-        mk2 = "bronze/polymarket/trades/dt=2024-06-15/run_id=late/manifest.json"
+        mk1 = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=early/manifest.json"
+        mk2 = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=late/manifest.json"
         client = _mock_s3_client(
-            date_prefixes=["bronze/polymarket/trades/dt=2024-06-15/"],
+            date_prefixes=["bronze/polymarket/order_filled/dt=2024-06-15/"],
             keys_by_prefix={
-                "bronze/polymarket/trades/dt=2024-06-15/": [mk2, mk1],
+                "bronze/polymarket/order_filled/dt=2024-06-15/": [mk2, mk1],
             },
             manifests_by_key={mk1: m1, mk2: m2},
         )
@@ -189,13 +189,13 @@ class TestDiscoverManifests:
     @pytest.mark.asyncio
     async def test_malformed_manifest_skipped(self) -> None:
         good = _make_manifest(dt="2024-06-15", run_id="good")
-        mk_good = "bronze/polymarket/trades/dt=2024-06-15/run_id=good/manifest.json"
-        mk_bad = "bronze/polymarket/trades/dt=2024-06-15/run_id=bad/manifest.json"
+        mk_good = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=good/manifest.json"
+        mk_bad = "bronze/polymarket/order_filled/dt=2024-06-15/run_id=bad/manifest.json"
 
         client = _mock_s3_client(
-            date_prefixes=["bronze/polymarket/trades/dt=2024-06-15/"],
+            date_prefixes=["bronze/polymarket/order_filled/dt=2024-06-15/"],
             keys_by_prefix={
-                "bronze/polymarket/trades/dt=2024-06-15/": [mk_good, mk_bad],
+                "bronze/polymarket/order_filled/dt=2024-06-15/": [mk_good, mk_bad],
             },
             manifests_by_key={mk_good: good},  # mk_bad will raise
         )
@@ -206,7 +206,7 @@ class TestDiscoverManifests:
     @pytest.mark.asyncio
     async def test_no_dates_in_range_returns_empty(self) -> None:
         client = _mock_s3_client(
-            date_prefixes=["bronze/polymarket/trades/dt=2024-01-01/"],
+            date_prefixes=["bronze/polymarket/order_filled/dt=2024-01-01/"],
             keys_by_prefix={},
             manifests_by_key={},
         )

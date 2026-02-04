@@ -11,6 +11,7 @@ from prediction_data.silver.processor import (
     ProcessingResult,
     _build_namespace,
     process_manifest,
+    process_manifest_chunked,
 )
 from prediction_data.silver.quality import QualityCheckError
 from prediction_data.silver.reader import ReadResult
@@ -208,9 +209,9 @@ class TestProcessManifestAppendOnly:
         assert result.rows_written == 3
 
     @pytest.mark.asyncio
-    async def test_default_uses_merge(self) -> None:
-        """Default (append_only=False) should call merge_to_iceberg."""
-        manifest = _make_manifest()
+    async def test_catalog_entity_defaults_to_merge(self) -> None:
+        """Catalog entities (markets, events) should default to merge_to_iceberg."""
+        manifest = _make_manifest()  # defaults to entity="markets"
         records = _raw_market_records(3)
         read_result = ReadResult(
             records=records, records_read=3, files_read=1, errors=0,
@@ -243,6 +244,61 @@ class TestProcessManifestAppendOnly:
 
         mock_merge.assert_called_once()
         mock_append.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stream_entity_defaults_to_append(self) -> None:
+        """Stream entities (trades, order_filled) should default to write_to_iceberg."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest(platform="polymarket", entity="trades")
+        records = _raw_order_filled_records(2)
+        read_result = ReadResult(
+            records=records, records_read=2, files_read=1, errors=0,
+        )
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="trades",
+            rows_written=2,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-A", side="token1"),
+            "token-1": MarketSide(market_id="market-B", side="token2"),
+        }
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+                return_value=write_result,
+            ) as mock_append,
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_merge,
+            patch(
+                "prediction_data.silver.polymarket.markets_reference.load_markets_reference",
+                new_callable=AsyncMock,
+                return_value=mock_lookup,
+            ),
+        ):
+            result = await process_manifest(
+                manifest, MagicMock(), MagicMock(), skip_quality_checks=True
+            )
+
+        mock_append.assert_called_once()
+        mock_merge.assert_not_called()
 
 
 class TestProcessManifestOverwrite:
@@ -721,7 +777,7 @@ class TestMarketsReferenceLookupAutoLoad:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ),
             patch(
@@ -864,7 +920,7 @@ class TestMarketsReferenceLookupAutoLoad:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
             patch(
@@ -877,7 +933,7 @@ class TestMarketsReferenceLookupAutoLoad:
                 manifest, MagicMock(), MagicMock(), skip_quality_checks=True
             )
 
-        # Verify the normalized records passed to merge_to_iceberg have resolved market IDs
+        # Verify the normalized records passed to write_to_iceberg have resolved market IDs
         written_records = mock_write.call_args[0][0]
         assert len(written_records) == 1
         assert written_records[0]["platform_market_id"] == "resolved-market-123"
@@ -915,7 +971,7 @@ class TestMarketsReferenceLookupAutoLoad:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ),
             patch(
@@ -949,3 +1005,257 @@ class TestMarketsReferenceLookupAutoLoad:
         kwargs = loaded_calls[0].kwargs
         assert "unique_markets" in kwargs
         assert "lookup_entries" in kwargs
+
+
+# ---------------------------------------------------------------------------
+# process_manifest_chunked — file-by-file processing for stream entities
+# ---------------------------------------------------------------------------
+
+
+def _make_file_ref(key: str = "part-000.json.gz", bucket: str = "test-bucket") -> MagicMock:
+    """Create a mock FileReference."""
+    ref = MagicMock()
+    ref.key = key
+    ref.bucket = bucket
+    return ref
+
+
+def _make_manifest_with_files(
+    platform: str = "polymarket",
+    entity: str = "order_filled",
+    dt: str = "2024-06-15",
+    run_id: str = "run-abc-123",
+    file_keys: list[str] | None = None,
+) -> MagicMock:
+    """Create a mock DiscoveredManifest with file references."""
+    if file_keys is None:
+        file_keys = ["part-000.json.gz"]
+    m = MagicMock()
+    m.platform = platform
+    m.entity = entity
+    m.dt = dt
+    m.run_id = run_id
+    m.manifest.files = [_make_file_ref(k) for k in file_keys]
+    return m
+
+
+class TestProcessManifestChunkedHappyPath:
+    @pytest.mark.asyncio
+    async def test_single_file_manifest(self) -> None:
+        """Single-file manifest processes correctly."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest_with_files(
+            entity="order_filled",
+            file_keys=["part-000.json.gz"],
+        )
+        records = _raw_order_filled_records(3)
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            f"token-{i}": MarketSide(market_id=f"market-{i}", side="token1")
+            for i in range(3)
+        }
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="trades",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_single_file",
+                return_value=records,
+            ) as mock_read,
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+                return_value=write_result,
+            ) as mock_write,
+        ):
+            result = await process_manifest_chunked(
+                manifest, MagicMock(), MagicMock(),
+                skip_quality_checks=True,
+                markets_lookup=mock_lookup,
+            )
+
+        assert result.rows_read == 3
+        assert result.rows_written == 3
+        assert result.snapshot_id == 42
+        mock_read.assert_called_once()
+        mock_write.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_multi_file_manifest(self) -> None:
+        """Multi-file manifest processes each file independently."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest_with_files(
+            entity="order_filled",
+            file_keys=["part-000.json.gz", "part-001.json.gz"],
+        )
+
+        records_file0 = _raw_order_filled_records(2)
+        records_file1 = [
+            {
+                "id": "fill-10",
+                "transactionHash": "0xabc10",
+                "timestamp": "1718467200",
+                "maker": "0xmaker10",
+                "taker": "0xtaker10",
+                "makerAssetId": "token-10",
+                "takerAssetId": "0",
+                "makerAmountFilled": "1000000",
+                "takerAmountFilled": "500000",
+            }
+        ]
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-A", side="token1"),
+            "token-1": MarketSide(market_id="market-B", side="token1"),
+            "token-10": MarketSide(market_id="market-C", side="token1"),
+        }
+
+        write_result_0 = WriteResult(
+            namespace="silver_polymarket", table_name="trades",
+            rows_written=2, snapshot_id=42, duration_seconds=0.1,
+        )
+        write_result_1 = WriteResult(
+            namespace="silver_polymarket", table_name="trades",
+            rows_written=1, snapshot_id=43, duration_seconds=0.05,
+        )
+
+        call_count = 0
+
+        def fake_read(s3, file_ref):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return records_file0
+            return records_file1
+
+        write_calls = [write_result_0, write_result_1]
+        write_idx = 0
+
+        def fake_write(records, catalog, ns, table):
+            nonlocal write_idx
+            result = write_calls[write_idx]
+            write_idx += 1
+            return result
+
+        with (
+            patch("prediction_data.silver.processor.read_single_file", side_effect=fake_read),
+            patch("prediction_data.silver.processor.write_to_iceberg", side_effect=fake_write) as mock_write,
+        ):
+            result = await process_manifest_chunked(
+                manifest, MagicMock(), MagicMock(),
+                skip_quality_checks=True,
+                markets_lookup=mock_lookup,
+            )
+
+        assert result.rows_read == 3
+        assert result.rows_written == 3
+        assert result.snapshot_id == 43  # last snapshot
+        assert mock_write.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_always_uses_append(self) -> None:
+        """Chunked processing always uses write_to_iceberg (append), never merge."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest_with_files(entity="order_filled")
+        records = _raw_order_filled_records(2)
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-A", side="token1"),
+            "token-1": MarketSide(market_id="market-B", side="token1"),
+        }
+
+        write_result = WriteResult(
+            namespace="silver_polymarket", table_name="trades",
+            rows_written=2, snapshot_id=42, duration_seconds=0.1,
+        )
+
+        with (
+            patch("prediction_data.silver.processor.read_single_file", return_value=records),
+            patch("prediction_data.silver.processor.write_to_iceberg", return_value=write_result) as mock_append,
+            patch("prediction_data.silver.processor.merge_to_iceberg") as mock_merge,
+        ):
+            await process_manifest_chunked(
+                manifest, MagicMock(), MagicMock(),
+                skip_quality_checks=True,
+                markets_lookup=mock_lookup,
+            )
+
+        mock_append.assert_called_once()
+        mock_merge.assert_not_called()
+
+
+class TestProcessManifestChunkedErrors:
+    @pytest.mark.asyncio
+    async def test_empty_files_raises(self) -> None:
+        """Manifest with no files should raise ProcessingError."""
+        manifest = _make_manifest_with_files(entity="order_filled")
+        manifest.manifest.files = []
+
+        with pytest.raises(ProcessingError, match="has no files"):
+            await process_manifest_chunked(manifest, MagicMock(), MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_file_read_failure_continues(self) -> None:
+        """If one file fails to read, processing continues with the next."""
+        from prediction_data.silver.polymarket.markets_reference import (
+            MarketSide,
+            MarketsReferenceLookup,
+        )
+
+        manifest = _make_manifest_with_files(
+            entity="order_filled",
+            file_keys=["bad-file.json.gz", "good-file.json.gz"],
+        )
+
+        good_records = _raw_order_filled_records(1)
+
+        mock_lookup = MarketsReferenceLookup()
+        mock_lookup._lookup = {
+            "token-0": MarketSide(market_id="market-A", side="token1"),
+        }
+
+        call_count = 0
+        def fake_read(s3, file_ref):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("S3 error")
+            return good_records
+
+        write_result = WriteResult(
+            namespace="silver_polymarket", table_name="trades",
+            rows_written=1, snapshot_id=42, duration_seconds=0.05,
+        )
+
+        with (
+            patch("prediction_data.silver.processor.read_single_file", side_effect=fake_read),
+            patch("prediction_data.silver.processor.write_to_iceberg", return_value=write_result),
+        ):
+            result = await process_manifest_chunked(
+                manifest, MagicMock(), MagicMock(),
+                skip_quality_checks=True,
+                markets_lookup=mock_lookup,
+            )
+
+        assert result.rows_written == 1
+        assert result.rows_read == 1

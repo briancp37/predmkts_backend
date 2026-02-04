@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Verify that all human-managed setup for Bronze MVP (Sprints 1-6) is in place."""
+"""Verify Bronze MVP setup and runtime health.
+
+Checks two categories:
+1. Infrastructure Setup - S3, IAM, ECS, EventBridge, CloudWatch, ECR
+2. Runtime Verification - ECR image, ECS task success rate, data freshness
+
+Run this script to verify Release 01 completion criteria.
+"""
 
 import json
 import os
@@ -60,7 +67,8 @@ def run_aws(args: list[str], timeout: int = 15) -> subprocess.CompletedProcess[s
 
 
 def main() -> None:
-    print("\n=== Prediction Data Pipeline: Setup Check (Bronze MVP) ===\n")
+    print("\n=== Prediction Data Pipeline: Bronze MVP Verification ===\n")
+    print("=== Infrastructure Setup ===\n")
 
     dotenv = load_dotenv_file()
 
@@ -312,14 +320,169 @@ def main() -> None:
         path = infra_dir / template_file
         check(f"Template {template_file} exists", path.exists(), hint=f"Missing infrastructure/{template_file}")
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # RUNTIME CHECKS - Verify scheduled runs are actually working
+    # ══════════════════════════════════════════════════════════════════════════
+
+    print("\n" + "=" * 55)
+    print("=== Runtime Verification (Scheduled Runs) ===\n")
+
+    # ── ECR Image ──
+    print("[ECR Image]")
+    ecr_image_ok = False
+    if has_aws_cli:
+        try:
+            result = run_aws([
+                "ecr", "describe-images",
+                "--repository-name", "prediction-data",
+                "--query", "imageDetails[?imageTags[?contains(@, 'latest')]].{Tags:imageTags,PushedAt:imagePushedAt}",
+                "--output", "json",
+                "--region", region,
+            ])
+            if result.returncode == 0:
+                images = json.loads(result.stdout) if result.stdout.strip() else []
+                if images:
+                    pushed_at = images[0].get("PushedAt", "unknown")
+                    check(f"Docker image 'latest' exists (pushed: {pushed_at})", True)
+                    ecr_image_ok = True
+                else:
+                    check(
+                        "Docker image 'latest' exists in ECR",
+                        False,
+                        hint="docker build -t prediction-data . && docker tag prediction-data:latest <ECR_URI>:latest && docker push <ECR_URI>:latest",
+                    )
+            else:
+                check("ECR image check", False)
+        except Exception:
+            check("ECR image check", False)
+    else:
+        check("ECR image check", False, hint="Install AWS CLI first")
+
+    # ── Recent ECS Task Runs ──
+    print("\n[Recent ECS Task Runs]")
+    if has_aws_cli:
+        try:
+            # Get recent stopped tasks
+            result = run_aws([
+                "ecs", "list-tasks",
+                "--cluster", "prediction-data-prod",
+                "--desired-status", "STOPPED",
+                "--query", "taskArns[-20:]",
+                "--output", "json",
+                "--region", region,
+            ])
+            if result.returncode == 0:
+                task_arns = json.loads(result.stdout) if result.stdout.strip() else []
+                if not task_arns:
+                    check("Recent ECS tasks found", False, required=False, hint="No task history yet - schedules may not have triggered")
+                else:
+                    # Describe tasks to get status
+                    result = run_aws([
+                        "ecs", "describe-tasks",
+                        "--cluster", "prediction-data-prod",
+                        "--tasks", *task_arns,
+                        "--query", "tasks[].{StopCode:stopCode,ExitCode:containers[0].exitCode,StoppedAt:stoppedAt}",
+                        "--output", "json",
+                        "--region", region,
+                    ], timeout=30)
+                    if result.returncode == 0:
+                        tasks = json.loads(result.stdout) if result.stdout.strip() else []
+                        total = len(tasks)
+                        succeeded = sum(1 for t in tasks if t.get("ExitCode") == 0)
+                        failed_to_start = sum(1 for t in tasks if t.get("StopCode") == "TaskFailedToStart")
+                        failed_exit = sum(1 for t in tasks if t.get("ExitCode") not in (None, 0))
+
+                        check(f"Recent tasks found ({total} tasks)", total > 0)
+
+                        if failed_to_start > 0:
+                            check(
+                                f"Tasks starting successfully ({failed_to_start}/{total} failed to start)",
+                                False,
+                                hint="Check ECR image exists and IAM permissions",
+                            )
+                        else:
+                            check(f"Tasks starting successfully ({total}/{total})", True)
+
+                        if succeeded > 0:
+                            success_rate = (succeeded / total) * 100
+                            check(
+                                f"Task success rate ({succeeded}/{total} = {success_rate:.0f}%)",
+                                success_rate >= 80,
+                                hint="Check CloudWatch logs for errors",
+                            )
+                        elif failed_to_start == total:
+                            check("Task success rate", False, hint="All tasks failed to start - push Docker image to ECR first")
+                        else:
+                            check(
+                                f"Task success rate (0/{total} succeeded)",
+                                False,
+                                hint="Check CloudWatch logs: aws logs tail /ecs/prediction-data --since 1h",
+                            )
+            else:
+                check("ECS task history check", False)
+        except Exception as e:
+            check(f"ECS task history check ({e})", False)
+    else:
+        check("ECS task history check", False, hint="Install AWS CLI first")
+
+    # ── Data Freshness ──
+    print("\n[Data Freshness]")
+    if has_aws_cli and bronze and bucket_ok:
+        from datetime import datetime, timedelta
+
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        entities_to_check = [
+            ("polymarket", "markets"),
+            ("polymarket", "events"),
+            ("polymarket", "order_filled"),
+            ("kalshi", "markets"),
+            ("kalshi", "events"),
+            ("kalshi", "trades"),
+        ]
+
+        for platform, entity in entities_to_check:
+            # Check for data from today or yesterday
+            found_date = None
+            for check_date in [today, yesterday]:
+                prefix = f"bronze/{platform}/{entity}/dt={check_date}/"
+                result = run_aws([
+                    "s3api", "list-objects-v2",
+                    "--bucket", bronze,
+                    "--prefix", prefix,
+                    "--max-items", "1",
+                    "--query", "Contents[0].Key",
+                    "--output", "text",
+                ])
+                if result.returncode == 0 and result.stdout.strip() not in ("", "None"):
+                    found_date = check_date
+                    break
+
+            if found_date:
+                check(f"{platform}/{entity} has recent data (dt={found_date})", True)
+            else:
+                check(
+                    f"{platform}/{entity} has recent data",
+                    False,
+                    required=False,
+                    hint=f"No data for {yesterday} or {today}",
+                )
+    else:
+        check("Data freshness check", False, required=False, hint="S3 bucket not accessible")
+
     # ── Summary ──
     print("\n" + "=" * 55)
+    print("=== Summary ===\n")
     if failures == 0 and warnings == 0:
-        print(f"{PASS} All checks passed! Pipeline is fully set up.")
+        print(f"{PASS} All checks passed! Bronze MVP is fully operational.")
+        print("    Release 01 exit criteria met - ready for sign-off and v1.0.0-bronze tag.")
     elif failures == 0:
         print(f"{PASS} All required checks passed ({warnings} optional warning(s))")
+        print("    Pipeline is operational. Review warnings if needed.")
     else:
         print(f"{FAIL} {failures} required check(s) failed, {warnings} warning(s)")
+        print("    Fix failures before Release 01 can be completed.")
     print()
     sys.exit(1 if failures else 0)
 

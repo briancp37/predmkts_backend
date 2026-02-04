@@ -131,6 +131,14 @@ class S3Client:
             self._s3_client = boto3.client("s3", region_name=self._region_name)
         return self._s3_client
 
+    def reset_client(self) -> None:
+        """Reset the S3 client to force a fresh connection pool.
+
+        Call this between long-running batch operations to avoid connection
+        staleness issues with boto3's underlying HTTP connection pool.
+        """
+        self._s3_client = None
+
     async def upload_jsonl(
         self,
         records: Iterable[dict[str, Any]],

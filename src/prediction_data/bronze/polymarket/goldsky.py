@@ -17,14 +17,16 @@ GOLDSKY_API_BASE_URL = (
 # Standard subgraph page size
 DEFAULT_PAGE_SIZE = 1000
 
-# GraphQL query for OrderFilledEvent with id_gt cursor pagination
+# GraphQL query for OrderFilledEvent with timestamp cursor pagination.
+# Orders by timestamp for chronological progress. Uses timestamp_gt for pagination
+# which is fast and well-indexed on Goldsky.
 ORDER_FILLED_QUERY = """\
-query OrderFilledEvents($first: Int!, $cursor: String!, $timestamp_gte: BigInt!, $timestamp_lte: BigInt!) {
+query OrderFilledEvents($first: Int!, $timestamp_gt: BigInt!, $timestamp_lte: BigInt!) {
   orderFilledEvents(
     first: $first
-    orderBy: id
+    orderBy: timestamp
     orderDirection: asc
-    where: { id_gt: $cursor, timestamp_gte: $timestamp_gte, timestamp_lte: $timestamp_lte }
+    where: { timestamp_gt: $timestamp_gt, timestamp_lte: $timestamp_lte }
   ) {
     id
     transactionHash
@@ -43,16 +45,14 @@ query OrderFilledEvents($first: Int!, $cursor: String!, $timestamp_gte: BigInt!,
 
 def build_query_variables(
     *,
-    cursor: str = "",
-    timestamp_gte: int,
+    timestamp_gt: int,
     timestamp_lte: int,
     page_size: int = DEFAULT_PAGE_SIZE,
 ) -> dict[str, Any]:
     """Build GraphQL query variables for OrderFilledEvents.
 
     Args:
-        cursor: The id_gt cursor for pagination (empty string for first page).
-        timestamp_gte: Lower bound Unix timestamp (inclusive).
+        timestamp_gt: Lower bound Unix timestamp (exclusive) for cursor.
         timestamp_lte: Upper bound Unix timestamp (inclusive).
         page_size: Number of records per page.
 
@@ -61,8 +61,7 @@ def build_query_variables(
     """
     return {
         "first": page_size,
-        "cursor": cursor,
-        "timestamp_gte": str(timestamp_gte),
+        "timestamp_gt": str(timestamp_gt),
         "timestamp_lte": str(timestamp_lte),
     }
 
@@ -124,16 +123,14 @@ class GoldskyClient:
     async def fetch_order_filled_page(
         self,
         *,
-        timestamp_gte: int,
+        timestamp_gt: int,
         timestamp_lte: int,
-        cursor: str = "",
     ) -> list[dict[str, Any]]:
         """Fetch a single page of OrderFilledEvents.
 
         Args:
-            timestamp_gte: Lower bound Unix timestamp (inclusive).
+            timestamp_gt: Lower bound Unix timestamp (exclusive) for cursor.
             timestamp_lte: Upper bound Unix timestamp (inclusive).
-            cursor: The id_gt cursor for pagination (empty string for first page).
 
         Returns:
             List of OrderFilledEvent records. Empty list means no more pages.
@@ -141,8 +138,7 @@ class GoldskyClient:
         client = self._ensure_client()
 
         variables = build_query_variables(
-            cursor=cursor,
-            timestamp_gte=timestamp_gte,
+            timestamp_gt=timestamp_gt,
             timestamp_lte=timestamp_lte,
             page_size=self._page_size,
         )
@@ -151,8 +147,7 @@ class GoldskyClient:
 
         self._logger.debug(
             "Fetching Goldsky order filled page",
-            cursor=cursor,
-            timestamp_gte=timestamp_gte,
+            timestamp_gt=timestamp_gt,
             timestamp_lte=timestamp_lte,
         )
 
@@ -179,9 +174,8 @@ class GoldskyClient:
     ) -> list[dict[str, Any]]:
         """Fetch all OrderFilledEvents for a timestamp range with automatic pagination.
 
-        Uses id_gt cursor pagination: each page's last record ID becomes the
-        cursor for the next page. Stops when a page returns fewer records
-        than the page size.
+        Uses timestamp cursor pagination for chronological progress. Orders by timestamp
+        and uses timestamp_gt for efficient indexed queries on Goldsky.
 
         Args:
             timestamp_gte: Lower bound Unix timestamp (inclusive).
@@ -191,7 +185,8 @@ class GoldskyClient:
             List of all matching OrderFilledEvent records.
         """
         all_events: list[dict[str, Any]] = []
-        cursor = ""
+        # Start with timestamp_gt = timestamp_gte - 1 so first page includes timestamp_gte
+        cursor_ts = timestamp_gte - 1
         page_count = 0
 
         self._logger.info(
@@ -202,9 +197,8 @@ class GoldskyClient:
 
         while True:
             events = await self.fetch_order_filled_page(
-                timestamp_gte=timestamp_gte,
+                timestamp_gt=cursor_ts,
                 timestamp_lte=timestamp_lte,
-                cursor=cursor,
             )
 
             if not events:
@@ -212,13 +206,14 @@ class GoldskyClient:
 
             all_events.extend(events)
             page_count += 1
-            cursor = events[-1]["id"]
+            cursor_ts = int(events[-1]["timestamp"])
 
             self._logger.info(
                 "Goldsky order filled pagination progress",
                 page=page_count,
                 page_count=len(events),
                 total_fetched=len(all_events),
+                cursor_timestamp=cursor_ts,
             )
 
             # If we got fewer than page_size, we've reached the end
@@ -242,7 +237,7 @@ class GoldskyClient:
         *,
         timestamp_gte: int,
         timestamp_lte: int,
-        batch_size: int = 100_000,
+        batch_size: int = 500_000,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """Yield batches of OrderFilledEvents, flushing every ``batch_size`` records.
 
@@ -258,7 +253,8 @@ class GoldskyClient:
             Lists of OrderFilledEvent records, each up to ``batch_size`` long.
         """
         buffer: list[dict[str, Any]] = []
-        cursor = ""
+        # Start with timestamp_gt = timestamp_gte - 1 so first page includes timestamp_gte
+        cursor_ts = timestamp_gte - 1
         page_count = 0
         total_fetched = 0
 
@@ -271,9 +267,8 @@ class GoldskyClient:
 
         while True:
             events = await self.fetch_order_filled_page(
-                timestamp_gte=timestamp_gte,
+                timestamp_gt=cursor_ts,
                 timestamp_lte=timestamp_lte,
-                cursor=cursor,
             )
 
             if not events:
@@ -282,7 +277,7 @@ class GoldskyClient:
             buffer.extend(events)
             page_count += 1
             total_fetched += len(events)
-            cursor = events[-1]["id"]
+            cursor_ts = int(events[-1]["timestamp"])
 
             self._logger.info(
                 "Goldsky order filled pagination progress",
@@ -290,6 +285,7 @@ class GoldskyClient:
                 page_count=len(events),
                 total_fetched=total_fetched,
                 buffer_size=len(buffer),
+                cursor_timestamp=cursor_ts,
             )
 
             # Flush buffer when it reaches batch_size

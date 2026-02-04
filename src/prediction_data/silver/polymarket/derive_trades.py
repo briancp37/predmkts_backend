@@ -86,9 +86,19 @@ def derive_trade(
 
     price = usdc_amount / token_amount
 
-    # Build trade ID from transaction hash (or fallback to subgraph id)
+    # Build trade ID: prefer Goldsky subgraph id (unique per fill),
+    # fallback to composite key matching dedup_key for parquet-backfilled data
     tx_hash = record.get("transactionHash")
-    trade_id = tx_hash or record.get("id") or ""
+    record_id = record.get("id")
+    if record_id:
+        trade_id = str(record_id)
+    elif tx_hash:
+        trade_id = (
+            f"{tx_hash}_{record.get('maker', '')}"
+            f"_{record.get('taker', '')}_{record.get('makerAssetId', '')}"
+        )
+    else:
+        trade_id = ""
 
     return {
         "timestamp": record.get("timestamp"),

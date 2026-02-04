@@ -1,0 +1,30 @@
+# Sprint Progress: Silver EventBridge Automation
+# Release: 02_silver_level
+# Created: 2026-02-04
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+- This sprint implements near-continuous Silver processing via EventBridge schedules.
+- Key design decisions:
+  - Trades: every 10 min (Bronze order_filled ingests every 5 min, so ~2 batches per Silver cycle)
+  - Catalog (markets, events): every 30 min (Bronze ingests hourly)
+  - Kalshi: schedules created but DISABLED until data pipeline is activated
+  - Maintenance: daily compact at 04:00 UTC, weekly full at Sunday 04:00 UTC
+  - Concurrency guard is per-entity (trades can run concurrently with markets, but not two trades runs)
+- Architecture already supports this (from sprint 10): independent run_ids, per-manifest state
+  tracking, fast append for stream entities. This sprint is primarily scheduling + infrastructure.
+- Expected cost profile: ~$0.50-1.00/day for schedule invocations (mostly no-op exits at 0.25 vCPU)
+  plus actual processing costs proportional to data volume.
+- The hotfix (2026-02-04) switching stream entities to append writes is a prerequisite —
+  without it, trades upsert scans would make 10-min cadence impossible.

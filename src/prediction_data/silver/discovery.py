@@ -23,6 +23,29 @@ logger = structlog.stdlib.get_logger(__name__)
 # Regex to extract date from dt= partition keys
 _DT_PATTERN = re.compile(r"/dt=(\d{4}-\d{2}-\d{2})/")
 
+# Mapping from Silver entity name to the Bronze entity name used in S3 paths.
+# Most entities share the same name in Bronze and Silver; Polymarket trades
+# are derived from Bronze ``order_filled`` events.
+SILVER_TO_BRONZE_ENTITY: dict[tuple[str, str], str] = {
+    ("polymarket", "trades"): "order_filled",
+}
+
+
+def bronze_entity_for(platform: str, entity: str) -> str:
+    """Return the Bronze entity name that feeds a Silver entity."""
+    return SILVER_TO_BRONZE_ENTITY.get((platform, entity), entity)
+
+
+# Reverse mapping: Bronze entity name → Silver entity name.
+_BRONZE_TO_SILVER_ENTITY: dict[tuple[str, str], str] = {
+    (p, b): s for (p, s), b in SILVER_TO_BRONZE_ENTITY.items()
+}
+
+
+def silver_entity_for(platform: str, bronze_entity: str) -> str:
+    """Return the Silver entity name for a given Bronze entity."""
+    return _BRONZE_TO_SILVER_ENTITY.get((platform, bronze_entity), bronze_entity)
+
 
 @dataclass(frozen=True)
 class DiscoveredManifest:
@@ -85,7 +108,9 @@ async def discover_manifests(
         List of discovered manifests sorted by date ascending, then by
         ``generated_at`` ascending within each date.
     """
-    prefix = f"bronze/{platform}/{entity}/"
+    # Resolve the Bronze entity name (e.g. Silver "trades" → Bronze "order_filled")
+    bronze_entity = bronze_entity_for(platform, entity)
+    prefix = f"bronze/{platform}/{bronze_entity}/"
 
     # List date partitions using delimiter trick
     date_prefixes = await s3_client.list_prefixes(prefix)
@@ -136,7 +161,7 @@ async def discover_manifests(
     errors = 0
 
     for dt_str in dates:
-        date_prefix = f"bronze/{platform}/{entity}/dt={dt_str}/"
+        date_prefix = f"bronze/{platform}/{bronze_entity}/dt={dt_str}/"
         keys = await s3_client.list_keys(date_prefix)
         manifest_keys = [k for k in keys if k.endswith("manifest.json")]
 
