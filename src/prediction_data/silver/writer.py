@@ -162,6 +162,78 @@ def write_to_iceberg(
     )
 
 
+def overwrite_to_iceberg(
+    records: list[dict[str, Any]],
+    catalog: Catalog,
+    namespace: str,
+    table_name: str,
+) -> WriteResult:
+    """Replace all data in an Iceberg table with new records.
+
+    Uses PyIceberg's ``Table.overwrite()`` to atomically replace the entire
+    table contents.  Much faster than upsert for full catalog snapshots
+    (markets, events) because it skips reading existing data for merge.
+
+    Args:
+        records: Normalized Silver dicts ready for writing.
+        catalog: PyIceberg catalog instance.
+        namespace: Iceberg namespace (e.g. ``"silver_polymarket"``).
+        table_name: Iceberg table name (e.g. ``"markets"``).
+
+    Returns:
+        A :class:`WriteResult` with write metadata.
+
+    Raises:
+        IcebergWriteError: On empty input, schema mismatch, or write failure.
+        KeyError: If ``(namespace, table_name)`` is not in ``SILVER_TABLES``.
+    """
+    if not records:
+        msg = "Cannot overwrite with empty record batch"
+        raise IcebergWriteError(msg)
+
+    schema, _sort_order = SILVER_TABLES[(namespace, table_name)]
+
+    logger.info(
+        "iceberg_overwrite_start",
+        namespace=namespace,
+        table=table_name,
+        rows=len(records),
+    )
+
+    t0 = time.monotonic()
+
+    arrow_table = _to_arrow_table(records, schema)
+    table = _resolve_table(catalog, namespace, table_name)
+
+    try:
+        table.overwrite(arrow_table)
+    except Exception as exc:
+        msg = f"Iceberg overwrite failed for {namespace}.{table_name}: {exc}"
+        raise IcebergWriteError(msg) from exc
+
+    snapshot = table.current_snapshot()
+    snapshot_id = snapshot.snapshot_id if snapshot else -1
+
+    duration = time.monotonic() - t0
+
+    logger.info(
+        "iceberg_overwrite_done",
+        namespace=namespace,
+        table=table_name,
+        rows=len(records),
+        snapshot_id=snapshot_id,
+        duration_s=round(duration, 2),
+    )
+
+    return WriteResult(
+        namespace=namespace,
+        table_name=table_name,
+        rows_written=len(records),
+        snapshot_id=snapshot_id,
+        duration_seconds=duration,
+    )
+
+
 def merge_to_iceberg(
     records: list[dict[str, Any]],
     catalog: Catalog,

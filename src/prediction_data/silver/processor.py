@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from prediction_data.core.logging import get_logger
 from prediction_data.silver.dedup import dedup_batch
+from prediction_data.silver.discovery import silver_entity_for
 from prediction_data.silver.normalize import (
     PolymarketTradesNormalizer,
     get_normalizer,
@@ -24,7 +25,13 @@ from prediction_data.silver.quality import (
     run_quality_checks,
 )
 from prediction_data.silver.reader import ReadResult, read_manifest_data
-from prediction_data.silver.writer import IcebergWriteError, WriteResult, merge_to_iceberg
+from prediction_data.silver.writer import (
+    IcebergWriteError,
+    WriteResult,
+    merge_to_iceberg,
+    overwrite_to_iceberg,
+    write_to_iceberg,
+)
 
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
@@ -70,6 +77,9 @@ async def process_manifest(
     catalog: Catalog,
     *,
     skip_quality_checks: bool = False,
+    markets_lookup: Any | None = None,
+    append_only: bool = False,
+    overwrite: bool = False,
 ) -> ProcessingResult:
     """Process a single Bronze manifest through the Silver pipeline.
 
@@ -85,6 +95,8 @@ async def process_manifest(
         s3_client: S3 client for reading Bronze data.
         catalog: PyIceberg catalog for writing Silver tables.
         skip_quality_checks: If True, skip quality checks during processing.
+        markets_lookup: Pre-loaded MarketsReferenceLookup for trades processing.
+            If provided, skips the per-manifest markets reference loading.
 
     Returns:
         A :class:`ProcessingResult` with pipeline metrics.
@@ -93,7 +105,8 @@ async def process_manifest(
         ProcessingError: On read, normalization, or write failure.
     """
     platform = manifest.platform
-    entity = manifest.entity
+    bronze_entity = manifest.entity
+    entity = silver_entity_for(platform, bronze_entity)
     dt = manifest.dt
     run_id = manifest.run_id
 
@@ -146,37 +159,41 @@ async def process_manifest(
 
     # --- Load markets reference for trades normalization ---
     if isinstance(normalizer, PolymarketTradesNormalizer):
-        from prediction_data.silver.polymarket.markets_reference import (
-            load_markets_reference,
-        )
-
-        logger.info(
-            "loading_markets_reference",
-            platform=platform,
-            entity=entity,
-            run_id=run_id,
-        )
-        try:
-            lookup = await load_markets_reference(s3_client, end_date=dt)
-        except Exception as exc:
-            msg = f"Failed to load markets reference for trades processing: {exc}"
-            raise ProcessingError(msg) from exc
-
-        if len(lookup) == 0:
-            msg = (
-                "Markets reference lookup is empty — no Bronze markets data found. "
-                "Ingest and process markets before processing trades."
+        if markets_lookup is not None:
+            lookup = markets_lookup
+        else:
+            from prediction_data.silver.polymarket.markets_reference import (
+                load_markets_reference,
             )
-            raise ProcessingError(msg)
+
+            logger.info(
+                "loading_markets_reference",
+                platform=platform,
+                entity=entity,
+                run_id=run_id,
+            )
+            try:
+                lookup = await load_markets_reference(s3_client)
+            except Exception as exc:
+                msg = f"Failed to load markets reference for trades processing: {exc}"
+                raise ProcessingError(msg) from exc
+
+            if len(lookup) == 0:
+                msg = (
+                    "Markets reference lookup is empty — no Bronze markets data found. "
+                    "Ingest and process markets before processing trades."
+                )
+                raise ProcessingError(msg)
+
+            logger.info(
+                "markets_reference_loaded",
+                platform=platform,
+                entity=entity,
+                run_id=run_id,
+                **lookup.coverage_stats,
+            )
 
         normalizer.set_lookup(lookup)
-        logger.info(
-            "markets_reference_loaded",
-            platform=platform,
-            entity=entity,
-            run_id=run_id,
-            **lookup.coverage_stats,
-        )
 
     # --- Normalize ---
     silver_ingestion_ts = datetime.now(UTC)
@@ -249,17 +266,32 @@ async def process_manifest(
             checks_passed=len(quality_results),
         )
 
-    # --- Merge (upsert) ---
+    # --- Write (append, overwrite, or merge/upsert) ---
     namespace = _build_namespace(platform)
-    join_cols = normalizer.merge_keys()
     try:
-        write_result: WriteResult = merge_to_iceberg(
-            normalized,
-            catalog,
-            namespace,
-            entity,
-            join_cols=join_cols,
-        )
+        if append_only:
+            write_result: WriteResult = write_to_iceberg(
+                normalized,
+                catalog,
+                namespace,
+                entity,
+            )
+        elif overwrite:
+            write_result = overwrite_to_iceberg(
+                normalized,
+                catalog,
+                namespace,
+                entity,
+            )
+        else:
+            join_cols = normalizer.merge_keys()
+            write_result = merge_to_iceberg(
+                normalized,
+                catalog,
+                namespace,
+                entity,
+                join_cols=join_cols,
+            )
     except (IcebergWriteError, KeyError) as exc:
         msg = f"Failed to write Silver for manifest {run_id}: {exc}"
         raise ProcessingError(msg) from exc

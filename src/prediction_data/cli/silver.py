@@ -163,6 +163,26 @@ def process(
             ),
         ),
     ] = False,
+    append_only: Annotated[
+        bool,
+        typer.Option(
+            "--append-only",
+            help=(
+                "Use fast append writes instead of merge/upsert. "
+                "Use for initial bulk loads where no existing data needs updating."
+            ),
+        ),
+    ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "--overwrite",
+            help=(
+                "Replace all table data instead of merge/upsert. "
+                "Use for catalog entities (markets, events) with full snapshots."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Process Bronze manifests into Silver Iceberg tables.
 
@@ -220,6 +240,8 @@ def process(
             dry_run=dry_run,
             force_reprocess=force_reprocess,
             skip_quality_checks=skip_quality_checks,
+            append_only=append_only,
+            overwrite=overwrite,
         )
     )
 
@@ -234,6 +256,8 @@ async def _run_process(
     dry_run: bool,
     force_reprocess: bool,
     skip_quality_checks: bool,
+    append_only: bool = False,
+    overwrite: bool = False,
 ) -> None:
     """Discover and process Bronze manifests for the given scope."""
     from prediction_data.silver.catalog import get_catalog
@@ -299,6 +323,32 @@ async def _run_process(
 
     catalog = get_catalog()
 
+    # Pre-load markets reference for trades processing (avoid per-manifest reload)
+    markets_lookup = None
+    if entity == "trades":
+        from prediction_data.silver.polymarket.markets_reference import (
+            load_markets_reference,
+        )
+
+        typer.echo("Pre-loading markets reference for trades processing...")
+        try:
+            markets_lookup = await load_markets_reference(s3)
+        except Exception as e:
+            typer.echo(f"Error loading markets reference: {e}", err=True)
+            raise typer.Exit(code=1)
+
+        if len(markets_lookup) == 0:
+            typer.echo(
+                "Error: Markets reference is empty — no Bronze markets data found. "
+                "Ingest markets before processing trades.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        typer.echo(
+            f"Markets reference loaded: {markets_lookup.coverage_stats}"
+        )
+
     total_processed = 0
     total_manifests = len(manifests)
     day_failures: list[tuple[str, list[tuple[str, str]]]] = []
@@ -329,7 +379,11 @@ async def _run_process(
 
             try:
                 result = await process_manifest(
-                    m, s3, catalog, skip_quality_checks=skip_quality_checks
+                    m, s3, catalog,
+                    skip_quality_checks=skip_quality_checks,
+                    markets_lookup=markets_lookup,
+                    append_only=append_only,
+                    overwrite=overwrite,
                 )
                 total_processed += 1
                 typer.echo(

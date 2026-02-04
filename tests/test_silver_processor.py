@@ -162,6 +162,169 @@ class TestProcessManifestHappyPath:
 
 
 # ---------------------------------------------------------------------------
+# process_manifest — append_only mode
+# ---------------------------------------------------------------------------
+
+
+class TestProcessManifestAppendOnly:
+    @pytest.mark.asyncio
+    async def test_append_only_calls_write_not_merge(self) -> None:
+        """append_only=True should call write_to_iceberg instead of merge_to_iceberg."""
+        manifest = _make_manifest()
+        records = _raw_market_records(3)
+        read_result = ReadResult(
+            records=records, records_read=3, files_read=1, errors=0,
+        )
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+                return_value=write_result,
+            ) as mock_append,
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_merge,
+        ):
+            result = await process_manifest(
+                manifest, MagicMock(), MagicMock(), append_only=True
+            )
+
+        mock_append.assert_called_once()
+        mock_merge.assert_not_called()
+        assert result.rows_written == 3
+
+    @pytest.mark.asyncio
+    async def test_default_uses_merge(self) -> None:
+        """Default (append_only=False) should call merge_to_iceberg."""
+        manifest = _make_manifest()
+        records = _raw_market_records(3)
+        read_result = ReadResult(
+            records=records, records_read=3, files_read=1, errors=0,
+        )
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.write_to_iceberg",
+                return_value=write_result,
+            ) as mock_append,
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_merge,
+        ):
+            result = await process_manifest(manifest, MagicMock(), MagicMock())
+
+        mock_merge.assert_called_once()
+        mock_append.assert_not_called()
+
+
+class TestProcessManifestOverwrite:
+    @pytest.mark.asyncio
+    async def test_overwrite_calls_overwrite_not_merge(self) -> None:
+        """overwrite=True should call overwrite_to_iceberg instead of merge."""
+        manifest = _make_manifest()
+        records = _raw_market_records(3)
+        read_result = ReadResult(
+            records=records, records_read=3, files_read=1, errors=0,
+        )
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.overwrite_to_iceberg",
+                return_value=write_result,
+            ) as mock_overwrite,
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_merge,
+        ):
+            result = await process_manifest(
+                manifest, MagicMock(), MagicMock(), overwrite=True
+            )
+
+        mock_overwrite.assert_called_once()
+        mock_merge.assert_not_called()
+        assert result.rows_written == 3
+
+    @pytest.mark.asyncio
+    async def test_overwrite_not_used_by_default(self) -> None:
+        """Default should call merge_to_iceberg, not overwrite."""
+        manifest = _make_manifest()
+        records = _raw_market_records(3)
+        read_result = ReadResult(
+            records=records, records_read=3, files_read=1, errors=0,
+        )
+
+        write_result = WriteResult(
+            namespace="silver_polymarket",
+            table_name="markets",
+            rows_written=3,
+            snapshot_id=42,
+            duration_seconds=0.1,
+        )
+
+        with (
+            patch(
+                "prediction_data.silver.processor.read_manifest_data",
+                new_callable=AsyncMock,
+                return_value=read_result,
+            ),
+            patch(
+                "prediction_data.silver.processor.overwrite_to_iceberg",
+                return_value=write_result,
+            ) as mock_overwrite,
+            patch(
+                "prediction_data.silver.processor.merge_to_iceberg",
+                return_value=write_result,
+            ) as mock_merge,
+        ):
+            await process_manifest(manifest, MagicMock(), MagicMock())
+
+        mock_merge.assert_called_once()
+        mock_overwrite.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # process_manifest — error handling
 # ---------------------------------------------------------------------------
 
@@ -575,9 +738,6 @@ class TestMarketsReferenceLookupAutoLoad:
         assert result.platform == "polymarket"
         assert result.entity == "trades"
         mock_load.assert_awaited_once()
-        # Verify end_date was passed to scope the lookup
-        call_kwargs = mock_load.call_args
-        assert call_kwargs.kwargs.get("end_date") == "2024-06-15"
 
     @pytest.mark.asyncio
     async def test_markets_reference_load_failure_raises_processing_error(self) -> None:
