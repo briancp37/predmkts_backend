@@ -23,7 +23,7 @@
             "Handle TTL: ClickHouse TTL expressions handle old data expiry automatically",
             "Add `prediction-data gold ch-load --all [--lookback-days N]` to load all tables"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "rebuild_command",

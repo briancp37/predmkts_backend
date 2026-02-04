@@ -17,6 +17,20 @@
 - 12 unit tests covering: help output, all-steps-succeed, fail-forward, stop-on-error, default-to-yesterday, metadata emission on success/failure, each individual step dispatch, unknown step error
 - All 1060 tests pass, mypy clean
 
+### ch_load_command (2026-02-04)
+- Implemented `prediction-data gold ch-load --table TABLE [--lookback-days N] [--dry-run]` CLI command
+- Supports all Gold fact tables: market_mark_daily, wallet_pnl_daily, wallet_mtm_daily, wallet_position_snapshot_daily
+- Default lookback: 90 days (matches ClickHouse TTL), configurable via --lookback-days
+- Generic S3 Gold Parquet reader: reads day-partitioned parquet files from S3 and inserts into ClickHouse
+- ClickHouse TTL handles old data expiry automatically — the loader just inserts; ReplacingMergeTree deduplicates
+- `--all` flag loads all Gold tables in sequence; `--table` loads a single table
+- Proper error handling: validates table names, requires GOLD_BUCKET, mutual exclusivity of --table/--all
+- Partial failure support when using --all: continues to next table on failure, reports summary at end
+- Replaced the old stub in ch_loader.py with real generic implementation (load_gold_table_to_clickhouse)
+- 22 unit tests covering: CLI help, error cases (no table/all, mutually exclusive, no bucket, unknown table), dry-run (single/all), success (single/all), failure reporting, partial failure, column registry, S3 reader edge cases, lookback window behavior, default lookback=90
+- All 1082 tests pass, mypy clean
+- Note: wallet_position_ledger omitted from loadable tables since it has no ClickHouse DDL or S3 writer yet (sprint 03 dependency). Can be added when the position accounting engine is implemented.
+
 ## In Progress
 
 
@@ -29,3 +43,5 @@
 - The daily-run command orchestrates existing CLI functions (load_dim_*, compute_market_marks, compute_wallet_pnl, compute_wallet_mtm, compute_wallet_position_snapshot) rather than re-implementing them
 - _emit_daily_run_metadata() is best-effort — if ClickHouse is not available, it silently logs and continues
 - _run_daily_step() is a pure dispatch function that can be tested independently from the CLI layer
+- ch-load uses a generic ch_loader.py module with a table column registry (lazy-loaded to avoid circular imports). The existing load-marks-ch command still works but ch-load --table market_mark_daily is the preferred unified interface.
+- The ch-load command coexists with the older load-marks-ch command — both work, but ch-load is the unified interface for all tables

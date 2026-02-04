@@ -199,6 +199,90 @@ def load_marks_ch(
     typer.echo(f"Loaded {rows} rows into ClickHouse (lookback={lookback_days} days).")
 
 
+@app.command(name="ch-load")
+def ch_load(
+    table: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        help=(
+            "Gold table to load. Options: market_mark_daily, wallet_pnl_daily, "
+            "wallet_mtm_daily, wallet_position_snapshot_daily."
+        ),
+    ),
+    all_tables: bool = typer.Option(
+        False, "--all", help="Load all Gold tables into ClickHouse."
+    ),
+    lookback_days: int = typer.Option(
+        90, "--lookback-days", help="Number of days to load from S3 (default: 90)."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+) -> None:
+    """Load Gold tables from S3 Parquet into ClickHouse.
+
+    Reads day-partitioned Parquet files from S3 Gold and inserts them
+    into the corresponding ClickHouse tables within the lookback window.
+    ClickHouse TTL expressions handle expiry of older data automatically.
+
+    Specify --table TABLE for a single table or --all for all tables.
+    """
+    from prediction_data.gold.ch_loader import ALL_GOLD_TABLES, load_gold_table_to_clickhouse
+
+    settings = get_settings()
+    gold_bucket = settings.gold_bucket or None
+    if not gold_bucket:
+        typer.echo("Error: GOLD_BUCKET not configured.", err=True)
+        raise typer.Exit(code=1)
+
+    if not table and not all_tables:
+        typer.echo("Error: specify --table TABLE or --all.", err=True)
+        raise typer.Exit(code=1)
+
+    if table and all_tables:
+        typer.echo("Error: --table and --all are mutually exclusive.", err=True)
+        raise typer.Exit(code=1)
+
+    # table is guaranteed non-None here (checked above).
+    tables_to_load: list[str] = ALL_GOLD_TABLES if all_tables else [table]  # type: ignore[list-item]
+
+    # Validate table names.
+    for tbl in tables_to_load:
+        if tbl not in ALL_GOLD_TABLES:
+            typer.echo(
+                f"Error: unknown table '{tbl}'. "
+                f"Options: {', '.join(ALL_GOLD_TABLES)}",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+    if dry_run:
+        for tbl in tables_to_load:
+            typer.echo(
+                f"[dry-run] Would load {tbl} (lookback={lookback_days} days) into ClickHouse."
+            )
+        return
+
+    total_rows = 0
+    failures: list[str] = []
+    for tbl in tables_to_load:
+        try:
+            rows = load_gold_table_to_clickhouse(
+                table_name=tbl,
+                gold_bucket=gold_bucket,
+                lookback_days=lookback_days,
+            )
+            total_rows += rows
+            typer.echo(f"{tbl}: {rows} rows loaded (lookback={lookback_days} days).")
+        except Exception as exc:
+            failures.append(f"{tbl}: {exc}")
+            typer.echo(f"{tbl}: FAILED ({exc})", err=True)
+
+    typer.echo(f"Total: {total_rows} rows across {len(tables_to_load)} table(s).")
+    if failures:
+        typer.echo(f"{len(failures)} table(s) failed:", err=True)
+        for f in failures:
+            typer.echo(f"  {f}", err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command(name="compute-pnl")
 def compute_pnl(
     dt: Optional[str] = typer.Option(  # noqa: UP007
