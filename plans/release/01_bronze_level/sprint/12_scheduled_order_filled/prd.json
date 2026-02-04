@@ -39,7 +39,7 @@
             "Rename TradesScheduleExpression parameter to OrderFilledScheduleExpression (update all references including KalshiTradesSchedule which also uses this parameter)",
             "Update infrastructure/ecs-cluster.yaml: change ExampleRunCommand output to use backfill catchup order_filled example instead of ingest polymarket-trades"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "iam_permissions",

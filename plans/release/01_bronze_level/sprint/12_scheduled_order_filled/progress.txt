@@ -28,6 +28,19 @@
 ## In Progress
 
 
+## Completed Tasks (continued)
+
+- [eventbridge_schedule_update] Replaced polymarket-trades EventBridge schedule with polymarket-order-filled
+  - Renamed PolymarketTradesSchedule resource to PolymarketOrderFilledSchedule
+  - Updated schedule Name to polymarket-order-filled-${Environment}
+  - Updated Description to "Catchup Polymarket order_filled events every 5 minutes"
+  - Changed command override to: ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent"]
+  - Kept rate(5 minutes) schedule expression and retry policy (MaxRetry: 2, MaxAge: 300s)
+  - Renamed TradesScheduleExpression parameter to OrderFilledScheduleExpression; updated KalshiTradesSchedule reference
+  - Updated ecs-cluster.yaml ExampleRunCommand to use backfill catchup order_filled example
+  - Updated tests/test_exit_criteria.py to expect PolymarketOrderFilledSchedule and the new catchup command
+  - All 1137 tests pass, mypy clean (pre-existing silver issues only), no new ruff issues
+
 ## Blockers/Issues
 
 

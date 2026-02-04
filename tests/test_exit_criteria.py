@@ -80,7 +80,7 @@ class TestScheduledIngestion:
     def test_all_six_schedules_defined(self) -> None:
         content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
         for name in [
-            "PolymarketTradesSchedule",
+            "PolymarketOrderFilledSchedule",
             "KalshiTradesSchedule",
             "PolymarketMarketsSchedule",
             "KalshiMarketsSchedule",
@@ -91,15 +91,19 @@ class TestScheduledIngestion:
 
     def test_schedule_commands_match_cli(self) -> None:
         content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
-        expected_commands = [
-            "polymarket-trades",
+        # Polymarket order_filled uses backfill catchup with concurrency guard
+        assert (
+            '"backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent"'
+            in content
+        ), "Missing CLI command: backfill catchup order_filled"
+        # Remaining schedules still use ingest commands
+        for cmd in [
             "kalshi-trades",
             "polymarket-markets",
             "kalshi-markets",
             "polymarket-events",
             "kalshi-events",
-        ]
-        for cmd in expected_commands:
+        ]:
             assert f'"ingest", "{cmd}"' in content, f"Missing CLI command: ingest {cmd}"
 
     def test_trades_schedule_rate(self) -> None:

@@ -32,10 +32,10 @@ Parameters:
     Default: America/Chicago
     Description: Timezone for schedule expressions
 
-  TradesScheduleExpression:
+  OrderFilledScheduleExpression:
     Type: String
     Default: 'rate(5 minutes)'
-    Description: Schedule expression for trades ingestion (default every 5 minutes)
+    Description: Schedule expression for order_filled / trades ingestion (default every 5 minutes)
 
   MarketsScheduleExpression:
     Type: String
@@ -105,14 +105,14 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # Polymarket Trades - every 5 minutes
-  PolymarketTradesSchedule:
+  # Polymarket Order Filled - every 5 minutes (catchup with concurrency guard)
+  PolymarketOrderFilledSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
-      Name: !Sub 'polymarket-trades-${Environment}'
+      Name: !Sub 'polymarket-order-filled-${Environment}'
       GroupName: !Ref ScheduleGroup
-      Description: Ingest Polymarket trades every 5 minutes
-      ScheduleExpression: !Ref TradesScheduleExpression
+      Description: Catchup Polymarket order_filled events every 5 minutes
+      ScheduleExpression: !Ref OrderFilledScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
       State: !Ref ScheduleState
       FlexibleTimeWindow:
@@ -134,7 +134,7 @@ Resources:
             "containerOverrides": [
               {
                 "name": "prediction-data",
-                "command": ["ingest", "polymarket-trades"]
+                "command": ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent"]
               }
             ]
           }
@@ -149,7 +149,7 @@ Resources:
       Name: !Sub 'kalshi-trades-${Environment}'
       GroupName: !Ref ScheduleGroup
       Description: Ingest Kalshi trades every 5 minutes
-      ScheduleExpression: !Ref TradesScheduleExpression
+      ScheduleExpression: !Ref OrderFilledScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
       State: !Ref ScheduleState
       FlexibleTimeWindow:

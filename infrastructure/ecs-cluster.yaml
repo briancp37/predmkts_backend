@@ -173,4 +173,4 @@ Outputs:
         --task-definition ${TaskDefinition} \
         --launch-type FARGATE \
         --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
-        --overrides '{"containerOverrides":[{"name":"prediction-data","command":["ingest","polymarket-trades","--dt","2026-01-28"]}]}'
+        --overrides '{"containerOverrides":[{"name":"prediction-data","command":["backfill","catchup","--platform","polymarket","--entity","order_filled","--skip-if-concurrent"]}]}'
