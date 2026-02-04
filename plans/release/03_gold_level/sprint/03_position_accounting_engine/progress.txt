@@ -47,6 +47,45 @@
 - All 25 tests pass. mypy strict mode clean. ruff clean.
 - Full test suite: 1201 tests pass (no regressions).
 
+### position_ledger (2026-02-04)
+- Created `src/prediction_data/gold/ledger.py` with:
+  - `LEDGER_SCHEMA` (PyArrow): ts, wallet, platform, market_id, outcome_id, side,
+    qty_delta, price, fees_usd, qty_before, qty_after, avg_cost_before, avg_cost_after,
+    realized_pnl_this_fill_usd. Timestamps stored as microsecond UTC.
+  - `LEDGER_COLUMNS`: ordered column name list for ClickHouse insert compatibility.
+  - `LedgerRow` frozen dataclass: immutable record of a single fill's before/after state.
+  - `record_fill(position, fill)`: captures position state before the fill, applies the fill
+    through the accounting engine, captures state after, and returns (FillResult, LedgerRow).
+  - `LedgerWriter` class: accumulates LedgerRow objects, converts to PyArrow Table via
+    `to_arrow()`, and writes to S3 Gold Parquet + ClickHouse via `flush()`.
+    - `record(position, fill)`: applies fill, records ledger row, returns (FillResult, LedgerRow).
+    - `flush(gold_bucket, day, ...)`: idempotent write to S3 Gold (partitioned by day) and CH.
+    - `clear()`: discard accumulated rows.
+    - `count` / `rows` properties for inspection.
+    - Supports `dry_run` mode (log but don't persist).
+  - `build_ledger_for_day(fills, positions)`: convenience function that processes a sorted list
+    of fills through the accounting engine, creating PositionState objects as needed, and returns
+    (LedgerWriter, positions_dict). This is the main entry point for the batch_processor.
+- Created `docker/clickhouse/init/017_wallet_position_ledger.sql`:
+  - MergeTree engine, ORDER BY (wallet, ts), TTL 30 days.
+  - Schema matches LEDGER_SCHEMA exactly.
+- Registered `wallet_position_ledger` in `src/prediction_data/gold/ch_loader.py`:
+  - Added to `_get_table_columns()` lazy loader and `ALL_GOLD_TABLES` list.
+- 37 unit tests in `tests/test_gold_ledger.py` covering:
+  - LedgerRow: frozen immutability
+  - record_fill: opening buy, partial sell, close, position flip, field propagation, fees
+  - LedgerWriter: empty state, accumulation, record return values, rows copy safety, clear,
+    to_arrow (empty, schema, values, timestamp type)
+  - Flush: empty, dry_run, S3+CH write (mocked), no S3 without bucket, CH data matches arrow
+  - build_ledger_for_day: empty fills, single fill creates position, multiple fills same
+    position, multiple wallets, reuses existing positions, arrow matches rows
+  - Integration with fill_splitter: trade → fills → ledger round-trip, multi-trade PnL sequence
+  - Downstream compatibility: wallet_pnl fields present, on_demand fields present, CH insert format
+  - Edge cases: position flip, small quantities, price boundaries (0 and 1),
+    multiple outcomes same market, position identity preservation
+- All 37 tests pass. mypy strict mode clean. ruff clean.
+- Full test suite: 1238 tests pass (no regressions).
+
 ## In Progress
 
 
@@ -54,8 +93,9 @@
 
 
 ## Notes
-- Next priority: position_ledger (ledger.py) - the audit trail layer that records before/after
-  state for each fill processed through the accounting engine.
+- Next priority: position_state — ClickHouse DDL for wallet_position_state and the write
+  logic to upsert current positions after processing fills. This is needed by wallet_mtm.py
+  and wallet_position_snapshot.py which already read from it.
 - The Fill dataclass is frozen (immutable) by design. The batch_processor will create fills
   via trades_to_fills() and iterate through them to feed the accounting engine.
 - fees_usd is set to 0.0 for all fills. Polymarket's Silver trades schema does not include
@@ -64,3 +104,6 @@
 - PositionState is mutable by design - it accumulates state across fills for a given
   wallet/market/outcome. The batch_processor will maintain a dict of PositionState objects
   keyed by (wallet, platform, market_id, outcome_id).
+- build_ledger_for_day() is the main integration point: it takes sorted fills and a positions
+  dict, processes everything through the accounting engine, and returns a LedgerWriter ready
+  for flush(). The batch_processor (next sprint category) will call this function.

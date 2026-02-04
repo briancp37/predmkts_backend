@@ -37,7 +37,7 @@
             "Implement CH loader for ledger table",
             "Write integration test: process known trades → verify ledger output matches expected"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "position_state",
