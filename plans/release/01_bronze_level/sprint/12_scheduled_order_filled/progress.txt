@@ -49,6 +49,17 @@
   - Only grants ListTasks and DescribeTasks (no RunTask, StopTask, or other broader ECS permissions)
   - All 1137 tests pass, mypy clean (pre-existing silver issues only), no new ruff issues
 
+- [cloudwatch_monitoring_update] Updated CloudWatch monitoring to track polymarket-order-filled instead of polymarket-trades
+  - Renamed PolymarketTradesMetricFilter to PolymarketOrderFilledMetricFilter
+  - Updated FilterPattern from '"polymarket-trades" "ingest"' to '"order_filled" "polymarket"' to match catchup log output
+  - Updated MetricName from PolymarketTradesRuns to PolymarketOrderFilledRuns
+  - Renamed MissingPolymarketTradesAlarm to MissingPolymarketOrderFilledAlarm with updated AlarmName and AlarmDescription
+  - Renamed TradesExpectedIntervalSeconds parameter to OrderFilledExpectedIntervalSeconds (updated all references including KalshiTradesAlarm)
+  - Updated dashboard: "Polymarket Trades" label changed to "Polymarket Order Filled", metric reference updated
+  - Updated dashboard alarm widget ARN from missing-polymarket-trades to missing-polymarket-order-filled
+  - Updated Outputs: renamed MissingPolymarketTradesAlarmArn to MissingPolymarketOrderFilledAlarmArn
+  - All 1137 tests pass, mypy clean (pre-existing silver issues only), no new ruff issues
+
 ## Blockers/Issues
 
 

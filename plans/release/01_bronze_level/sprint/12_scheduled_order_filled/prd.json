@@ -65,7 +65,7 @@
             "Update the alarm ARN in the dashboard alarm widget from missing-polymarket-trades to missing-polymarket-order-filled",
             "Update Outputs section: rename MissingPolymarketTradesAlarmArn to MissingPolymarketOrderFilledAlarmArn with updated references"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "check_script_and_verification",

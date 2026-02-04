@@ -24,10 +24,10 @@ Parameters:
     Default: ''
     Description: Email address for alert notifications (leave empty to skip email subscription)
 
-  TradesExpectedIntervalSeconds:
+  OrderFilledExpectedIntervalSeconds:
     Type: Number
     Default: 600
-    Description: Expected interval for trades ingestion in seconds (default 600 = 10 minutes)
+    Description: Expected interval for order_filled catchup in seconds (default 600 = 10 minutes)
 
   MarketsExpectedIntervalSeconds:
     Type: Number
@@ -95,14 +95,14 @@ Resources:
           DefaultValue: 0
           Unit: Count
 
-  # Metric Filter for Polymarket trades runs
-  PolymarketTradesMetricFilter:
+  # Metric Filter for Polymarket order_filled runs
+  PolymarketOrderFilledMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref LogGroupName
-      FilterPattern: '"polymarket-trades" "ingest"'
+      FilterPattern: '"order_filled" "polymarket"'
       MetricTransformations:
-        - MetricName: PolymarketTradesRuns
+        - MetricName: PolymarketOrderFilledRuns
           MetricNamespace: !Sub 'PredictionData/${Environment}'
           MetricValue: '1'
           DefaultValue: 0
@@ -198,16 +198,16 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
-  # Alarm for missing Polymarket trades runs
-  MissingPolymarketTradesAlarm:
+  # Alarm for missing Polymarket order_filled runs
+  MissingPolymarketOrderFilledAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub 'prediction-data-missing-polymarket-trades-${Environment}'
-      AlarmDescription: Alerts when no Polymarket trades ingestion runs in the expected interval
-      MetricName: PolymarketTradesRuns
+      AlarmName: !Sub 'prediction-data-missing-polymarket-order-filled-${Environment}'
+      AlarmDescription: Alerts when no Polymarket order_filled catchup runs in the expected interval
+      MetricName: PolymarketOrderFilledRuns
       Namespace: !Sub 'PredictionData/${Environment}'
       Statistic: Sum
-      Period: !Ref TradesExpectedIntervalSeconds # Convert to seconds done via Fn::Sub
+      Period: !Ref OrderFilledExpectedIntervalSeconds
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: LessThanThreshold
@@ -231,7 +231,7 @@ Resources:
       MetricName: KalshiTradesRuns
       Namespace: !Sub 'PredictionData/${Environment}'
       Statistic: Sum
-      Period: !Ref TradesExpectedIntervalSeconds
+      Period: !Ref OrderFilledExpectedIntervalSeconds
       EvaluationPeriods: 1
       Threshold: 1
       ComparisonOperator: LessThanThreshold
@@ -311,7 +311,7 @@ Resources:
               "properties": {
                 "title": "Ingestion Runs by Type",
                 "metrics": [
-                  ["PredictionData/${Environment}", "PolymarketTradesRuns", {"label": "Polymarket Trades"}],
+                  ["PredictionData/${Environment}", "PolymarketOrderFilledRuns", {"label": "Polymarket Order Filled"}],
                   [".", "KalshiTradesRuns", {"label": "Kalshi Trades"}],
                   [".", "PolymarketMarketsRuns", {"label": "Polymarket Markets"}],
                   [".", "KalshiMarketsRuns", {"label": "Kalshi Markets"}]
@@ -353,7 +353,7 @@ Resources:
                 "alarms": [
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-errors-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-task-failures-${Environment}",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-trades-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-order-filled-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-trades-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-markets-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-markets-${Environment}"
@@ -401,11 +401,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-TaskFailureAlarmArn'
 
-  MissingPolymarketTradesAlarmArn:
-    Description: ARN of the missing Polymarket trades alarm
-    Value: !GetAtt MissingPolymarketTradesAlarm.Arn
+  MissingPolymarketOrderFilledAlarmArn:
+    Description: ARN of the missing Polymarket order_filled alarm
+    Value: !GetAtt MissingPolymarketOrderFilledAlarm.Arn
     Export:
-      Name: !Sub '${AWS::StackName}-MissingPolymarketTradesAlarmArn'
+      Name: !Sub '${AWS::StackName}-MissingPolymarketOrderFilledAlarmArn'
 
   MissingKalshiTradesAlarmArn:
     Description: ARN of the missing Kalshi trades alarm
