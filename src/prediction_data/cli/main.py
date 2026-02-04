@@ -740,7 +740,6 @@ def backfill_catchup(
         from prediction_data.storage.discovery import (
             find_latest_date,
             find_latest_manifest_source,
-            find_latest_timestamp,
         )
 
         resolved_bucket = bucket or os.environ.get("BRONZE_BUCKET", "")
@@ -760,41 +759,7 @@ def backfill_catchup(
                     continue
 
                 try:
-                    if e == "order_filled":
-                        # Incremental: find latest timestamp and fetch only
-                        # new records.  Each catchup invocation produces an
-                        # independent run_id + manifest, enabling continuous
-                        # ingestion where Silver can process each manifest
-                        # independently.
-                        latest_ts = await find_latest_timestamp(s3, p, e)
-                        if latest_ts is None:
-                            typer.echo(
-                                f"SKIP {label}: no existing data found "
-                                "(run initial backfill first)"
-                            )
-                            continue
-
-                        today_str = today.isoformat()
-
-                        if dry_run:
-                            typer.echo(
-                                f"[dry-run] Would incrementally ingest {label} "
-                                f"since_timestamp={latest_ts} into dt={today_str}"
-                            )
-                            continue
-
-                        from prediction_data.bronze.polymarket import (
-                            ingest as pm_ingest,
-                        )
-
-                        run_id = await pm_ingest.ingest_order_filled(
-                            today_str,
-                            bucket=bucket,
-                            since_timestamp=latest_ts,
-                        )
-                        typer.echo(f"OK {label} run_id={run_id}")
-
-                    elif _is_date_scoped_entity(e):
+                    if _is_date_scoped_entity(e):
                         # Date-scoped: find latest date, backfill missing days
                         latest = await find_latest_date(s3, p, e)
                         if latest is None:
