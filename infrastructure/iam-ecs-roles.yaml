@@ -153,6 +153,23 @@ Resources:
                     - s3:DeleteObject
                   Resource: !Sub '${SilverBucketArn}/*'
           - !Ref 'AWS::NoValue'
+        - PolicyName: ECSConcurrencyGuard
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ListRunningTasks
+                Effect: Allow
+                Action:
+                  - ecs:ListTasks
+                Resource: '*'
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/prediction-data-${Environment}'
+              - Sid: DescribeRunningTasks
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTasks
+                Resource: !Sub 'arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/prediction-data-${Environment}/*'
         - PolicyName: CloudWatchLogsAccess
           PolicyDocument:
             Version: '2012-10-17'

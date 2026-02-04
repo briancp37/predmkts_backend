@@ -50,7 +50,7 @@
             "Scope the resource to the ECS cluster ARN (requires adding ECSClusterArn as a parameter or using a wildcard scoped to the account/region)",
             "Verify the policy doesn't grant broader ECS permissions than needed (no RunTask, StopTask, etc.)"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cloudwatch_monitoring_update",
