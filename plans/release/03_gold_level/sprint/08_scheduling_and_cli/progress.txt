@@ -45,6 +45,14 @@
 - 18 unit tests covering: help output, unknown table error, date validation, dry-run single day, date range processing, failure continues and reports, skip existing without force, force overwrite, cumulative table note, dependency notes (mtm, pnl), _rebuild_day dispatch for all 4 tables, unknown table raises, _gold_partition_exists true/false
 - All 1100 tests pass, mypy clean
 
+### testing (2026-02-04)
+- Created tests/gold/test_scheduling_cli.py with 27 tests covering all 4 PRD testing requirements
+- Integration test: daily-run dispatches through real _run_daily_step to all leaf functions (dim loaders, market_marks, wallet_pnl/mtm/snapshot) — verifies full dispatch chain, not just mock step calls. Confirms fail-forward continues past process-trades NotImplementedError to compute-marks and compute-wallet-metrics. Also tests --stop-on-error halts at process-trades without calling later steps.
+- Unit tests: ch-load lookback window — verifies only N days are scanned (lookback=5 scans 5 days, lookback=1 scans only today), and only days with actual data are inserted into ClickHouse
+- Unit tests: rebuild cumulative table ordering — verifies wallet_pnl_daily, wallet_mtm_daily, and wallet_position_snapshot_daily all process dates sequentially from earliest to latest with "cumulative" note. Also verifies market_mark_daily (independent) processes chronologically but without the cumulative note.
+- Comprehensive --help tests: 18 tests verifying every Gold CLI command/subcommand shows correct --help output (daily-run, ch-load, rebuild, load-dims, compute-marks, compute-pnl, compute-mtm, compute-position-snapshot, compute-wallet-metrics, load-marks-ch, status, freshness, compute-snapshot, watchlist, watchlist add/remove/list)
+- All 1127 tests pass, mypy clean (2 pre-existing unused type-ignore warnings in silver module)
+
 ## In Progress
 
 

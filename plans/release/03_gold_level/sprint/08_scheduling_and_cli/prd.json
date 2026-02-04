@@ -60,6 +60,6 @@
             "Write unit test: rebuild processes dates in correct order for cumulative tables",
             "Verify all CLI commands show correct --help output"
         ],
-        "passes": false
+        "passes": true
     }
 ]
