@@ -13,7 +13,7 @@
             "Handle errors gracefully: if metadata endpoint or ECS API fails, log warning and return False (proceed rather than block)",
             "Add unit tests in tests/test_ecs_guard.py: not-in-ECS returns False, no other tasks returns False, matching concurrent task returns True, non-matching tasks returns False, API error returns False"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli_concurrency_flag",

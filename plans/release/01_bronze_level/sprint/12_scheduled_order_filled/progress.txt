@@ -2,10 +2,18 @@
 # Release: 01_bronze_level
 # Created: 2026-02-04
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+- [ecs_concurrency_guard] Created src/prediction_data/core/ecs_guard.py with async should_skip_concurrent()
+  - Reads ECS_CONTAINER_METADATA_URI_V4 env var; returns False immediately when not in ECS (local dev)
+  - GETs {metadata_uri}/task to retrieve own TaskARN, Cluster, and Family
+  - Calls ecs.list_tasks() and ecs.describe_tasks() to detect sibling tasks with matching command
+  - Fail-open: any API error logs warning and returns False (proceed rather than block)
+  - 6 unit tests in tests/test_ecs_guard.py covering all cases:
+    not-in-ECS, no siblings, matching concurrent, non-matching, ECS API error, metadata endpoint error
+  - All 1135 tests pass, mypy clean, ruff clean
 
 ## In Progress
 
