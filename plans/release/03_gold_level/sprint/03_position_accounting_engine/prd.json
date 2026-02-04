@@ -24,7 +24,7 @@
             "Sort fills by timestamp before processing (critical for correct accounting)",
             "Write unit tests verifying 1 trade → 2 fills with correct sides"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "position_ledger",

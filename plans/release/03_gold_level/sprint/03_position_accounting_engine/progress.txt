@@ -25,6 +25,28 @@
   - Input validation: invalid side, non-positive qty_delta
 - All 27 tests pass. mypy strict mode clean. ruff clean.
 
+### trade_to_fills (2026-02-04)
+- Created `src/prediction_data/gold/fill_splitter.py` with:
+  - `Fill` frozen dataclass: ts, wallet, platform, market_id, outcome_id, side, qty_delta, price, fees_usd
+  - `nonusdc_side_to_outcome_id(market_id, nonusdc_side)`: maps "token1" → "{market_id}_0", "token2" → "{market_id}_1"
+    Uses the same deterministic formula as dim_outcome in dimensions.py.
+  - `split_trade_to_fills(trade, platform)`: splits one Silver trade dict into (maker_fill, taker_fill) tuple.
+    Maker fill: wallet=trade["maker"], side=trade["maker_direction"].
+    Taker fill: wallet=trade["taker"], side=trade["taker_direction"].
+    Both fills share the same ts, market_id, outcome_id, qty_delta (token_amount), and price.
+    fees_usd defaults to 0.0 (Polymarket fees are not in the Silver trades schema).
+  - `trades_to_fills(trades, platform)`: batch conversion, returns all fills sorted by timestamp.
+- 25 unit tests in `tests/test_gold_fill_splitter.py` covering:
+  - Outcome ID mapping: token1→_0, token2→_1, invalid side raises ValueError
+  - Single trade → 2 fills: maker/taker fields, shared timestamp/outcome/qty/price
+  - Direction variants: maker sells + taker buys, maker buys + taker sells
+  - Custom platform override, frozen immutability, missing field raises KeyError
+  - Batch conversion: empty input, correct count, timestamp sorting, stable same-ts, mixed outcome IDs
+  - Integration with accounting engine: fills feed into PositionState.apply_fill correctly,
+    round-trip buy→sell sequence produces expected realized PnL
+- All 25 tests pass. mypy strict mode clean. ruff clean.
+- Full test suite: 1201 tests pass (no regressions).
+
 ## In Progress
 
 
@@ -32,9 +54,13 @@
 
 
 ## Notes
-- Next priority: trade_to_fills (fill_splitter) - depends on accounting_engine being done.
-- The accounting engine supports short positions (negative qty) which arise from flips.
-  The fill_splitter will need to map Silver trade rows to fill events that feed into this.
+- Next priority: position_ledger (ledger.py) - the audit trail layer that records before/after
+  state for each fill processed through the accounting engine.
+- The Fill dataclass is frozen (immutable) by design. The batch_processor will create fills
+  via trades_to_fills() and iterate through them to feed the accounting engine.
+- fees_usd is set to 0.0 for all fills. Polymarket's Silver trades schema does not include
+  per-trade fee data. If fee data becomes available later, the Fill dataclass and splitter
+  already support it - just needs a source to read from.
 - PositionState is mutable by design - it accumulates state across fills for a given
   wallet/market/outcome. The batch_processor will maintain a dict of PositionState objects
   keyed by (wallet, platform, market_id, outcome_id).
