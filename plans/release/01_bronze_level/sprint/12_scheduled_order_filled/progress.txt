@@ -1,0 +1,34 @@
+# Sprint Progress: Scheduled Order Filled
+# Release: 01_bronze_level
+# Created: 2026-02-04
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Context: The polymarket-trades EventBridge schedule (rate(5 min), calling `ingest polymarket-trades`)
+is being replaced with a polymarket-order-filled schedule that runs the incremental catchup command.
+The CLOB API client and `ingest polymarket-trades` CLI command are kept as manual tools but removed
+from scheduled execution.
+
+Key design decision: ECS-based concurrency guard chosen over S3 lock files. The guard reads ECS
+task metadata to detect if another task with the same command is already running, and skips if so.
+This prevents overlapping runs when a catchup takes longer than the 5-minute schedule interval.
+
+Prerequisite work already done in sprint 10 (incremental_catchup):
+- `backfill catchup --platform polymarket --entity order_filled` command exists and works
+- Timestamp-incremental logic via find_latest_manifest_source() is implemented
+- ingest_order_filled() supports since_timestamp parameter
+
+Hotfix already applied in this session (not yet committed):
+- Fixed catchup to use timestamp-incremental path for order_filled instead of date-scoped
+  (was incorrectly saying "already up to date" when today's partition existed)

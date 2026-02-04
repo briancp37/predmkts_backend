@@ -1,0 +1,84 @@
+[
+    {
+        "category": "ecs_concurrency_guard",
+        "description": "Add ECS-based concurrency detection so scheduled tasks can skip execution when a previous run is still in progress, preventing overlapping ingestion runs",
+        "steps": [
+            "Create src/prediction_data/core/ecs_guard.py with async function should_skip_concurrent(command_filter: str) -> bool",
+            "Read ECS_CONTAINER_METADATA_URI_V4 env var (set by Fargate automatically); if absent (local dev), return False immediately",
+            "GET {metadata_uri}/task to retrieve own TaskARN, Cluster ARN, and Family from the ECS task metadata endpoint",
+            "Call ecs.list_tasks(cluster=cluster, family=family, desiredStatus='RUNNING') via boto3 to list sibling tasks",
+            "Filter out own task ARN from the list of running tasks",
+            "Call ecs.describe_tasks() on remaining task ARNs and inspect overrides.containerOverrides[].command for the command_filter string",
+            "Return True (skip) if any other running task's command contains the filter string; False otherwise",
+            "Handle errors gracefully: if metadata endpoint or ECS API fails, log warning and return False (proceed rather than block)",
+            "Add unit tests in tests/test_ecs_guard.py: not-in-ECS returns False, no other tasks returns False, matching concurrent task returns True, non-matching tasks returns False, API error returns False"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cli_concurrency_flag",
+        "description": "Add --skip-if-concurrent flag to the backfill catchup CLI command that invokes the ECS concurrency guard before running",
+        "steps": [
+            "Add --skip-if-concurrent typer.Option(False) boolean flag to the backfill_catchup command in cli/main.py",
+            "When flag is set, call should_skip_concurrent() with the entity name(s) being processed before entering the main loop",
+            "If should_skip_concurrent returns True, log 'SKIP: concurrent task detected for {entity}, exiting' and return exit code 0 (clean exit)",
+            "When flag is not set (default), skip the check entirely — existing local-dev behavior is unchanged",
+            "Add unit tests: catchup with --skip-if-concurrent when guard returns True exits cleanly with SKIP message, when guard returns False proceeds normally"
+        ],
+        "passes": false
+    },
+    {
+        "category": "eventbridge_schedule_update",
+        "description": "Replace the polymarket-trades EventBridge schedule with polymarket-order-filled running the catchup command with concurrency guard",
+        "steps": [
+            "In infrastructure/eventbridge-schedules.yaml: rename PolymarketTradesSchedule resource to PolymarketOrderFilledSchedule",
+            "Update schedule Name to polymarket-order-filled-${Environment}",
+            "Update Description to 'Catchup Polymarket order_filled events every 5 minutes'",
+            "Change the command override to: [\"backfill\", \"catchup\", \"--platform\", \"polymarket\", \"--entity\", \"order_filled\", \"--skip-if-concurrent\"]",
+            "Keep rate(5 minutes) schedule expression and existing retry policy (MaximumRetryAttempts: 2, MaximumEventAgeInSeconds: 300)",
+            "Rename TradesScheduleExpression parameter to OrderFilledScheduleExpression (update all references including KalshiTradesSchedule which also uses this parameter)",
+            "Update infrastructure/ecs-cluster.yaml: change ExampleRunCommand output to use backfill catchup order_filled example instead of ingest polymarket-trades"
+        ],
+        "passes": false
+    },
+    {
+        "category": "iam_permissions",
+        "description": "Grant the ECS task role permissions to introspect running tasks for the concurrency guard",
+        "steps": [
+            "In infrastructure/iam-ecs-roles.yaml: add a new policy statement to ECSTaskRole for ECS task introspection",
+            "Grant ecs:ListTasks and ecs:DescribeTasks actions",
+            "Scope the resource to the ECS cluster ARN (requires adding ECSClusterArn as a parameter or using a wildcard scoped to the account/region)",
+            "Verify the policy doesn't grant broader ECS permissions than needed (no RunTask, StopTask, etc.)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "cloudwatch_monitoring_update",
+        "description": "Update CloudWatch metric filters, alarms, and dashboard to monitor polymarket-order-filled instead of polymarket-trades",
+        "steps": [
+            "In infrastructure/cloudwatch-monitoring.yaml: rename PolymarketTradesMetricFilter to PolymarketOrderFilledMetricFilter",
+            "Update the FilterPattern to match order_filled catchup log output (e.g. '\"order_filled\" \"polymarket\"')",
+            "Update MetricName to PolymarketOrderFilledRuns",
+            "Rename MissingPolymarketTradesAlarm to MissingPolymarketOrderFilledAlarm with updated AlarmName, AlarmDescription, and MetricName reference",
+            "Rename TradesExpectedIntervalSeconds parameter to OrderFilledExpectedIntervalSeconds (update all references)",
+            "Update the dashboard widget: change 'Polymarket Trades' label to 'Polymarket Order Filled' and reference the new metric name",
+            "Update the alarm ARN in the dashboard alarm widget from missing-polymarket-trades to missing-polymarket-order-filled",
+            "Update Outputs section: rename MissingPolymarketTradesAlarmArn to MissingPolymarketOrderFilledAlarmArn with updated references"
+        ],
+        "passes": false
+    },
+    {
+        "category": "check_script_and_verification",
+        "description": "Update the release 01 check script and verify end-to-end that the new schedule works correctly",
+        "steps": [
+            "In scripts/check_setup_release_01.py: update expected schedule name from 'polymarket-trades-prod' to 'polymarket-order-filled-prod'",
+            "Verify the check script still expects 6 total schedules (the count doesn't change, just the name)",
+            "Run pytest -m 'not integration' — all tests pass",
+            "Run mypy src/ — type check clean",
+            "Run ruff check src/ tests/ — no new lint issues",
+            "Verify dry-run works locally: prediction-data backfill catchup --platform polymarket --entity order_filled --dry-run",
+            "After deploying updated CloudFormation stacks, run python scripts/check_setup_release_01.py and verify all checks pass"
+        ],
+        "passes": false
+    }
+]
