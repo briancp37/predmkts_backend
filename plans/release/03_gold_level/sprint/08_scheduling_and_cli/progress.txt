@@ -2,15 +2,30 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### daily_run_command (2026-02-04)
+- Implemented `prediction-data gold daily-run [--dt YYYY-MM-DD] [--dry-run]` command
+- Defaults --dt to yesterday (UTC) when not specified
+- Executes 4 steps in order: 1) load-dims, 2) process-trades, 3) compute-marks, 4) compute-wallet-metrics
+- Each step logs start/end via structlog; emits pipeline_runs metadata to ClickHouse (best-effort, gracefully degrades if CH unavailable)
+- Fail-forward: on step failure, logs error and continues to next step; reports summary at end with exit code 1
+- --stop-on-error flag halts on first failure instead of continuing
+- process-trades step calls gold.trade_processor.process_day() if available; raises NotImplementedError otherwise (sprint 03 dependency not yet built)
+- 12 unit tests covering: help output, all-steps-succeed, fail-forward, stop-on-error, default-to-yesterday, metadata emission on success/failure, each individual step dispatch, unknown step error
+- All 1060 tests pass, mypy clean
 
 ## In Progress
 
 
 ## Blockers/Issues
 
+- process-trades step depends on position accounting engine (sprint 03, gold.trade_processor module) which is not yet implemented. The daily-run correctly handles this via fail-forward — it logs the NotImplementedError and continues to compute-marks and compute-wallet-metrics.
 
 ## Notes
+
+- The daily-run command orchestrates existing CLI functions (load_dim_*, compute_market_marks, compute_wallet_pnl, compute_wallet_mtm, compute_wallet_position_snapshot) rather than re-implementing them
+- _emit_daily_run_metadata() is best-effort — if ClickHouse is not available, it silently logs and continues
+- _run_daily_step() is a pure dispatch function that can be tested independently from the CLI layer

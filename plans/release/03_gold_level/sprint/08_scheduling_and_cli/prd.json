@@ -10,7 +10,7 @@
             "On step failure: log error, continue to next step (fail-forward), report summary at end",
             "Add --stop-on-error flag to halt on first failure instead"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "ch_load_command",

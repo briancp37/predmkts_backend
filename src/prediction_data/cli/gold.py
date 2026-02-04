@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import date
+from typing import Any, Optional
 
 import typer
 
@@ -533,10 +534,9 @@ def daily_run(
     gold_bucket = settings.gold_bucket or None
 
     # Default to yesterday UTC.
-    if dt:
-        target_date = date_cls.fromisoformat(dt)
-    else:
-        target_date = datetime.now(UTC).date() - timedelta(days=1)
+    target_date = (
+        date_cls.fromisoformat(dt) if dt else datetime.now(UTC).date() - timedelta(days=1)
+    )
 
     typer.echo(f"Gold daily-run for {target_date}{'  [dry-run]' if dry_run else ''}")
 
@@ -548,8 +548,8 @@ def daily_run(
         ("compute-wallet-metrics", "Computing wallet metrics (pnl, mtm, snapshots)"),
     ]
 
-    results: list[dict[str, object]] = []
-    failed: list[dict[str, object]] = []
+    results: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
     total_rows = 0
 
     for step_name, step_desc in steps:
@@ -565,7 +565,7 @@ def daily_run(
             typer.echo(f"  {step_name}: {rows} rows{'  [dry-run]' if dry_run else ''}")
             log.info("step.success", step=step_name, rows=rows)
         except Exception as exc:
-            entry = {"step": step_name, "status": "failed", "error": str(exc)}
+            entry: dict[str, Any] = {"step": step_name, "status": "failed", "error": str(exc)}
             results.append(entry)
             failed.append(entry)
             typer.echo(f"  {step_name}: FAILED ({exc})", err=True)
@@ -621,12 +621,12 @@ def _emit_daily_run_metadata(
         )
     except Exception:
         if hasattr(log, "debug"):
-            log.debug("clickhouse_unavailable_for_tracking", exc_info=True)  # type: ignore[union-attr]
+            log.debug("clickhouse_unavailable_for_tracking", exc_info=True)
 
 
 def _run_daily_step(
     step_name: str,
-    dt: object,
+    dt: date,
     *,
     gold_bucket: str | None = None,
     dry_run: bool = False,
@@ -655,14 +655,15 @@ def _run_daily_step(
         # Position accounting engine (sprint 03). Call if available,
         # otherwise raise NotImplementedError so fail-forward kicks in.
         try:
-            from prediction_data.gold.trade_processor import process_day
+            from prediction_data.gold.trade_processor import process_day  # type: ignore[import-untyped]
 
-            return process_day(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
+            result: int = process_day(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
+            return result
         except ImportError:
             raise NotImplementedError(
                 "process-trades requires the position accounting engine "
                 "(gold.trade_processor) which is not yet implemented."
-            )
+            ) from None
 
     elif step_name == "compute-marks":
         from prediction_data.gold.market_marks import compute_market_marks
