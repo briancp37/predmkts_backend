@@ -929,3 +929,45 @@ class TestCatchupCLI:
         mock_ingest.assert_called_once()
         call_kwargs = mock_ingest.call_args
         assert call_kwargs.kwargs.get("since_updated_at") is not None
+
+    def test_skip_if_concurrent_guard_returns_true_exits_cleanly(self) -> None:
+        """When --skip-if-concurrent is set and guard returns True, exits 0 with SKIP message."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.core.ecs_guard.should_skip_concurrent", new_callable=AsyncMock) as mock_guard,
+            patch("prediction_data.storage.S3Client"),
+        ):
+            mock_guard.return_value = True
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "SKIP: concurrent task detected" in result.output
+        assert "order_filled" in result.output
+
+    def test_skip_if_concurrent_guard_returns_false_proceeds(self) -> None:
+        """When --skip-if-concurrent is set and guard returns False, proceeds normally."""
+        from prediction_data.cli.main import app
+
+        with (
+            patch("prediction_data.core.logging.get_settings", return_value=MagicMock(log_level="INFO")),
+            patch("prediction_data.core.ecs_guard.should_skip_concurrent", new_callable=AsyncMock) as mock_guard,
+            patch("prediction_data.storage.discovery.find_latest_manifest_source", new_callable=AsyncMock) as mock_src,
+            patch("prediction_data.storage.S3Client"),
+            patch("prediction_data.cli.main.date") as mock_date,
+        ):
+            mock_guard.return_value = False
+            mock_date.today.return_value = date(2025, 6, 20)
+            mock_date.fromisoformat = date.fromisoformat
+            mock_src.return_value = ("2025-06-20", 1750444800)
+            result = runner.invoke(
+                app,
+                ["backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent", "--dry-run", "--bucket", "test-bucket"],
+            )
+        assert result.exit_code == 0
+        assert "SKIP: concurrent task detected" not in result.output
+        assert "[dry-run]" in result.output
+        mock_guard.assert_called_once_with("order_filled")

@@ -713,6 +713,13 @@ def backfill_catchup(
             help="Force full snapshot for catalog entities (markets, events) instead of incremental.",
         ),
     ] = False,
+    skip_if_concurrent: Annotated[
+        bool,
+        typer.Option(
+            "--skip-if-concurrent",
+            help="Check ECS for concurrent tasks and skip if one is already running.",
+        ),
+    ] = False,
 ) -> None:
     """Auto-detect latest data and catch up to present."""
     from prediction_data.core.logging import configure_logging
@@ -748,6 +755,17 @@ def backfill_catchup(
             raise typer.Exit(code=1)
 
         s3 = S3Client(bucket=resolved_bucket)
+
+        if skip_if_concurrent:
+            from prediction_data.core.ecs_guard import should_skip_concurrent
+
+            for e in entities:
+                if await should_skip_concurrent(e):
+                    typer.echo(
+                        f"SKIP: concurrent task detected for {e}, exiting"
+                    )
+                    return
+
         today = date.today()
 
         for p in platforms:

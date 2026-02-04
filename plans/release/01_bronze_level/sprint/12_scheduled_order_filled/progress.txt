@@ -15,6 +15,16 @@
     not-in-ECS, no siblings, matching concurrent, non-matching, ECS API error, metadata endpoint error
   - All 1135 tests pass, mypy clean, ruff clean
 
+- [cli_concurrency_flag] Added --skip-if-concurrent flag to backfill catchup command
+  - New Annotated[bool, typer.Option("--skip-if-concurrent")] parameter on backfill_catchup()
+  - When set, iterates resolved entities and calls should_skip_concurrent(entity) before the main loop
+  - If guard returns True, outputs "SKIP: concurrent task detected for {entity}, exiting" and returns (exit 0)
+  - When not set (default), skips the check entirely — local-dev behavior unchanged
+  - 2 unit tests in tests/test_backfill.py::TestCatchupCLI:
+    test_skip_if_concurrent_guard_returns_true_exits_cleanly,
+    test_skip_if_concurrent_guard_returns_false_proceeds
+  - All 1137 tests pass, mypy clean (pre-existing issues in silver only), ruff clean for changed files
+
 ## In Progress
 
 
