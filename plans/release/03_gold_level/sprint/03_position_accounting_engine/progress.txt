@@ -2,10 +2,28 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### accounting_engine (2026-02-04)
+- Created `src/prediction_data/gold/accounting.py` with `PositionState` dataclass
+  and `FillResult` result type.
+- Fields: wallet, platform, market_id, outcome_id, qty, avg_cost, cost_basis_usd, last_fill_ts.
+- Implemented `apply_fill(side, qty_delta, price, fees, ts)` method with:
+  - Buy logic: weighted average cost = (old_qty * old_avg_cost + delta * price) / new_qty
+  - Sell logic: realized_pnl = qty * (price - avg_cost) - fees, avg_cost unchanged
+  - Position closing (qty -> 0): emits final PnL, FillResult.closed = True
+  - Position flipping (long -> short via oversized sell): splits into close + open
+  - Short position support: negative qty, symmetric PnL computation
+- 27 unit tests in `tests/test_gold_accounting.py` covering:
+  - Basic open/close, multiple buys, partial sells, exact close, breakeven
+  - Position flip long->short and short->long
+  - Fees on sells, partial sells, flips, and buys (cost_basis impact)
+  - Complex multi-fill sequences with cumulative PnL tracking
+  - Edge cases: small quantities, price at 0, price at 1
+  - Input validation: invalid side, non-positive qty_delta
+- All 27 tests pass. mypy strict mode clean. ruff clean.
 
 ## In Progress
 
@@ -14,3 +32,9 @@
 
 
 ## Notes
+- Next priority: trade_to_fills (fill_splitter) - depends on accounting_engine being done.
+- The accounting engine supports short positions (negative qty) which arise from flips.
+  The fill_splitter will need to map Silver trade rows to fill events that feed into this.
+- PositionState is mutable by design - it accumulates state across fills for a given
+  wallet/market/outcome. The batch_processor will maintain a dict of PositionState objects
+  keyed by (wallet, platform, market_id, outcome_id).

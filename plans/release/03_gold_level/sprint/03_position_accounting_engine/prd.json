@@ -11,7 +11,7 @@
             "Handle position flipping (long → short via oversized sell): split into close + open",
             "Write comprehensive unit tests with known trade sequences and expected PnL values"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "trade_to_fills",
