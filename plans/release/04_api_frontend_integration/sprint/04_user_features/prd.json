@@ -236,7 +236,7 @@
       "Add optimistic updates for instant UI feedback",
       "Handle 401 errors (redirect to login)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Tracked Traders Integration",

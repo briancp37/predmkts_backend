@@ -73,6 +73,18 @@
   - Consistent error response format across all user feature endpoints
   - Type checks pass (mypy), all 1441 tests pass
 
+- 2026-02-05: Frontend Watchlist Integration
+  - Updated web/src/hooks/use-watchlist.ts to call FastAPI /api/v1/watchlist endpoints
+  - Updated fetchWatchlist() to use apiRequest() from lib/api/client.ts with Bearer token auth
+  - Updated addToWatchlist() to POST /api/v1/watchlist using apiRequest()
+  - Updated removeFromWatchlist() to DELETE /api/v1/watchlist/{market_id} (handles 204 No Content)
+  - Updated WatchlistItem interface to match new backend schema (marketQuestion, currentPrice, priceChange24h, resolved)
+  - Derived marketIds array from items for backward compatibility with markets page
+  - Preserved optimistic updates for instant UI feedback
+  - Handles 401 errors gracefully (returns empty watchlist for unauthenticated users)
+  - Updated hooks/index.ts exports (removed obsolete AddWatchlistResponse, RemoveWatchlistResponse)
+  - No new type errors introduced (pre-existing type errors in codebase remain)
+
 ## In Progress
 
 ## Blockers

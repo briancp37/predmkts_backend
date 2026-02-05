@@ -41,8 +41,6 @@ export {
   useRemoveFromWatchlist,
   type WatchlistItem,
   type WatchlistResponse,
-  type AddWatchlistResponse,
-  type RemoveWatchlistResponse,
 } from './use-watchlist';
 
 // Tags hooks (PRD #5)
