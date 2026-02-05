@@ -49,7 +49,7 @@
             "Include fields: wallet, platform, market_id, outcome_id, qty, avg_cost, cost_basis_usd, last_fill_ts, first_open_ts",
             "Write integration test: process trades → verify position_state reflects correct current positions"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "batch_processor",

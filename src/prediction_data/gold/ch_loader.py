@@ -54,6 +54,10 @@ def _get_table_columns(table_name: str) -> list[str]:
         from prediction_data.gold.ledger import LEDGER_COLUMNS
 
         cols = LEDGER_COLUMNS
+    elif table_name == "wallet_position_state":
+        from prediction_data.gold.position_state import POSITION_STATE_COLUMNS
+
+        cols = POSITION_STATE_COLUMNS
     else:
         raise ValueError(
             f"Unknown Gold table: {table_name}. "
@@ -71,6 +75,7 @@ ALL_GOLD_TABLES: list[str] = [
     "wallet_mtm_daily",
     "wallet_position_snapshot_daily",
     "wallet_position_ledger",
+    "wallet_position_state",
 ]
 
 

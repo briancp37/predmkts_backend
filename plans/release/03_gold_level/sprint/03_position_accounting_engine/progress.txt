@@ -86,6 +86,48 @@
 - All 37 tests pass. mypy strict mode clean. ruff clean.
 - Full test suite: 1238 tests pass (no regressions).
 
+### position_state (2026-02-04)
+- Created `docker/clickhouse/init/018_wallet_position_state.sql`:
+  - ReplacingMergeTree(last_fill_ts) engine, ORDER BY (wallet, platform, market_id, outcome_id).
+  - Fields: wallet, platform, market_id, outcome_id, qty, avg_cost, cost_basis_usd,
+    last_fill_ts (DateTime64(6, 'UTC')), first_open_ts (DateTime64(6, 'UTC')).
+  - TTL 90 days based on last_fill_ts.
+- Created `src/prediction_data/gold/position_state.py` with:
+  - `POSITION_STATE_SCHEMA` (PyArrow): 9 fields matching the ClickHouse DDL.
+    Timestamps stored as microsecond UTC.
+  - `POSITION_STATE_COLUMNS`: ordered column name list for ClickHouse insert compatibility.
+  - `positions_to_arrow(positions)`: converts a dict of PositionState objects to a PyArrow
+    Table. Includes all positions (open and closed) so ReplacingMergeTree can collapse stale
+    rows. Skips positions with no last_fill_ts (never filled).
+  - `write_position_states(positions, clickhouse_client, dry_run)`: converts positions to
+    arrow and inserts into ClickHouse wallet_position_state table. Supports dry_run mode.
+  - `read_position_states(clickhouse_client)`: reads current open positions from ClickHouse
+    using FINAL keyword and qty != 0 filter. Returns dict of PositionState objects keyed by
+    (wallet, platform, market_id, outcome_id). Used by batch_processor to load existing state.
+- Added `first_open_ts` field to `PositionState` dataclass in `accounting.py`:
+  - Set when a position is first opened (qty transitions from 0 to nonzero).
+  - Cleared (set to None) when position is closed (qty goes to 0).
+  - Reset to the flip timestamp on position flips (close + open in opposite direction).
+  - Unchanged on subsequent fills to an existing open position.
+- Registered `wallet_position_state` in `src/prediction_data/gold/ch_loader.py`:
+  - Added to `_get_table_columns()` lazy loader and `ALL_GOLD_TABLES` list.
+- 36 unit tests in `tests/test_gold_position_state.py` covering:
+  - Schema: field count, column names, timestamp types
+  - positions_to_arrow: empty, single open, closed included, unfilled skipped, multiple,
+    schema match
+  - write_position_states: empty, dry_run, CH insert (mocked), data match, unfilled skipped
+  - read_position_states: empty, reads open positions, FINAL + qty filter in query, multiple
+  - first_open_ts tracking: set on open, unchanged on subsequent fills, unchanged on partial
+    sell, cleared on close, reset on reopen, reset on flip, short position
+  - Integration with ledger: ledger → position_state round-trip, closed positions, full
+    trade → fills → ledger → position_state pipeline
+  - Downstream compatibility: fields present for wallet_mtm, wallet_position_snapshot,
+    arrow-to-pylist CH insert format
+  - Edge cases: small quantities, price boundaries, multiple outcomes same market,
+    negative qty short positions
+- All 36 tests pass. mypy strict mode clean. ruff clean.
+- Full test suite: 1274 tests pass (no regressions).
+
 ## In Progress
 
 
@@ -93,9 +135,10 @@
 
 
 ## Notes
-- Next priority: position_state — ClickHouse DDL for wallet_position_state and the write
-  logic to upsert current positions after processing fills. This is needed by wallet_mtm.py
-  and wallet_position_snapshot.py which already read from it.
+- Next priority: batch_processor — orchestrator that reads Silver trades, loads existing
+  position state from ClickHouse via read_position_states(), processes through fill_splitter
+  and ledger, then writes ledger via LedgerWriter.flush() and position state via
+  write_position_states().
 - The Fill dataclass is frozen (immutable) by design. The batch_processor will create fills
   via trades_to_fills() and iterate through them to feed the accounting engine.
 - fees_usd is set to 0.0 for all fills. Polymarket's Silver trades schema does not include
@@ -107,3 +150,6 @@
 - build_ledger_for_day() is the main integration point: it takes sorted fills and a positions
   dict, processes everything through the accounting engine, and returns a LedgerWriter ready
   for flush(). The batch_processor (next sprint category) will call this function.
+- Closed positions (qty=0) are written to ClickHouse so that ReplacingMergeTree can
+  overwrite stale open rows. Downstream queries use WHERE qty != 0 to exclude them.
+- read_position_states() uses FINAL to get deduplicated results from ReplacingMergeTree.

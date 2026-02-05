@@ -41,6 +41,7 @@ class PositionState:
     avg_cost: float = 0.0
     cost_basis_usd: float = 0.0
     last_fill_ts: datetime | None = None
+    first_open_ts: datetime | None = None
 
     @property
     def is_open(self) -> bool:
@@ -78,6 +79,10 @@ class PositionState:
             raise ValueError(msg)
 
         self.last_fill_ts = ts
+
+        # Track when the position was first opened.
+        if self.qty == 0.0:
+            self.first_open_ts = ts
 
         # Convert to signed delta: buys increase qty, sells decrease.
         signed_delta = qty_delta if side == "buy" else -qty_delta
@@ -137,6 +142,7 @@ class PositionState:
 
             if closed:
                 self.cost_basis_usd = 0.0
+                self.first_open_ts = None
             else:
                 self.cost_basis_usd = abs(self.qty) * self.avg_cost
 
@@ -155,6 +161,7 @@ class PositionState:
             self.qty = -remainder
         self.avg_cost = price
         self.cost_basis_usd = remainder * price
+        self.first_open_ts = self.last_fill_ts
 
         return FillResult(realized_pnl=close_pnl, closed=False)
 
