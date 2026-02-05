@@ -2,9 +2,28 @@
 # Release: 02_silver_level
 # Created: 2026-02-04
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
+
+### cli_concurrency_guard — all 7 steps (2026-02-04)
+Added ECS concurrency guard to `silver catchup` and `silver maintain` CLI commands:
+1. Added `--skip-if-concurrent` flag to `silver catchup` in silver.py, following the
+   same pattern as Bronze `backfill catchup`.
+2. Entity-scoped concurrency filter: `silver-{platform}-{entity}` (e.g. `silver-polymarket-trades`)
+   so different entity types CAN run concurrently but the SAME entity type CANNOT overlap.
+3. `should_skip_concurrent()` is the ABSOLUTE FIRST operation in `_run_catchup()` — placed
+   before all imports, S3Client construction, state store load, manifest discovery, and
+   markets reference load. A skipped invocation costs only ECS cold start + one API call.
+4. On concurrent detection: prints info message (not warning) and exits code 0.
+5. Added `--skip-if-concurrent` to `silver maintain` command as well, with filter
+   string `silver-maintain`. Guard runs before any Glue/catalog operations.
+6. Added 7 unit tests in test_silver_cli.py:
+   - TestCatchupConcurrencyGuard: guard returns True exits cleanly, guard returns
+     False proceeds, entity-scoped filter verified, without flag guard not called
+   - TestMaintainConcurrencyGuard: guard returns True exits cleanly, guard returns
+     False proceeds, without flag guard not called
+7. mypy and ruff: no new errors introduced (all pre-existing). 1281 tests passing.
 
 ### catchup_noop_optimization — steps 1, 2 (2026-02-04)
 Verified from code committed in 3d03e41:

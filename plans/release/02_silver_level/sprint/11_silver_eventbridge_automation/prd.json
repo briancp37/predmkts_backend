@@ -3,15 +3,15 @@
         "category": "cli_concurrency_guard",
         "description": "Add ECS concurrency guard to silver catchup CLI so EventBridge can fire frequently without overlapping runs — the guard must be the very first check (before any S3 calls) to minimize cost of skipped invocations",
         "steps": [
-            "Add --skip-if-concurrent flag to the `silver catchup` command in silver.py, following the same pattern used by Bronze backfill catchup (see cli/main.py backfill_catchup --skip-if-concurrent)",
-            "Derive an entity-scoped concurrency filter string from --platform and --entity args (e.g. 'silver-polymarket-trades') so that different entity types CAN run concurrently but the SAME entity type CANNOT overlap — this is critical because EventBridge will fire every 10 min and a slow trades run must not block markets/events",
-            "Place the should_skip_concurrent() call as the ABSOLUTE FIRST operation in _run_catchup() — before state store load, manifest discovery, markets reference load, or any S3/Glue calls — a skipped run should cost only the ECS cold start (~30s) plus one ECS API call, nothing more",
-            "When a concurrent run is detected, log a structured info message (not warning — this is normal expected behavior under near-continuous scheduling) and exit with code 0",
-            "Add --skip-if-concurrent flag to the `silver maintain` command as well — daily compaction and weekly full maintenance should not overlap with each other or with a long-running catchup",
-            "Add unit tests: verify should_skip_concurrent is called with the correct entity-scoped filter string, verify clean exit on concurrent detection, verify normal proceed when no concurrent run, verify maintain also respects the flag",
-            "Run mypy and ruff on all changed files"
+            "[DONE] Add --skip-if-concurrent flag to the `silver catchup` command in silver.py, following the same pattern used by Bronze backfill catchup (see cli/main.py backfill_catchup --skip-if-concurrent)",
+            "[DONE] Derive an entity-scoped concurrency filter string from --platform and --entity args (e.g. 'silver-polymarket-trades') so that different entity types CAN run concurrently but the SAME entity type CANNOT overlap — this is critical because EventBridge will fire every 10 min and a slow trades run must not block markets/events",
+            "[DONE] Place the should_skip_concurrent() call as the ABSOLUTE FIRST operation in _run_catchup() — before state store load, manifest discovery, markets reference load, or any S3/Glue calls — a skipped run should cost only the ECS cold start (~30s) plus one ECS API call, nothing more",
+            "[DONE] When a concurrent run is detected, log a structured info message (not warning — this is normal expected behavior under near-continuous scheduling) and exit with code 0",
+            "[DONE] Add --skip-if-concurrent flag to the `silver maintain` command as well — daily compaction and weekly full maintenance should not overlap with each other or with a long-running catchup",
+            "[DONE] Add unit tests: verify should_skip_concurrent is called with the correct entity-scoped filter string, verify clean exit on concurrent detection, verify normal proceed when no concurrent run, verify maintain also respects the flag",
+            "[DONE] Run mypy and ruff on all changed files"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "catchup_noop_optimization",

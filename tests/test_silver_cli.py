@@ -901,3 +901,179 @@ class TestCatchup:
         assert result.exit_code == 0
         mock_batch.assert_awaited_once()
         mock_chunked.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Test: --skip-if-concurrent concurrency guard
+# ---------------------------------------------------------------------------
+
+_ECS_GUARD = "prediction_data.core.ecs_guard.should_skip_concurrent"
+
+
+class TestCatchupConcurrencyGuard:
+    def test_skip_if_concurrent_guard_returns_true_exits_cleanly(self) -> None:
+        """When guard returns True, catchup exits 0 with message and does no S3 work."""
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+        ):
+            mock_guard.return_value = True
+            result = runner.invoke(
+                app,
+                [
+                    "catchup",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--skip-if-concurrent",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        assert "Concurrent task detected" in result.output
+        assert "silver-polymarket-trades" in result.output
+        mock_guard.assert_called_once_with("silver-polymarket-trades")
+
+    def test_skip_if_concurrent_guard_returns_false_proceeds(self) -> None:
+        """When guard returns False, catchup proceeds normally."""
+        fake_state = FakeStateStoreWithDates(latest_date="2024-06-15")
+
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=[]),
+            patch(_STATE, return_value=fake_state),
+        ):
+            mock_guard.return_value = False
+            result = runner.invoke(
+                app,
+                [
+                    "catchup",
+                    "--platform", "polymarket",
+                    "--entity", "trades",
+                    "--skip-if-concurrent",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_guard.assert_called_once_with("silver-polymarket-trades")
+        # Proceeded past the guard — should show normal output
+        assert "Concurrent task detected" not in result.output
+
+    def test_skip_if_concurrent_entity_scoped_filter(self) -> None:
+        """Different platform/entity combos produce different filter strings."""
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+        ):
+            mock_guard.return_value = True
+            result = runner.invoke(
+                app,
+                [
+                    "catchup",
+                    "--platform", "polymarket",
+                    "--entity", "markets",
+                    "--skip-if-concurrent",
+                ],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_guard.assert_called_once_with("silver-polymarket-markets")
+
+    def test_catchup_without_flag_does_not_call_guard(self) -> None:
+        """Without --skip-if-concurrent, the guard is never invoked."""
+        fake_state = FakeStateStoreWithDates(latest_date="2024-06-15")
+
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=[]),
+            patch(_STATE, return_value=fake_state),
+        ):
+            result = runner.invoke(
+                app,
+                ["catchup", "--platform", "polymarket", "--entity", "trades"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_guard.assert_not_called()
+
+
+class TestMaintainConcurrencyGuard:
+    def test_skip_if_concurrent_guard_returns_true_exits_cleanly(self) -> None:
+        """When guard returns True, maintain exits 0 with message and does no Glue work."""
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+        ):
+            mock_guard.return_value = True
+            result = runner.invoke(
+                app,
+                ["maintain", "--skip-if-concurrent"],
+            )
+
+        assert result.exit_code == 0
+        assert "Concurrent task detected" in result.output
+        assert "silver-maintain" in result.output
+        mock_guard.assert_called_once_with("silver-maintain")
+
+    def test_skip_if_concurrent_guard_returns_false_proceeds(self) -> None:
+        """When guard returns False, maintain proceeds to run maintenance."""
+        fake_result = MagicMock(
+            errors=[],
+            tables_processed=0,
+            duration_seconds=0.1,
+            compaction_results=[],
+            expiration_results=[],
+            orphan_results=[],
+        )
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(
+                "prediction_data.silver.maintenance.run_all_maintenance",
+                return_value=fake_result,
+            ),
+        ):
+            mock_guard.return_value = False
+            result = runner.invoke(
+                app,
+                ["maintain", "--skip-if-concurrent"],
+            )
+
+        assert result.exit_code == 0
+        mock_guard.assert_called_once_with("silver-maintain")
+        assert "Concurrent task detected" not in result.output
+
+    def test_maintain_without_flag_does_not_call_guard(self) -> None:
+        """Without --skip-if-concurrent, the guard is never invoked."""
+        fake_result = MagicMock(
+            errors=[],
+            tables_processed=0,
+            duration_seconds=0.1,
+            compaction_results=[],
+            expiration_results=[],
+            orphan_results=[],
+        )
+        with (
+            patch(_LOGGING),
+            patch(_ECS_GUARD, new_callable=AsyncMock) as mock_guard,
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(
+                "prediction_data.silver.maintenance.run_all_maintenance",
+                return_value=fake_result,
+            ),
+        ):
+            result = runner.invoke(
+                app,
+                ["maintain"],
+            )
+
+        assert result.exit_code == 0
+        mock_guard.assert_not_called()

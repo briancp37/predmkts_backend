@@ -491,6 +491,13 @@ def catchup(
             help="Skip quality checks during processing.",
         ),
     ] = False,
+    skip_if_concurrent: Annotated[
+        bool,
+        typer.Option(
+            "--skip-if-concurrent",
+            help="Check ECS for concurrent tasks and skip if one is already running.",
+        ),
+    ] = False,
 ) -> None:
     """Catch up Silver processing to present.
 
@@ -524,6 +531,7 @@ def catchup(
             dry_run=dry_run,
             force_reprocess=force_reprocess,
             skip_quality_checks=skip_quality_checks,
+            skip_if_concurrent=skip_if_concurrent,
         )
     )
 
@@ -537,8 +545,22 @@ async def _run_catchup(
     dry_run: bool,
     force_reprocess: bool,
     skip_quality_checks: bool,
+    skip_if_concurrent: bool = False,
 ) -> None:
     """Auto-detect latest processed date and catch up to present."""
+    # Concurrency guard — MUST be the absolute first check, before any
+    # S3, Glue, or state store calls, so a skipped invocation costs only
+    # the ECS cold start plus one ECS API call.
+    if skip_if_concurrent:
+        from prediction_data.core.ecs_guard import should_skip_concurrent
+
+        concurrency_filter = f"silver-{platform}-{entity}"
+        if await should_skip_concurrent(concurrency_filter):
+            typer.echo(
+                f"Concurrent task detected for {concurrency_filter}, exiting."
+            )
+            return
+
     from prediction_data.silver.catalog import get_catalog
     from prediction_data.silver.discovery import (
         CATALOG_ENTITIES,
@@ -1056,6 +1078,13 @@ def maintain(
             help="Preview all operations without making changes.",
         ),
     ] = False,
+    skip_if_concurrent: Annotated[
+        bool,
+        typer.Option(
+            "--skip-if-concurrent",
+            help="Check ECS for concurrent tasks and skip if one is already running.",
+        ),
+    ] = False,
 ) -> None:
     """Run maintenance across all Silver Iceberg tables.
 
@@ -1070,10 +1099,22 @@ def maintain(
       - All:    prediction-data silver maintain
     """
     from prediction_data.core.logging import configure_logging
-    from prediction_data.silver.catalog import get_catalog
-    from prediction_data.silver.maintenance import run_all_maintenance
 
     configure_logging()
+
+    # Concurrency guard — before any Glue/catalog operations
+    if skip_if_concurrent:
+        from prediction_data.core.ecs_guard import should_skip_concurrent
+
+        concurrency_filter = "silver-maintain"
+        if asyncio.run(should_skip_concurrent(concurrency_filter)):
+            typer.echo(
+                f"Concurrent task detected for {concurrency_filter}, exiting."
+            )
+            return
+
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import run_all_maintenance
 
     # Resolve operations
     ops = frozenset(operations) if operations else frozenset(_VALID_OPERATIONS)
