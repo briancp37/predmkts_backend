@@ -33,6 +33,13 @@
   - Updated tests in test_backfill.py, test_e2e_ingestion.py, and test_failure_recovery.py to use CLOB mocks
   - All 1321 tests pass, mypy reports no type errors
 
+- [2026-02-05] validation: Validated changes and verified Bronze layer health
+  - Ran pytest: 1321 tests pass, 60 deselected (integration tests)
+  - Ran mypy: No issues found in 61 source files
+  - Verified `polymarket-trades` command is no longer in `prediction-data ingest --help` output
+  - Ran `prediction-data status coverage` - command works correctly, shows Bronze entities with data
+  - CLI commands (ingest, backfill, status, silver, gold) all functional
+
 ## In Progress
 
 

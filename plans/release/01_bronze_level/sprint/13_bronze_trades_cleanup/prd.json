@@ -64,6 +64,6 @@
             "Run prediction-data status coverage to verify Bronze entities still work",
             "Verify order_filled, markets, and events ingestion still functions correctly"
         ],
-        "passes": false
+        "passes": true
     }
 ]
