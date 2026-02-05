@@ -100,7 +100,7 @@
       "Include trader address, side, price, amount, outcome name",
       "Return list of TradeResponse with pagination"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets/{id}/price-history Endpoint",

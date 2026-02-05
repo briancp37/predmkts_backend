@@ -4,8 +4,17 @@ from clickhouse_connect.driver.client import Client
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
-from prediction_data.api.markets.schemas import MarketListResponse, MarketResponse
-from prediction_data.api.markets.service import get_market_by_id, get_markets
+from prediction_data.api.markets.schemas import (
+    MarketListResponse,
+    MarketResponse,
+    TradeListResponse,
+    TradeResponse,
+)
+from prediction_data.api.markets.service import (
+    get_market_by_id,
+    get_market_trades,
+    get_markets,
+)
 
 router = APIRouter()
 
@@ -78,8 +87,73 @@ async def get_market(
     return MarketResponse.model_validate(market)
 
 
+@router.get("/{market_id}/trades", response_model=TradeListResponse)
+async def list_market_trades(
+    market_id: str = Path(
+        ...,
+        description="Market identifier (can be internal ID, polymarketId, or slug)",
+    ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    startDate: str | None = Query(
+        None,
+        description="Filter trades after this date (YYYY-MM-DD format)",
+        alias="startDate",
+    ),
+    endDate: str | None = Query(
+        None,
+        description="Filter trades before this date (YYYY-MM-DD format)",
+        alias="endDate",
+    ),
+    client: Client = Depends(get_clickhouse_client),
+) -> TradeListResponse:
+    """Get trades for a specific market.
+
+    Returns a paginated list of trades for the specified market. Trades are
+    ordered by timestamp (most recent first).
+
+    The market_id can be any of:
+    - Internal market ID (platform_market_id)
+    - Polymarket ID (same as platform_market_id for Polymarket markets)
+    - Market slug (URL-friendly identifier)
+
+    - **limit**: Maximum number of trades to return (1-1000, default 100)
+    - **offset**: Number of trades to skip for pagination
+    - **startDate**: Filter trades after this date (inclusive)
+    - **endDate**: Filter trades before this date (inclusive)
+    """
+    # First verify the market exists and resolve its ID
+    market = await get_market_by_id(client, market_id)
+    if market is None:
+        raise HTTPException(status_code=404, detail=f"Market not found: {market_id}")
+
+    # Use the resolved market ID for querying trades
+    resolved_market_id = market["id"]
+
+    trades, total = await get_market_trades(
+        client,
+        resolved_market_id,
+        limit=limit,
+        offset=offset,
+        start_date=startDate,
+        end_date=endDate,
+    )
+
+    # Convert dicts to TradeResponse models
+    items = [TradeResponse.model_validate(t) for t in trades]
+
+    # Calculate page number (1-indexed)
+    page = (offset // limit) + 1 if limit > 0 else 1
+
+    return TradeListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+    )
+
+
 # Future endpoints:
 # - GET /markets/advanced (with CLOB data)
 # - GET /markets/screener (time-based filtering)
-# - GET /markets/{id}/trades (market trades)
 # - GET /markets/{id}/price-history (price history for charting)

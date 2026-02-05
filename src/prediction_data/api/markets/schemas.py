@@ -81,8 +81,17 @@ class TradeResponse(BaseModel):
     price: float
     amount: float
     usdValue: float
-    txHash: str
+    txHash: str | None = None
     timestamp: str
+
+
+class TradeListResponse(BaseModel):
+    """Paginated trade list response."""
+
+    items: list[TradeResponse]
+    total: int
+    page: int
+    limit: int
 
 
 class PriceHistoryPoint(BaseModel):

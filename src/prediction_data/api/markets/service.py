@@ -285,6 +285,136 @@ async def get_market_by_id(
     }
 
 
+async def get_market_trades(
+    client: Client,
+    market_id: str,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch trades for a market from ClickHouse.
+
+    Queries the wallet_position_ledger table for all trades associated with
+    a given market. Trades are returned in reverse chronological order
+    (most recent first).
+
+    Args:
+        client: ClickHouse client.
+        market_id: Market identifier (platform_market_id).
+        limit: Maximum number of results (default 100, max 1000).
+        offset: Offset for pagination.
+        start_date: Filter trades after this date (YYYY-MM-DD format).
+        end_date: Filter trades before this date (YYYY-MM-DD format).
+
+    Returns:
+        Tuple of (list of trade dicts formatted for TradeResponse, total count).
+    """
+    # Build WHERE conditions
+    conditions: list[str] = ["l.market_id = {market_id:String}"]
+    params: dict[str, Any] = {"market_id": market_id}
+
+    if start_date:
+        conditions.append("l.ts >= {start_date:DateTime64(6, 'UTC')}")
+        params["start_date"] = start_date
+
+    if end_date:
+        conditions.append("l.ts <= {end_date:DateTime64(6, 'UTC')}")
+        params["end_date"] = end_date
+
+    where_clause = " AND ".join(conditions)
+
+    # Build pagination with max limit clamping
+    pagination_clause, pagination_params = build_pagination(
+        limit=limit, offset=offset, max_limit=1000
+    )
+    params.update(pagination_params)
+
+    # Get total count first
+    count_query = f"""
+        SELECT COUNT(*)
+        FROM prediction_gold.wallet_position_ledger l
+        WHERE {where_clause}
+    """
+    total = await execute_query_count(count_query, params, client=client)
+
+    if total == 0:
+        return [], 0
+
+    # Get trades with outcome name from dim_outcome
+    trades_query = f"""
+        SELECT
+            l.ts,
+            l.wallet,
+            l.market_id,
+            l.outcome_id,
+            l.side,
+            l.qty_delta,
+            l.price,
+            l.fees_usd,
+            o.outcome_label,
+            o.side AS outcome_side
+        FROM prediction_gold.wallet_position_ledger l
+        LEFT JOIN prediction_gold.dim_outcome o
+            ON o.platform = l.platform
+            AND o.market_id = l.market_id
+            AND o.outcome_id = l.outcome_id
+        WHERE {where_clause}
+        ORDER BY l.ts DESC
+        {pagination_clause}
+    """
+    trade_rows = await execute_query(trades_query, params, client=client)
+
+    if not trade_rows:
+        return [], total
+
+    # Format trades for TradeResponse
+    results: list[dict[str, Any]] = []
+    for idx, row in enumerate(trade_rows):
+        # Generate a synthetic ID from timestamp + wallet + market + outcome
+        ts = row.get("ts")
+        ts_str = ""
+        if ts:
+            if hasattr(ts, "isoformat"):
+                ts_str = ts.isoformat()
+            else:
+                ts_str = str(ts)
+
+        # Generate unique ID for the trade
+        trade_id = f"{row['market_id']}_{row['wallet']}_{ts_str}_{idx + offset}"
+
+        # Determine outcome name from outcome_label or fallback to side
+        outcome_name = row.get("outcome_label") or row.get("outcome_side") or "Unknown"
+
+        # Map side to BUY/SELL
+        side_raw = str(row.get("side", "")).upper()
+        side = "BUY" if side_raw in ("BUY", "LONG") else "SELL"
+
+        # Calculate USD value (qty * price)
+        qty = float(row.get("qty_delta", 0))
+        price = float(row.get("price", 0))
+        usd_value = abs(qty * price)
+
+        results.append(
+            {
+                "id": trade_id,
+                "traderAddress": row.get("wallet", ""),
+                "marketId": row.get("market_id", ""),
+                "outcomeId": row.get("outcome_id", ""),
+                "outcomeName": outcome_name,
+                "side": side,
+                "price": price,
+                "amount": abs(qty),
+                "usdValue": usd_value,
+                "txHash": None,  # Not available in wallet_position_ledger
+                "timestamp": ts_str,
+            }
+        )
+
+    return results, total
+
+
 def _parse_tokens_to_outcomes(
     market_id: str, tokens_json: str | None
 ) -> list[dict[str, Any]]:

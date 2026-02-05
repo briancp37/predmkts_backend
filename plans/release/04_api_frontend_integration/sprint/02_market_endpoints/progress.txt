@@ -61,6 +61,29 @@
 - All 1441 tests pass (pytest)
 - Note: CLOB integration (include_clob param) deferred to CLOB API Client implementation
 
+### 2026-02-05: GET /markets/{id}/trades Endpoint
+- Implemented `get_market_trades()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse wallet_position_ledger table for trades by market_id
+  - LEFT JOIN to dim_outcome for outcome labels
+  - Supports filters: startDate, endDate (YYYY-MM-DD format)
+  - Returns paginated results ordered by timestamp DESC (most recent first)
+  - Generates synthetic trade IDs from market_id + wallet + timestamp
+  - Maps BUY/SELL side from ledger data
+  - Calculates usdValue from qty * price
+- Implemented `GET /markets/{id}/trades` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Path parameter: market_id (resolved via get_market_by_id for flexible ID matching)
+  - Query params: limit (1-1000, default 100), offset, startDate, endDate
+  - Returns TradeListResponse with items, total, page, limit
+  - Returns 404 HTTPException if market not found
+  - Full OpenAPI documentation with descriptions
+- Updated schemas.py:
+  - Made TradeResponse.txHash optional (str | None) since wallet_position_ledger doesn't contain transaction hashes
+  - Added TradeListResponse schema for paginated trade responses
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: txHash field returns None as the wallet_position_ledger table doesn't store transaction hashes.
+  Full txHash support would require querying the Silver Iceberg trades table directly.
+
 ## In Progress
 
 ## Blockers
@@ -69,7 +92,7 @@
 - The ClickHouse client uses clickhouse_connect library (same as Gold layer)
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
-- Next priority: Implement CLOB API client for real-time prices, or GET /markets/{id}/trades
+- Next priority: Implement CLOB API client for real-time prices, or GET /markets/{id}/price-history
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py

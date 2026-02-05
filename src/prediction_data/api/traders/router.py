@@ -3,11 +3,15 @@
 from typing import Literal
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
-from prediction_data.api.traders.schemas import TraderListResponse, TraderResponse
-from prediction_data.api.traders.service import get_traders
+from prediction_data.api.traders.schemas import (
+    TraderDetailResponse,
+    TraderListResponse,
+    TraderResponse,
+)
+from prediction_data.api.traders.service import get_trader_by_address, get_traders
 
 router = APIRouter()
 
@@ -59,7 +63,41 @@ async def list_traders(
     )
 
 
+@router.get("/{address}", response_model=TraderDetailResponse)
+async def get_trader(
+    address: str = Path(
+        ...,
+        description="Wallet address (case-insensitive, normalized to lowercase)",
+        min_length=10,
+    ),
+    client: Client = Depends(get_clickhouse_client),
+) -> TraderDetailResponse:
+    """Get detailed information about a specific trader.
+
+    Returns trader metadata, current open positions with market details,
+    and aggregated PnL statistics.
+
+    - **address**: Wallet address (normalized to lowercase)
+
+    Positions include:
+    - Market question and outcome name
+    - Quantity held and average cost
+    - Current price from latest market marks
+    - Unrealized PnL based on current price vs avg cost
+
+    Returns 404 if the trader is not found.
+    """
+    trader = await get_trader_by_address(client, address)
+
+    if trader is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trader with address '{address}' not found",
+        )
+
+    return TraderDetailResponse.model_validate(trader)
+
+
 # Future endpoints:
 # - GET /traders/smart-scores (smart trader rankings)
-# - GET /traders/{address} (single trader detail with positions)
 # - GET /traders/{address}/trades (trades for a specific trader)

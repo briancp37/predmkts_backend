@@ -38,6 +38,20 @@
   - Returns TraderListResponse with pagination (page calculated from offset/limit)
   - All types pass mypy, all tests pass
 
+- [2026-02-05] GET /traders/{address} Endpoint - Implemented single trader detail with positions
+  - Added GET /traders/{address} endpoint in router.py with path parameter for wallet address
+  - Implemented get_trader_by_address() in service.py with ClickHouse queries
+  - Normalizes wallet address to lowercase for consistent lookups
+  - Queries dim_wallet joined with aggregated wallet_pnl_daily for trader metadata and PnL
+  - Queries wallet_position_state FINAL for current open positions (qty != 0)
+  - Joins positions with dim_market for market question and dim_outcome for outcome names
+  - Joins with market_mark_daily for current prices to calculate unrealized PnL
+  - Positions ordered by absolute value (cost basis) descending
+  - Calculates win rate from wins/(wins+losses) stored in wallet_pnl_daily
+  - Returns TraderDetailResponse with positions list, tradeCount, and winRate
+  - Returns 404 HTTPException if trader not found
+  - All types pass mypy, all tests pass
+
 ## In Progress
 
 ## Blockers

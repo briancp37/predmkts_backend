@@ -67,7 +67,7 @@
       "Return TraderDetailResponse",
       "Return 404 if trader not found"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /traders/{address}/trades Endpoint",
