@@ -161,8 +161,41 @@ Test coverage organized by pipeline flow:
 
 All tests pass. Types check clean (mypy). Full test suite passes (1441 tests).
 
-## In Progress
+### 2026-02-05: Documentation (Category: documentation)
 
+Completed all Gold layer documentation tasks:
+
+**Updated CLAUDE.md:**
+- Updated project overview to include Gold layer (position accounting, PnL, market marks via ClickHouse)
+- Added Gold environment variables: GOLD_BUCKET, CLICKHOUSE_HOST/PORT/USER/PASSWORD/DATABASE
+- Added comprehensive Gold CLI section with all commands and examples
+- Documented Gold S3 path convention: `gold/{table_name}/day={YYYY-MM-DD}/part-000.parquet`
+- Documented scheduled processing (EventBridge): daily-run, ch-load, freshness
+- Listed all Gold tables: dimension tables, fact tables (ledger, position state, marks, PnL)
+- Documented position accounting methodology (average cost basis, realized PnL, position flips)
+- Documented freshness SLAs and state definitions (fresh/stale/broken)
+
+**New documentation file:** `docs/gold-operations-runbook.md`
+
+Comprehensive runbook covering:
+1. **Daily Operations:** daily-run command, execution order, fail-forward behavior
+2. **Scheduled Processing:** EventBridge schedule table with times and commands
+3. **ClickHouse Loading:** ch-load command with lookback parameter
+4. **Position Accounting:** methodology, accounting rules, ClickHouse schemas for ledger and state
+5. **Market Marks:** compute-marks command, computed metrics, schema
+6. **Wallet Metrics:** PnL (all wallets), MTM and snapshots (watchlist only)
+7. **Watchlist Management:** add/remove/list commands
+8. **Backfills and Rebuilds:** rebuild command for independent vs cumulative tables
+9. **On-Demand Snapshots:** compute-snapshot command with chunking
+10. **Freshness Monitoring:** freshness command, SLA thresholds, state definitions
+11. **Dimension Tables:** load-dims command, available dimensions
+12. **Troubleshooting:** common issues, inspecting pipeline runs, data quality metrics
+13. **ClickHouse Schema Reference:** all tables listed with TTL policies
+14. **Environment Requirements:** required variables for Gold operations
+
+All tests pass. Types check clean (mypy). Full test suite passes (1441 tests).
+
+## Status: Complete
 
 ## Blockers/Issues
 
@@ -170,6 +203,6 @@ None
 
 ## Notes
 
-- Four categories now complete: exit_criteria, pnl_reconciliation, data_quality_validation, integration_tests
-- Remaining category: documentation
-- Documentation tasks are lower priority than functional validation
+- All five categories now complete: exit_criteria, pnl_reconciliation, data_quality_validation, integration_tests, documentation
+- Sprint 09 (Validation and Delivery) is complete
+- Full Gold layer documentation available in CLAUDE.md and docs/gold-operations-runbook.md

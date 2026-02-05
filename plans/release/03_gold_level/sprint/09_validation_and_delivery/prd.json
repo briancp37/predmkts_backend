@@ -46,7 +46,7 @@
             "Document the position accounting methodology (average cost basis, per-fill PnL)",
             "Document freshness SLAs and alerting state definitions"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "exit_criteria",

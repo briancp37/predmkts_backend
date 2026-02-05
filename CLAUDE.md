@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Python data pipeline for ingesting prediction market data (Polymarket, Kalshi) into S3 bronze layer and normalizing it into Silver Iceberg tables (Glue Catalog, Parquet/ZSTD, day-partitioned).
+Python data pipeline for ingesting prediction market data (Polymarket, Kalshi) into S3 bronze layer, normalizing it into Silver Iceberg tables (Glue Catalog, Parquet/ZSTD, day-partitioned), and computing Gold aggregations (position accounting, PnL, market marks) served via ClickHouse.
 
 ## Release & Sprint Plans
 
@@ -97,6 +97,12 @@ Detailed endpoint parameters, response schemas, and pagination details are in `d
 | Variable | Required | Description |
 |---|---|---|
 | `BRONZE_BUCKET` | Yes | S3 bucket for bronze layer data |
+| `GOLD_BUCKET` | For Gold | S3 bucket for Gold layer Parquet files |
+| `CLICKHOUSE_HOST` | For Gold | ClickHouse server hostname (default: localhost) |
+| `CLICKHOUSE_PORT` | For Gold | ClickHouse native port (default: 9000) |
+| `CLICKHOUSE_USER` | For Gold | ClickHouse username (default: default) |
+| `CLICKHOUSE_PASSWORD` | For Gold | ClickHouse password (default: empty) |
+| `CLICKHOUSE_DATABASE` | For Gold | ClickHouse database (default: prediction_gold) |
 | `AWS_REGION` | No | AWS region (default: us-east-1) |
 | `KALSHI_API_KEY_ID` | For Kalshi | Kalshi API key ID |
 | `KALSHI_PRIVATE_KEY_PATH` | For Kalshi | Path to Kalshi RSA private key |
@@ -267,13 +273,104 @@ Concurrency is scoped per entity type (`silver-{platform}-{entity}`) so differen
 - Snapshot-supersedes-deltas: for catalog entities (markets, events), a snapshot manifest supersedes earlier delta manifests for the same day.
 - Quality checks: non-null, uniqueness, timestamp range checks run by default; use `--skip-quality-checks` to bypass.
 
+## Gold CLI
+
+```bash
+# Run all daily Gold processing steps (load-dims → process-trades → compute-marks → compute-wallet-metrics)
+prediction-data gold daily-run
+prediction-data gold daily-run --dt 2024-06-15
+prediction-data gold daily-run --dry-run
+
+# Load dimension tables into S3 and ClickHouse
+prediction-data gold load-dims
+prediction-data gold load-dims --table dim_market --dry-run
+
+# Process Silver trades through position accounting pipeline (ledger + position state)
+prediction-data gold process-trades --dt 2024-06-15
+prediction-data gold process-trades --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data gold process-trades --dt 2024-06-15 --force-reprocess --dry-run
+
+# Compute market marks (VWAP, last price, volume) from Silver trades
+prediction-data gold compute-marks --dt 2024-06-15 --platform polymarket
+prediction-data gold compute-marks --start-date 2024-06-01 --end-date 2024-06-30
+
+# Compute wallet PnL daily (aggregated from position ledger)
+prediction-data gold compute-pnl --dt 2024-06-15
+prediction-data gold compute-pnl --start-date 2024-06-01 --end-date 2024-06-30
+
+# Compute wallet MTM daily (watchlist wallets only)
+prediction-data gold compute-mtm --dt 2024-06-15
+
+# Compute wallet position snapshots (watchlist wallets only)
+prediction-data gold compute-position-snapshot --dt 2024-06-15
+
+# Compute all wallet metrics in one command
+prediction-data gold compute-wallet-metrics --dt 2024-06-15
+
+# Load Gold tables from S3 into ClickHouse
+prediction-data gold ch-load --table market_mark_daily --lookback-days 90
+prediction-data gold ch-load --all --lookback-days 90
+
+# On-demand wallet snapshot reconstruction
+prediction-data gold compute-snapshot --wallet 0x123... --start-date 2024-01-01 --end-date 2024-06-30
+
+# Rebuild Gold tables from Silver for a date range
+prediction-data gold rebuild --table market_mark_daily --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data gold rebuild --table wallet_pnl_daily --start-date 2024-06-01 --end-date 2024-06-30 --force
+
+# Display freshness status of all Gold datasets
+prediction-data gold freshness
+
+# Watchlist management
+prediction-data gold watchlist add 0x123...
+prediction-data gold watchlist remove 0x123...
+prediction-data gold watchlist list
+prediction-data gold watchlist list --all  # include inactive
+```
+
+**Scheduled processing (EventBridge):**
+- **daily-run:** midnight UTC — runs all daily processing steps
+- **ch-load:** 00:30 UTC — loads all Gold tables to ClickHouse (90-day lookback)
+- **freshness:** 01:00 UTC — verifies all datasets are within SLA
+
+**Gold tables:**
+- `dim_platform`, `dim_market`, `dim_outcome`, `dim_wallet`, `dim_event`, `dim_category` — dimension tables
+- `wallet_position_ledger` — per-fill position accounting records
+- `wallet_position_state` — current position state per wallet/market/outcome
+- `market_mark_daily` — daily market marks (VWAP, last price, volume, liquidity)
+- `wallet_pnl_daily` — daily realized PnL per wallet (all wallets)
+- `wallet_mtm_daily` — daily mark-to-market per wallet (watchlist only)
+- `wallet_position_snapshot_daily` — daily position snapshots (watchlist only)
+
+**Position accounting methodology:**
+- Average-cost basis: `new_avg_cost = (old_qty * old_avg_cost + qty_delta * price) / new_qty`
+- Realized PnL on close: `pnl = closed_qty * (exit_price - avg_cost) - fees`
+- Position flips: oversized sell splits into close (realize PnL) + open (new direction)
+- Ledger records before/after state snapshots for full audit trail
+
+**Freshness SLAs (seconds):**
+- `market_mark_daily`: 300 (5 min)
+- `wallet_pnl_daily`: 600 (10 min)
+- `wallet_mtm_daily`: 900 (15 min)
+- `wallet_position_snapshot_daily`: 900 (15 min)
+
+Freshness states: `fresh` (within SLA), `stale` (SLA < lag <= 2×SLA), `broken` (lag > 2×SLA or last run failed).
+
+See [`docs/gold-operations-runbook.md`](docs/gold-operations-runbook.md) for full operational procedures.
+
 ## S3 Key Structure
 
+**Bronze:**
 ```
 bronze/{platform}/{entity}/dt={YYYY-MM-DD}/run_id={uuid}/
   ├── part-000.json
   ├── part-001.json
   └── _manifest.json
+```
+
+**Gold:**
+```
+gold/{table_name}/day={YYYY-MM-DD}/part-000.parquet
 ```
 
 ## Data Volumes (Estimates)
