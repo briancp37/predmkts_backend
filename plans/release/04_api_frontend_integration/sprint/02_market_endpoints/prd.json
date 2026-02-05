@@ -125,7 +125,7 @@
       "Create EventResponse schema: id (str), polymarketEventId (str), title (str), description (str | None), slug (str), status (str), category (str | None), markets (list[MarketBase])",
       "Create EventListResponse with items, total, page, limit"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /events Endpoint",
@@ -137,7 +137,7 @@
       "Include associated markets count or basic market info",
       "Return EventListResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /events/{id} Endpoint",
@@ -149,7 +149,7 @@
       "Return EventResponse with nested markets",
       "Return 404 if event not found"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Tags Router Setup",

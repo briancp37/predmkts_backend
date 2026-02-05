@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from prediction_data.api.auth.router import router as auth_router
 from prediction_data.api.clob_client import close_clob_client
+from prediction_data.api.events.router import router as events_router
 from prediction_data.api.markets.router import router as markets_router
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
@@ -52,6 +53,7 @@ app.include_router(
     tracked_traders_router, prefix="/api/v1/tracked-traders", tags=["tracked-traders"]
 )
 app.include_router(trades_router, prefix="/api/v1/trades", tags=["trades"])
+app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
 
 
 @app.get("/health")
