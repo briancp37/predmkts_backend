@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from prediction_data.api.auth.router import router as auth_router
 from prediction_data.api.markets.router import router as markets_router
+from prediction_data.api.traders.router import router as traders_router
 from prediction_data.db.session import create_tables
 
 
@@ -40,6 +41,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(markets_router, prefix="/api/v1/markets", tags=["markets"])
+app.include_router(traders_router, prefix="/api/v1/traders", tags=["traders"])
 
 
 @app.get("/health")

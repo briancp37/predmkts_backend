@@ -8,7 +8,7 @@
       "Register traders router in api/main.py with prefix /api/v1/traders",
       "Add 'traders' tag to router for OpenAPI grouping"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Trader Schemas",

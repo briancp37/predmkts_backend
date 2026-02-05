@@ -1,8 +1,15 @@
 # Sprint 03: Trader Endpoints - Progress
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed
+- [2026-02-05] Traders Router Setup - Created directory structure and registered router
+  - Created src/prediction_data/api/traders/ directory
+  - Created __init__.py, router.py, service.py, schemas.py files
+  - Registered traders router in api/main.py with prefix /api/v1/traders and 'traders' tag
+  - Router follows same pattern as markets router (placeholder structure for endpoints)
+  - Service has stub get_traders() function with proper type hints
+  - Schemas has placeholder TraderBase class
 
 ## In Progress
 
