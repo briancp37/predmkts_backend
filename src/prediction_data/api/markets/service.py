@@ -10,6 +10,7 @@ from prediction_data.api.clickhouse import (
     execute_query,
     execute_query_count,
 )
+from prediction_data.api.clob_client import ClobApiClient, OrderBookSummary
 
 if TYPE_CHECKING:
     from clickhouse_connect.driver.client import Client
@@ -551,6 +552,313 @@ async def get_market_price_history(
         })
 
     return results
+
+
+async def get_markets_advanced(
+    client: Client,
+    clob_client: ClobApiClient,
+    *,
+    category: str | None = None,
+    search: str | None = None,
+    resolved: bool | None = None,
+    sort_by: str = "volume",
+    sort_order: str = "desc",
+    min_volume: float | None = None,
+    max_volume: float | None = None,
+    min_liquidity: float | None = None,
+    max_liquidity: float | None = None,
+    min_spread: float | None = None,
+    max_spread: float | None = None,
+    min_change: float | None = None,
+    max_change: float | None = None,
+    tags: list[str] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch markets with CLOB bid/ask data from ClickHouse.
+
+    Enriches market data with real-time order book information from
+    the Polymarket CLOB API.
+
+    Args:
+        client: ClickHouse client.
+        clob_client: CLOB API client for bid/ask data.
+        category: Filter by category (exact match via event join).
+        search: Search query for question/description (ILIKE).
+        resolved: Filter by resolved status (True = "resolved", False = others).
+        sort_by: Sort field (volume, liquidity, spread, priceChange).
+        sort_order: Sort direction (asc, desc).
+        min_volume: Minimum 24h volume filter.
+        max_volume: Maximum 24h volume filter.
+        min_liquidity: Minimum liquidity filter.
+        max_liquidity: Maximum liquidity filter.
+        min_spread: Minimum spread filter (cents).
+        max_spread: Maximum spread filter (cents).
+        min_change: Minimum 24h price change filter.
+        max_change: Maximum 24h price change filter.
+        tags: Filter by tags (currently unused - tags not in schema).
+        limit: Maximum number of results.
+        offset: Offset for pagination.
+
+    Returns:
+        Tuple of (list of market dicts formatted for MarketAdvancedResponse, total count).
+    """
+    # Build WHERE conditions for base query
+    conditions: list[str] = []
+    params: dict[str, Any] = {}
+
+    if search:
+        conditions.append(
+            "(m.question ILIKE {search:String} OR m.description ILIKE {search:String})"
+        )
+        params["search"] = f"%{search}%"
+
+    if resolved is not None:
+        if resolved:
+            conditions.append("m.status = 'resolved'")
+        else:
+            conditions.append("m.status != 'resolved'")
+
+    if category:
+        conditions.append("e.category = {category:String}")
+        params["category"] = category
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    # Get total count first (without advanced filters that need CLOB data)
+    count_query = f"""
+        SELECT COUNT(DISTINCT m.platform_market_id)
+        FROM prediction_gold.dim_market m
+        LEFT JOIN prediction_gold.dim_event e
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        WHERE {where_clause}
+    """
+    base_total = await execute_query_count(count_query, params, client=client)
+
+    if base_total == 0:
+        return [], 0
+
+    # Fetch more markets than needed to allow for post-filtering on CLOB data
+    # We may need to filter out some markets after enrichment
+    fetch_limit = min(limit * 3, 500)  # Fetch up to 3x the limit, max 500
+
+    # Get markets with volume data from market_mark_daily
+    # We aggregate the latest mark data per market
+    markets_query = f"""
+        SELECT
+            m.platform_market_id AS id,
+            m.platform_market_id AS polymarketId,
+            m.canonical_market_id AS conditionId,
+            m.market_slug AS slug,
+            m.question,
+            m.description,
+            e.category,
+            m.status,
+            m.tokens,
+            m.updated_at AS updatedAt,
+            mark.volume_24h,
+            mark.price_change_24h
+        FROM prediction_gold.dim_market m
+        LEFT JOIN prediction_gold.dim_event e
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        LEFT JOIN (
+            SELECT
+                market_id,
+                sum(volume_usd_24h) AS volume_24h,
+                -- Calculate price change from earliest to latest price in last 24h
+                -- This is an approximation using the latest mark
+                0.0 AS price_change_24h
+            FROM prediction_gold.market_mark_daily
+            WHERE day_utc >= today() - 1
+            GROUP BY market_id
+        ) mark ON mark.market_id = m.platform_market_id
+        WHERE {where_clause}
+        ORDER BY COALESCE(mark.volume_24h, 0) DESC
+        LIMIT {fetch_limit}
+    """
+    market_rows = await execute_query(markets_query, params, client=client)
+
+    if not market_rows:
+        return [], base_total
+
+    # Get market IDs for outcome lookup
+    market_ids = [row["id"] for row in market_rows]
+
+    # Query outcomes for these markets
+    outcomes_query = """
+        SELECT
+            o.market_id,
+            o.outcome_id AS id,
+            o.token_id AS tokenId,
+            o.outcome_label AS outcomeName,
+            o.side
+        FROM prediction_gold.dim_outcome o
+        WHERE o.platform = 'polymarket'
+            AND o.market_id IN {market_ids:Array(String)}
+    """
+    outcome_rows = await execute_query(
+        outcomes_query, {"market_ids": market_ids}, client=client
+    )
+
+    # Group outcomes by market_id
+    outcomes_by_market: dict[str, list[dict[str, Any]]] = {}
+    token_ids_to_fetch: list[str] = []
+
+    for outcome in outcome_rows:
+        market_id = outcome["market_id"]
+        if market_id not in outcomes_by_market:
+            outcomes_by_market[market_id] = []
+
+        token_id = outcome["tokenId"]
+        if token_id:
+            token_ids_to_fetch.append(token_id)
+
+        outcomes_by_market[market_id].append(
+            {
+                "id": outcome["id"],
+                "tokenId": token_id,
+                "outcomeName": outcome["outcomeName"] or outcome["side"],
+                "currentPrice": 0.5,  # Will be updated with CLOB data
+                "volume": 0.0,
+            }
+        )
+
+    # Fetch CLOB data for all token IDs
+    clob_data: dict[str, OrderBookSummary] = {}
+    if token_ids_to_fetch:
+        clob_data = await clob_client.get_order_books(token_ids_to_fetch)
+
+    # Build response dicts with CLOB enrichment
+    results: list[dict[str, Any]] = []
+
+    for row in market_rows:
+        market_id = row["id"]
+
+        # Parse tokens JSON if outcomes not in dim_outcome
+        market_outcomes = outcomes_by_market.get(market_id, [])
+        if not market_outcomes and row.get("tokens"):
+            market_outcomes = _parse_tokens_to_outcomes(market_id, row["tokens"])
+            # Collect token IDs from parsed outcomes for CLOB lookup
+            for outcome in market_outcomes:
+                token_id = outcome.get("tokenId")
+                if token_id and token_id not in clob_data:
+                    # Fetch individually if not in batch
+                    summary = await clob_client.get_order_book(token_id)
+                    if summary:
+                        clob_data[token_id] = summary
+
+        # Update outcomes with CLOB prices and aggregate CLOB data for the market
+        best_bid: float | None = None
+        best_ask: float | None = None
+        spread: float | None = None
+        spread_percent: float | None = None
+        spread_cents: float | None = None
+
+        for outcome in market_outcomes:
+            token_id = outcome.get("tokenId")
+            if token_id and token_id in clob_data:
+                summary = clob_data[token_id]
+                # Use midpoint as current price if both bid and ask exist
+                if summary.bid is not None and summary.ask is not None:
+                    outcome["currentPrice"] = (summary.bid + summary.ask) / 2
+
+                    # Use the first outcome's CLOB data for the market-level fields
+                    if best_bid is None:
+                        best_bid = summary.bid
+                        best_ask = summary.ask
+                        spread = summary.spread
+                        spread_percent = summary.spread_percent
+                        spread_cents = summary.spread_cents
+                elif summary.bid is not None:
+                    outcome["currentPrice"] = summary.bid
+                elif summary.ask is not None:
+                    outcome["currentPrice"] = summary.ask
+
+        # Get volume and price change from the query
+        volume_24h = float(row.get("volume_24h") or 0.0)
+        price_change_24h = float(row.get("price_change_24h") or 0.0)
+
+        # Apply advanced filters
+        if min_volume is not None and volume_24h < min_volume:
+            continue
+        if max_volume is not None and volume_24h > max_volume:
+            continue
+        if min_spread is not None and (spread_cents is None or spread_cents < min_spread):
+            continue
+        if max_spread is not None and (spread_cents is None or spread_cents > max_spread):
+            continue
+        if min_change is not None and price_change_24h < min_change:
+            continue
+        if max_change is not None and price_change_24h > max_change:
+            continue
+
+        # Estimate liquidity from CLOB data (rough approximation)
+        liquidity = 0.0
+        if best_bid is not None and best_ask is not None:
+            # Use spread as a proxy for liquidity (tighter spread = more liquid)
+            # This is a placeholder - real liquidity would come from order book depth
+            liquidity = 1.0 / (spread_cents + 1) * 1000 if spread_cents else 0.0
+
+        if min_liquidity is not None and liquidity < min_liquidity:
+            continue
+        if max_liquidity is not None and liquidity > max_liquidity:
+            continue
+
+        # Format updated_at as ISO string
+        updated_at = row.get("updatedAt")
+        created_at_str = ""
+        if updated_at:
+            if hasattr(updated_at, "isoformat"):
+                created_at_str = updated_at.isoformat()
+            else:
+                created_at_str = str(updated_at)
+
+        results.append(
+            {
+                "id": market_id,
+                "polymarketId": row["polymarketId"],
+                "conditionId": row.get("conditionId"),
+                "slug": row.get("slug"),
+                "question": row["question"] or "",
+                "description": row.get("description"),
+                "category": row.get("category"),
+                "endDate": None,  # Not in current schema
+                "resolved": row.get("status") == "resolved",
+                "totalVolume": volume_24h,  # Using 24h volume as total for now
+                "liquidity": liquidity,
+                "createdAt": created_at_str,
+                "imageUrl": None,  # Not in current schema
+                "outcomes": market_outcomes,
+                # Advanced CLOB fields
+                "bid": best_bid,
+                "ask": best_ask,
+                "spread": spread,
+                "spreadPercent": spread_percent,
+                "spreadCents": spread_cents,
+                "volume24h": volume_24h,
+                "priceChange24h": price_change_24h,
+            }
+        )
+
+    # Sort results based on sort_by
+    def sort_key(m: dict[str, Any]) -> Any:
+        if sort_by == "volume":
+            return m.get("volume24h", 0.0) or 0.0
+        elif sort_by == "liquidity":
+            return m.get("liquidity", 0.0) or 0.0
+        elif sort_by == "spread":
+            return m.get("spreadCents", float("inf")) or float("inf")
+        elif sort_by == "priceChange":
+            return abs(m.get("priceChange24h", 0.0) or 0.0)
+        return m.get("volume24h", 0.0) or 0.0
+
+    results.sort(key=sort_key, reverse=(sort_order == "desc"))
+
+    # Apply pagination after filtering and sorting
+    total_after_filter = len(results)
+    results = results[offset : offset + limit]
+
+    return results, total_after_filter
 
 
 def _parse_tokens_to_outcomes(

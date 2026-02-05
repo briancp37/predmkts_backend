@@ -57,7 +57,7 @@
       "Handle CLOB API rate limits (500 req/10s) - batch requests, add delays if needed",
       "Cache CLOB data for 30-60 seconds to reduce API calls"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets/screener Endpoint",

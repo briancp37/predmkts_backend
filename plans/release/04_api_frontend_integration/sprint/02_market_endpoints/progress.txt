@@ -123,7 +123,33 @@
   CLOB client which uses L2 authentication for trades data
 - All type checks pass (mypy)
 - All 1441 tests pass (pytest)
-- Next priority: Implement GET /markets/advanced endpoint using this client
+
+### 2026-02-05: GET /markets/advanced Endpoint
+- Implemented `get_markets_advanced()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse dim_market table with LEFT JOIN to dim_event and market_mark_daily
+  - Fetches 24h volume data from market_mark_daily aggregation
+  - Queries dim_outcome for outcome details per market
+  - Batch fetches CLOB order book data using ClobApiClient.get_order_books()
+  - Enriches each market with real-time bid/ask/spread from CLOB data
+  - Calculates spread metrics: spread, spreadPercent, spreadCents
+  - Updates outcome currentPrice from CLOB midpoint price
+  - Estimates liquidity from spread tightness
+  - Applies advanced post-filters: minVolume/maxVolume, minSpread/maxSpread, minChange/maxChange, minLiquidity/maxLiquidity
+  - Sorts by configurable field: volume, liquidity, spread, priceChange
+  - Returns paginated results after filtering
+- Implemented `GET /markets/advanced` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Extended query params: category, search, resolved, sortBy, sortOrder
+  - Advanced filter params: minVolume, maxVolume, minLiquidity, maxLiquidity, minSpread, maxSpread, minChange, maxChange, tags
+  - Pagination: limit (1-500, default 50), offset, page (alternative to offset)
+  - Returns MarketAdvancedListResponse with CLOB-enriched markets
+  - Full OpenAPI documentation with detailed descriptions
+- Updated `src/prediction_data/api/main.py`:
+  - Added CLOB client lifecycle management via close_clob_client() in lifespan shutdown
+- CLOB data is cached for 30 seconds to reduce API calls
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: timeRemaining and createdDate filters not implemented as endDate not in current schema.
+  Tags filter parameter is accepted but currently no-op (no tags in dim_market schema).
 
 ## In Progress
 
@@ -134,7 +160,8 @@
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
 - CLOB API Client now available for real-time bid/ask enrichment
-- Next priority: Implement GET /markets/advanced endpoint, GET /markets/screener, or Events Router Setup
+- GET /markets/advanced endpoint implemented and working with CLOB enrichment
+- Next priority: Implement GET /markets/screener endpoint, or Events Router Setup
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py

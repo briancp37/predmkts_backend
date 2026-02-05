@@ -1,10 +1,15 @@
 """Markets API routes."""
 
+from typing import Literal
+
 from clickhouse_connect.driver.client import Client
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
+from prediction_data.api.clob_client import ClobApiClient, get_clob_client
 from prediction_data.api.markets.schemas import (
+    MarketAdvancedListResponse,
+    MarketAdvancedResponse,
     MarketListResponse,
     MarketResponse,
     PriceHistoryPoint,
@@ -17,6 +22,7 @@ from prediction_data.api.markets.service import (
     get_market_price_history,
     get_market_trades,
     get_markets,
+    get_markets_advanced,
 )
 
 router = APIRouter()
@@ -61,6 +67,104 @@ async def list_markets(
         items=items,
         total=total,
         page=page,
+        limit=limit,
+    )
+
+
+@router.get("/advanced", response_model=MarketAdvancedListResponse)
+async def list_markets_advanced(
+    category: str | None = Query(None, description="Filter by category (exact match)"),
+    search: str | None = Query(None, description="Search in question and description"),
+    resolved: bool | None = Query(None, description="Filter by resolved status"),
+    sortBy: Literal["volume", "liquidity", "spread", "priceChange"] = Query(
+        "volume", description="Sort field"
+    ),
+    sortOrder: Literal["asc", "desc"] = Query("desc", description="Sort direction"),
+    minVolume: float | None = Query(None, description="Minimum 24h volume in USD"),
+    maxVolume: float | None = Query(None, description="Maximum 24h volume in USD"),
+    minLiquidity: float | None = Query(None, description="Minimum liquidity"),
+    maxLiquidity: float | None = Query(None, description="Maximum liquidity"),
+    minSpread: float | None = Query(None, description="Minimum spread in cents"),
+    maxSpread: float | None = Query(None, description="Maximum spread in cents"),
+    minChange: float | None = Query(None, description="Minimum 24h price change"),
+    maxChange: float | None = Query(None, description="Maximum 24h price change"),
+    tags: str | None = Query(None, description="Comma-separated tags to filter by"),
+    limit: int = Query(50, ge=1, le=500, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    page: int | None = Query(None, ge=1, description="Page number (alternative to offset)"),
+    client: Client = Depends(get_clickhouse_client),
+    clob_client: ClobApiClient = Depends(get_clob_client),
+) -> MarketAdvancedListResponse:
+    """List markets with real-time CLOB bid/ask data.
+
+    Returns a paginated list of markets enriched with order book data from
+    the Polymarket CLOB API. This endpoint is suitable for advanced filtering
+    and screening use cases.
+
+    **Sort options:**
+    - `volume`: Sort by 24-hour trading volume (default)
+    - `liquidity`: Sort by estimated liquidity
+    - `spread`: Sort by bid-ask spread
+    - `priceChange`: Sort by 24-hour price change magnitude
+
+    **Advanced filters:**
+    - Volume range filters (minVolume, maxVolume)
+    - Liquidity range filters (minLiquidity, maxLiquidity)
+    - Spread range filters in cents (minSpread, maxSpread)
+    - Price change filters (minChange, maxChange)
+
+    **CLOB data fields:**
+    - `bid`: Best bid price (0-1)
+    - `ask`: Best ask price (0-1)
+    - `spread`: Absolute spread (ask - bid)
+    - `spreadPercent`: Spread as percentage of midpoint
+    - `spreadCents`: Spread in cents
+    - `volume24h`: 24-hour trading volume in USD
+    - `priceChange24h`: 24-hour price change
+
+    Note: CLOB data is cached for 30 seconds to reduce API calls.
+    """
+    # Handle page-based pagination
+    effective_offset = offset
+    if page is not None:
+        effective_offset = (page - 1) * limit
+
+    # Parse tags if provided
+    tag_list: list[str] | None = None
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+
+    markets, total = await get_markets_advanced(
+        client,
+        clob_client,
+        category=category,
+        search=search,
+        resolved=resolved,
+        sort_by=sortBy,
+        sort_order=sortOrder,
+        min_volume=minVolume,
+        max_volume=maxVolume,
+        min_liquidity=minLiquidity,
+        max_liquidity=maxLiquidity,
+        min_spread=minSpread,
+        max_spread=maxSpread,
+        min_change=minChange,
+        max_change=maxChange,
+        tags=tag_list,
+        limit=limit,
+        offset=effective_offset,
+    )
+
+    # Convert dicts to MarketAdvancedResponse models
+    items = [MarketAdvancedResponse.model_validate(m) for m in markets]
+
+    # Calculate page number (1-indexed)
+    current_page = (effective_offset // limit) + 1 if limit > 0 else 1
+
+    return MarketAdvancedListResponse(
+        items=items,
+        total=total,
+        page=current_page,
         limit=limit,
     )
 
@@ -243,5 +347,4 @@ async def get_price_history(
 
 
 # Future endpoints:
-# - GET /markets/advanced (with CLOB data)
 # - GET /markets/screener (time-based filtering)
