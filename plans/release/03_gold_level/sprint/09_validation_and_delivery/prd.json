@@ -9,7 +9,7 @@
             "Write integration test: ch-load with lookback → only recent partitions in CH",
             "Write integration test: on-demand compute-snapshot → S3 cached + CH loaded"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "pnl_reconciliation",

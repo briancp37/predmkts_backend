@@ -115,6 +115,52 @@ Test coverage organized by data quality constraint:
 
 All tests pass. Types check clean (mypy). Full test suite passes (1419 tests).
 
+### 2026-02-05: Integration Tests (Category: integration_tests)
+
+Implemented comprehensive end-to-end integration tests for the full Gold pipeline:
+
+**New test file:** `tests/test_gold_integration.py` (22 tests)
+
+Test coverage organized by pipeline flow:
+
+1. **Silver → Ledger + Position State (TestSilverToLedgerIntegration):**
+   - Single trade produces correct ledger entries (2 fills: maker + taker)
+   - Multiple trades preserve timestamp ordering through pipeline
+   - Position state updated correctly with weighted average cost
+   - Ledger rows contain accurate before/after state snapshots
+   - Existing positions carry forward across days
+
+2. **Silver → Market Marks (TestSilverToMarksIntegration):**
+   - VWAP computed correctly from multiple trades
+   - Last trade price reflects most recent trade
+   - 24h volume aggregates correctly
+   - Active wallet count is distinct maker + taker
+   - Multiple markets computed separately
+   - Schema conformance verification
+
+3. **Daily Run Pipeline (TestDailyRunIntegration):**
+   - All daily-run steps execute in correct sequence
+   - Ledger data flows correctly to wallet_pnl_daily aggregation
+
+4. **ClickHouse Loading (TestChLoadLookbackIntegration):**
+   - Lookback parameter filters out old partitions correctly
+
+5. **On-Demand Snapshots (TestOnDemandSnapshotIntegration):**
+   - Snapshots reconstructed correctly from ledger fills
+   - Schema conformance verification
+
+6. **Schema Consistency (TestSchemaConsistency):**
+   - Ledger writer produces Arrow table with LEDGER_SCHEMA
+   - Position state produces Arrow table with POSITION_STATE_SCHEMA
+   - Market marks produces Arrow table with MARKET_MARK_DAILY_SCHEMA
+   - Wallet PnL produces Arrow table with WALLET_PNL_DAILY_SCHEMA
+
+7. **End-to-End Pipeline (TestEndToEndPipeline):**
+   - Complete trading day flow through all components
+   - Multi-day position carryover with accumulated cost basis
+
+All tests pass. Types check clean (mypy). Full test suite passes (1441 tests).
+
 ## In Progress
 
 
@@ -124,7 +170,6 @@ None
 
 ## Notes
 
-- Three categories now complete: exit_criteria, pnl_reconciliation, data_quality_validation
-- Remaining categories: integration_tests, documentation
-- Integration tests require ClickHouse to be running
+- Four categories now complete: exit_criteria, pnl_reconciliation, data_quality_validation, integration_tests
+- Remaining category: documentation
 - Documentation tasks are lower priority than functional validation
