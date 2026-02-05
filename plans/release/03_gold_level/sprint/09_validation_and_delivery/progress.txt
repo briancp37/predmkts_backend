@@ -64,6 +64,57 @@ All hand-calculated expected values documented in test docstrings.
 
 All tests pass. Types check clean (mypy). Full test suite passes (1386 tests).
 
+### 2026-02-05: Data Quality Validation Tests (Category: data_quality_validation)
+
+Implemented comprehensive data quality validation test suite for all Gold tables:
+
+**New test file:** `tests/test_gold_data_quality.py` (33 tests)
+
+Test coverage organized by data quality constraint:
+
+1. **Primary Key Validation (TestNoPrimaryKeysNull):**
+   - wallet_position_state: (wallet, platform, market_id, outcome_id) non-null
+   - wallet_position_ledger: (ts, wallet, platform, market_id, outcome_id) non-null
+   - market_mark_daily: (platform, market_id, outcome_id, day_utc) non-null
+   - wallet_pnl_daily: (day_utc, wallet) non-null
+
+2. **Position State Constraints (TestPositionStateNoZeroQty):**
+   - Open positions have qty != 0
+   - Closed positions have qty = 0
+   - positions_to_arrow includes closed for ReplacingMergeTree collapse
+   - Downstream queries should filter qty != 0
+
+3. **Wallet PnL Constraints (TestWalletPnlDailyNoZeroTradesCount):**
+   - Aggregation produces trades_count > 0
+   - Empty ledger produces zero PnL rows (sparse output)
+   - All wallets have nonzero trades_count
+
+4. **Market Mark Price Bounds (TestMarketMarkDailyPriceBounds):**
+   - mark_price within (0, 1) for prediction markets
+   - last_trade_price within [0, 1]
+   - Edge case: price = 0 (resolved NO)
+   - Edge case: price = 1 (resolved YES)
+   - Multiple markets all within valid bounds
+
+5. **Parquet Schema Conformance (TestParquetSchemaConformance):**
+   - POSITION_STATE_SCHEMA conformance (including empty tables)
+   - LEDGER_SCHEMA conformance (including empty tables)
+   - MARKET_MARK_DAILY_SCHEMA conformance (including empty tables)
+   - WALLET_PNL_DAILY_SCHEMA conformance (including empty tables)
+
+6. **Additional Data Consistency (TestDataConsistencyConstraints):**
+   - cost_basis_usd = abs(qty) * avg_cost for positions
+   - avg_cost > 0 for open positions
+   - qty_delta > 0 in ledger (direction in side field)
+   - price in [0, 1] for prediction market fills
+   - fees_usd >= 0 in ledger
+   - volume_usd_24h >= 0 for market marks
+   - trades_count_24h > 0 when volume_usd_24h > 0
+   - wins + losses <= trades_count (breakevens fill gap)
+   - volume_usd = sum(abs(qty_delta * price))
+
+All tests pass. Types check clean (mypy). Full test suite passes (1419 tests).
+
 ## In Progress
 
 
@@ -73,6 +124,7 @@ None
 
 ## Notes
 
-- The exit_criteria category is now complete and can be marked as passing in prd.json
-- Next priority should be pnl_reconciliation tests since they validate core business logic
-- Integration tests require ClickHouse to be running, so should be marked as integration tests
+- Three categories now complete: exit_criteria, pnl_reconciliation, data_quality_validation
+- Remaining categories: integration_tests, documentation
+- Integration tests require ClickHouse to be running
+- Documentation tasks are lower priority than functional validation

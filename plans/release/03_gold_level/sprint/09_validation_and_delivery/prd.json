@@ -34,7 +34,7 @@
             "Verify market_mark_daily prices are within reasonable bounds (0 < price < 1 for prediction markets)",
             "Verify all S3 Gold Parquet files are readable and schema-conformant"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "documentation",
