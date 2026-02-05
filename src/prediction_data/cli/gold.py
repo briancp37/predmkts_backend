@@ -590,6 +590,90 @@ def compute_wallet_metrics(
         raise typer.Exit(code=1)
 
 
+@app.command(name="process-trades")
+def process_trades(
+    dt: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        help="Single date to process (YYYY-MM-DD).",
+    ),
+    start_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--start-date",
+        help="Start of date range (YYYY-MM-DD). Requires --end-date.",
+    ),
+    end_date: Optional[str] = typer.Option(  # noqa: UP007
+        None,
+        "--end-date",
+        help="End of date range inclusive (YYYY-MM-DD). Requires --start-date.",
+    ),
+    force_reprocess: bool = typer.Option(
+        False, "--force-reprocess", help="Reprocess already-processed dates."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+) -> None:
+    """Process Silver trades through the position accounting pipeline.
+
+    Reads Silver polymarket.trades, splits into fills, runs through the
+    average-cost accounting engine, and writes the position ledger (S3 Gold +
+    ClickHouse) and updates position state in ClickHouse.
+
+    Dates are processed sequentially (order matters for cumulative position
+    state). Already-processed dates are skipped unless --force-reprocess.
+    """
+    from datetime import date as date_cls
+
+    from prediction_data.gold.trade_processor import process_date_range, process_day
+
+    settings = get_settings()
+
+    if dt and (start_date or end_date):
+        typer.echo("Error: --dt cannot be combined with --start-date/--end-date.", err=True)
+        raise typer.Exit(code=1)
+
+    gold_bucket = settings.gold_bucket or None
+
+    if dt:
+        target = date_cls.fromisoformat(dt)
+        typer.echo(
+            f"Processing trades for {target}"
+            f"{'  [force-reprocess]' if force_reprocess else ''}"
+            f"{'  [dry-run]' if dry_run else ''}"
+        )
+        rows = process_day(
+            dt=target,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+            force_reprocess=force_reprocess,
+        )
+        typer.echo(f"{target}: {rows} fills processed{'  [dry-run]' if dry_run else ''}")
+        typer.echo(f"Total: {rows} fills across 1 day(s).")
+    elif start_date and end_date:
+        s = date_cls.fromisoformat(start_date)
+        e = date_cls.fromisoformat(end_date)
+        if s > e:
+            typer.echo("Error: --start-date must be <= --end-date.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(
+            f"Processing trades from {s} to {e}"
+            f"{'  [force-reprocess]' if force_reprocess else ''}"
+            f"{'  [dry-run]' if dry_run else ''}"
+        )
+        results = process_date_range(
+            start_date=s,
+            end_date=e,
+            gold_bucket=gold_bucket,
+            dry_run=dry_run,
+            force_reprocess=force_reprocess,
+        )
+        for day_str, fills in sorted(results.items()):
+            typer.echo(f"  {day_str}: {fills} fills{'  [dry-run]' if dry_run else ''}")
+        total = sum(results.values())
+        typer.echo(f"Total: {total} fills across {len(results)} day(s).")
+    else:
+        typer.echo("Error: provide --dt or both --start-date and --end-date.", err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command(name="daily-run")
 def daily_run(
     dt: Optional[str] = typer.Option(  # noqa: UP007

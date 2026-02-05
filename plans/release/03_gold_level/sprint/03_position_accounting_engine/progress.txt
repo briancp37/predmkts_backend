@@ -2,7 +2,7 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -166,6 +166,24 @@
 - All 28 tests pass. mypy strict mode clean. ruff clean.
 - Full test suite: 1312 tests pass (no regressions).
 
+### cli (2026-02-04)
+- Added `process-trades` command to `src/prediction_data/cli/gold.py`:
+  - `prediction-data gold process-trades --dt YYYY-MM-DD [--dry-run]`: single-day processing.
+  - `prediction-data gold process-trades --start-date YYYY-MM-DD --end-date YYYY-MM-DD`: date range.
+    Uses `process_date_range()` for sequential processing (order matters for cumulative state).
+  - `--force-reprocess`: override idempotency to reprocess already-processed dates.
+  - `--dry-run`: preview without writing to S3 or ClickHouse.
+  - Summary output: per-day fill counts and total fills across all days.
+  - Date validation: --dt and --start-date/--end-date are mutually exclusive,
+    start must be <= end, at least one date option required.
+  - Reads GOLD_BUCKET from settings for S3 output destination.
+- 11 unit tests in `tests/gold/test_process_trades_cli.py` covering:
+  - Help output (all flags present)
+  - Single date: dry-run, force-reprocess, zero fills, with gold_bucket
+  - Date range: basic, force-reprocess, with gold_bucket
+  - Validation: dt+range conflict, no dates, start > end
+- All 11 tests pass. ruff clean. Full test suite: 1323 tests pass (no regressions).
+
 ## In Progress
 
 
@@ -173,12 +191,9 @@
 
 
 ## Notes
-- Next priority: cli — add `prediction-data gold process-trades` CLI command with
-  `--dt`, `--start-date/--end-date`, `--force-reprocess`, and `--dry-run` flags.
-  The batch_processor `process_day()` and `process_date_range()` functions are
-  already fully implemented and ready to be wired into the CLI.
+- **Sprint complete.** All 6 categories pass.
 - The `gold daily-run` command already calls `process_day()` via `_run_daily_step()`.
-  The `process-trades` CLI command will provide direct access for ad-hoc processing.
+  The `process-trades` CLI command provides direct access for ad-hoc processing.
 - fees_usd is set to 0.0 for all fills. Polymarket's Silver trades schema does not include
   per-trade fee data. If fee data becomes available later, the Fill dataclass and splitter
   already support it - just needs a source to read from.
