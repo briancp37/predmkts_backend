@@ -276,3 +276,120 @@ async def get_trader_by_address(
         "tradeCount": int(trader["total_trades"]),
         "winRate": win_rate,
     }
+
+
+async def get_trader_trades(
+    client: Client,
+    address: str,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    market_id: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch trades for a specific trader from ClickHouse.
+
+    Queries wallet_position_ledger for the trader's transactions,
+    joined with dim_market and dim_outcome for readable names.
+
+    Args:
+        client: ClickHouse client.
+        address: Wallet address (will be normalized to lowercase).
+        limit: Maximum number of results (1-1000).
+        offset: Offset for pagination.
+        start_date: Filter trades on or after this date (YYYY-MM-DD).
+        end_date: Filter trades on or before this date (YYYY-MM-DD).
+        market_id: Filter to a specific market.
+
+    Returns:
+        Tuple of (list of trade dicts formatted for TradeResponse, total count).
+    """
+    # Normalize address to lowercase
+    address = address.lower()
+
+    # Build WHERE conditions
+    conditions: list[str] = ["l.wallet = {address:String}", "l.platform = 'polymarket'"]
+    params: dict[str, Any] = {"address": address}
+
+    if start_date:
+        conditions.append("l.ts >= toDateTime({start_date:String})")
+        params["start_date"] = f"{start_date} 00:00:00"
+
+    if end_date:
+        conditions.append("l.ts <= toDateTime({end_date:String})")
+        params["end_date"] = f"{end_date} 23:59:59"
+
+    if market_id:
+        conditions.append("l.market_id = {market_id:String}")
+        params["market_id"] = market_id
+
+    where_clause = " AND ".join(conditions)
+
+    # Build pagination
+    pagination_clause, pagination_params = build_pagination(
+        limit=limit, offset=offset, max_limit=1000
+    )
+    params.update(pagination_params)
+
+    # Get total count of trades matching filters
+    count_query = f"""
+        SELECT COUNT(*)
+        FROM prediction_gold.wallet_position_ledger l
+        WHERE {where_clause}
+    """
+    total = await execute_query_count(count_query, params, client=client)
+
+    # Main query: Join wallet_position_ledger with dim_market and dim_outcome
+    trades_query = f"""
+        SELECT
+            concat(l.wallet, '-', toString(l.ts), '-', l.market_id, '-', l.outcome_id) AS id,
+            l.wallet AS traderAddress,
+            l.market_id AS marketId,
+            COALESCE(m.question, '') AS marketQuestion,
+            l.outcome_id AS outcomeId,
+            COALESCE(o.outcome_label, o.side, '') AS outcomeName,
+            CASE WHEN l.qty_delta > 0 THEN 'BUY' ELSE 'SELL' END AS side,
+            l.price AS price,
+            ABS(l.qty_delta) AS quantity,
+            ABS(l.qty_delta) * l.price AS usdValue,
+            l.fees_usd AS fees,
+            l.realized_pnl_this_fill_usd AS realizedPnl,
+            formatDateTime(l.ts, '%Y-%m-%dT%H:%i:%S.000Z') AS timestamp
+        FROM prediction_gold.wallet_position_ledger l
+        LEFT JOIN prediction_gold.dim_market m
+            ON l.market_id = m.platform_market_id
+            AND l.platform = m.platform
+        LEFT JOIN prediction_gold.dim_outcome o
+            ON l.outcome_id = o.outcome_id
+            AND l.platform = o.platform
+        WHERE {where_clause}
+        ORDER BY l.ts DESC
+        {pagination_clause}
+    """
+    trade_rows = await execute_query(trades_query, params, client=client)
+
+    # Convert rows to response format
+    results: list[dict[str, Any]] = []
+    for row in trade_rows:
+        # Only include realizedPnl if there was a realized profit/loss (closing trade)
+        realized_pnl = float(row["realizedPnl"]) if row["realizedPnl"] != 0 else None
+        results.append(
+            {
+                "id": row["id"],
+                "traderAddress": row["traderAddress"],
+                "marketId": row["marketId"],
+                "marketQuestion": row["marketQuestion"],
+                "outcomeId": row["outcomeId"],
+                "outcomeName": row["outcomeName"],
+                "side": row["side"],
+                "price": float(row["price"]),
+                "quantity": float(row["quantity"]),
+                "usdValue": float(row["usdValue"]),
+                "fees": float(row["fees"]),
+                "realizedPnl": realized_pnl,
+                "timestamp": row["timestamp"],
+            }
+        )
+
+    return results, total

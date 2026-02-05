@@ -7,11 +7,17 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.traders.schemas import (
+    TradeListResponse,
+    TradeResponse,
     TraderDetailResponse,
     TraderListResponse,
     TraderResponse,
 )
-from prediction_data.api.traders.service import get_trader_by_address, get_traders
+from prediction_data.api.traders.service import (
+    get_trader_by_address,
+    get_trader_trades,
+    get_traders,
+)
 
 router = APIRouter()
 
@@ -98,6 +104,64 @@ async def get_trader(
     return TraderDetailResponse.model_validate(trader)
 
 
+@router.get("/{address}/trades", response_model=TradeListResponse)
+async def list_trader_trades(
+    address: str = Path(
+        ...,
+        description="Wallet address (case-insensitive, normalized to lowercase)",
+        min_length=10,
+    ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    startDate: str | None = Query(
+        None, description="Filter trades on or after this date (YYYY-MM-DD)"
+    ),
+    endDate: str | None = Query(
+        None, description="Filter trades on or before this date (YYYY-MM-DD)"
+    ),
+    marketId: str | None = Query(None, description="Filter to a specific market"),
+    client: Client = Depends(get_clickhouse_client),
+) -> TradeListResponse:
+    """Get trades for a specific trader.
+
+    Returns a paginated list of trades from the trader's transaction history,
+    ordered by timestamp descending (newest first).
+
+    - **address**: Wallet address (normalized to lowercase)
+    - **limit**: Maximum number of trades to return (1-1000, default 100)
+    - **offset**: Number of trades to skip for pagination
+    - **startDate**: Filter trades on or after this date (YYYY-MM-DD)
+    - **endDate**: Filter trades on or before this date (YYYY-MM-DD)
+    - **marketId**: Filter to trades in a specific market
+
+    Each trade includes:
+    - Market question and outcome name
+    - Side (BUY/SELL), price, quantity, USD value
+    - Fees and realized PnL (if position was closed)
+    """
+    trades, total = await get_trader_trades(
+        client,
+        address,
+        limit=limit,
+        offset=offset,
+        start_date=startDate,
+        end_date=endDate,
+        market_id=marketId,
+    )
+
+    # Convert dicts to TradeResponse models
+    items = [TradeResponse.model_validate(t) for t in trades]
+
+    # Calculate page number (1-indexed)
+    page = (offset // limit) + 1 if limit > 0 else 1
+
+    return TradeListResponse(
+        items=items,
+        total=total,
+        page=page,
+        limit=limit,
+    )
+
+
 # Future endpoints:
 # - GET /traders/smart-scores (smart trader rankings)
-# - GET /traders/{address}/trades (trades for a specific trader)

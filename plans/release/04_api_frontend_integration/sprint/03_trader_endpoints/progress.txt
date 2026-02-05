@@ -52,6 +52,20 @@
   - Returns 404 HTTPException if trader not found
   - All types pass mypy, all tests pass
 
+- [2026-02-05] GET /traders/{address}/trades Endpoint - Implemented trader trades listing
+  - Added GET /traders/{address}/trades endpoint in router.py
+  - Implemented get_trader_trades() in service.py with ClickHouse query
+  - Accepts query params: limit (default 100, max 1000), offset, startDate, endDate, marketId
+  - Queries wallet_position_ledger for trader's transactions
+  - Joins with dim_market for market question and dim_outcome for outcome names
+  - Returns trade data: id, traderAddress, marketId, marketQuestion, outcomeId, outcomeName
+  - Includes side (BUY/SELL derived from qty_delta sign), price, quantity, usdValue (qty * price)
+  - Includes fees and realized PnL (only included if non-zero, indicating closing trade)
+  - Timestamp formatted as ISO 8601 string
+  - Orders by timestamp DESC (newest first)
+  - Returns TradeListResponse with pagination (items, total, page, limit)
+  - All types pass mypy, all tests pass
+
 ## In Progress
 
 ## Blockers

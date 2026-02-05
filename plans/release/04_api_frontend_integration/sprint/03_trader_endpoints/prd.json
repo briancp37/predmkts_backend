@@ -82,7 +82,7 @@
       "Order by timestamp DESC",
       "Return list of TradeResponse with pagination"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Leaderboard Router Setup",
