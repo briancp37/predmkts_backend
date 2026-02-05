@@ -278,6 +278,77 @@ async def get_trader_by_address(
     }
 
 
+async def get_leaderboard(
+    client: Client,
+    *,
+    period: str = "7d",
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Fetch PnL leaderboard from ClickHouse.
+
+    Aggregates wallet_pnl_daily by the specified time period and returns
+    ranked traders by realized PnL.
+
+    Args:
+        client: ClickHouse client.
+        period: Time period for aggregation ('1d', '7d', '30d', 'all').
+        limit: Maximum number of results (1-500).
+
+    Returns:
+        List of leaderboard entry dicts formatted for LeaderboardResponse.
+    """
+    # Build date filter based on period
+    if period == "1d":
+        date_filter = "day = today()"
+    elif period == "7d":
+        date_filter = "day >= today() - 7"
+    elif period == "30d":
+        date_filter = "day >= today() - 30"
+    else:  # 'all'
+        date_filter = "1=1"
+
+    # Clamp limit
+    actual_limit = min(max(limit, 1), 500)
+
+    # Query aggregated PnL by wallet for the period
+    leaderboard_query = f"""
+        SELECT
+            wallet AS traderAddress,
+            SUM(realized_pnl_usd) AS pnl,
+            SUM(trades_count) AS tradeCount,
+            SUM(wins) AS wins,
+            SUM(losses) AS losses
+        FROM prediction_gold.wallet_pnl_daily
+        WHERE {date_filter}
+        GROUP BY wallet
+        HAVING pnl != 0
+        ORDER BY pnl DESC
+        LIMIT {{limit:UInt64}}
+    """
+
+    rows = await execute_query(leaderboard_query, {"limit": actual_limit}, client=client)
+
+    # Convert rows to response format with ranks
+    results: list[dict[str, Any]] = []
+    for idx, row in enumerate(rows, start=1):
+        wins = int(row["wins"])
+        losses = int(row["losses"])
+        total_closed = wins + losses
+        win_rate = (wins * 100.0 / total_closed) if total_closed > 0 else 0.0
+
+        results.append(
+            {
+                "rank": idx,
+                "traderAddress": row["traderAddress"],
+                "pnl": float(row["pnl"]),
+                "tradeCount": int(row["tradeCount"]),
+                "winRate": win_rate,
+            }
+        )
+
+    return results
+
+
 async def get_trader_trades(
     client: Client,
     address: str,

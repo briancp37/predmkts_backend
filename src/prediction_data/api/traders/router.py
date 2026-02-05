@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.traders.schemas import (
+    LeaderboardEntry,
+    LeaderboardResponse,
     TradeListResponse,
     TradeResponse,
     TraderDetailResponse,
@@ -14,6 +16,7 @@ from prediction_data.api.traders.schemas import (
     TraderResponse,
 )
 from prediction_data.api.traders.service import (
+    get_leaderboard,
     get_trader_by_address,
     get_trader_trades,
     get_traders,
@@ -66,6 +69,48 @@ async def list_traders(
         total=total,
         page=page,
         limit=limit,
+    )
+
+
+@router.get("/leaderboard", response_model=LeaderboardResponse)
+async def get_pnl_leaderboard(
+    period: Literal["1d", "7d", "30d", "all"] = Query(
+        "7d", description="Time period for leaderboard aggregation"
+    ),
+    limit: int = Query(100, ge=1, le=500, description="Maximum entries to return"),
+    client: Client = Depends(get_clickhouse_client),
+) -> LeaderboardResponse:
+    """Get PnL leaderboard for a time period.
+
+    Returns a ranked list of traders by realized PnL for the specified period.
+
+    - **period**: Time period for aggregation
+      - `1d`: Today only
+      - `7d`: Last 7 days (default)
+      - `30d`: Last 30 days
+      - `all`: All-time
+    - **limit**: Maximum number of entries (1-500, default 100)
+
+    Each entry includes:
+    - Rank (1-indexed)
+    - Trader address
+    - Total PnL for the period
+    - Trade count
+    - Win rate (percentage)
+    """
+    from datetime import datetime, timezone
+
+    entries = await get_leaderboard(client, period=period, limit=limit)
+
+    # Convert dicts to LeaderboardEntry models
+    items = [LeaderboardEntry.model_validate(e) for e in entries]
+
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    return LeaderboardResponse(
+        period=period,
+        entries=items,
+        generatedAt=generated_at,
     )
 
 

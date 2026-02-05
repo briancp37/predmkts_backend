@@ -66,6 +66,23 @@
   - Returns TradeListResponse with pagination (items, total, page, limit)
   - All types pass mypy, all tests pass
 
+- [2026-02-05] Leaderboard Router Setup + GET /leaderboard Endpoint - Implemented PnL leaderboard
+  - Added GET /traders/leaderboard endpoint in traders/router.py (added to existing traders router)
+  - Implemented get_leaderboard() in traders/service.py with ClickHouse query
+  - Accepts query params: period (Literal['1d', '7d', '30d', 'all']), limit (default 100, max 500)
+  - Queries wallet_pnl_daily with date filtering based on period:
+    - '1d': today() only
+    - '7d': today() - 7 days
+    - '30d': today() - 30 days
+    - 'all': all-time (no filter)
+  - Aggregates realized_pnl_usd, trades_count, wins, losses per wallet
+  - Calculates win rate as wins / (wins + losses) * 100
+  - Orders by PnL DESC and assigns 1-indexed ranks
+  - Returns LeaderboardResponse with period, entries list, and generatedAt timestamp
+  - Schemas already existed (LeaderboardEntry, LeaderboardResponse, LeaderboardFilters)
+  - Endpoint placed before /{address} to avoid path conflict
+  - All types pass mypy, all tests pass
+
 ## In Progress
 
 ## Blockers

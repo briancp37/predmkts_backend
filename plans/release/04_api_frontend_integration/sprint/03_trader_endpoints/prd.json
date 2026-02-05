@@ -92,7 +92,7 @@
       "Create LeaderboardEntry schema: rank (int), traderAddress (str), pnl (float), tradeCount (int), winRate (float)",
       "Create LeaderboardResponse: period (str), entries (list[LeaderboardEntry]), generatedAt (str)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /leaderboard Endpoint",
@@ -109,7 +109,7 @@
       "Order by PnL DESC, assign ranks",
       "Return LeaderboardResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Trades Router Setup",
