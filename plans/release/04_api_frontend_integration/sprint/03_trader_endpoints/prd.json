@@ -22,7 +22,7 @@
       "Create SmartScoreResponse: address (str), smartScore (float), components (dict with accuracy, consistency, sizing, timing scores)",
       "Create TraderFilters: search (str | None), sortBy (Literal['smartScore', 'totalPnl', 'totalTrades', 'winRate']), sortOrder (Literal['asc', 'desc']), limit (int = 50), offset (int = 0)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /traders Endpoint",

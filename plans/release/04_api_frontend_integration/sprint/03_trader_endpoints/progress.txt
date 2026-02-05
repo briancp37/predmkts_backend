@@ -11,6 +11,23 @@
   - Service has stub get_traders() function with proper type hints
   - Schemas has placeholder TraderBase class
 
+- [2026-02-05] Trader Schemas - Defined all Pydantic schemas for trader data
+  - TraderPosition: marketId, marketQuestion, outcomeId, outcomeName, quantity, avgCost, currentPrice, unrealizedPnl, realizedPnl
+  - TraderBase: address, username, firstSeen, totalPnl, realizedPnl, totalTrades, winCount, lossCount
+  - TraderResponse: extends TraderBase with id, smartScore, createdAt, updatedAt
+  - TraderDetailResponse: extends TraderResponse with positions list, tradeCount, winRate
+  - TraderListResponse: paginated list with items, total, page, limit
+  - SmartScoreResponse: address, smartScore, components (SmartScoreComponents with accuracy, consistency, sizing, timing)
+  - TraderFilters: search, sortBy (Literal), sortOrder (Literal), limit, offset with validation
+  - TradeResponse: id, traderAddress, marketId, marketQuestion, outcomeId, outcomeName, side, price, quantity, usdValue, fees, realizedPnl, timestamp
+  - TradeListResponse, TradeFilters for pagination and filtering
+  - LeaderboardEntry, LeaderboardResponse, LeaderboardFilters for PnL leaderboard
+  - SmartTradeResponse extends TradeResponse with smartScore
+  - SmartTradeFilters: minScore, minAmount, limit
+  - WhaleTradeResponse extends TradeResponse with totalWalletValue
+  - WhaleTradeFilters: minAmount, limit
+  - All schemas aligned with Gold layer ClickHouse data model (dim_wallet, wallet_position_ledger, wallet_pnl_daily, wallet_position_state)
+
 ## In Progress
 
 ## Blockers
