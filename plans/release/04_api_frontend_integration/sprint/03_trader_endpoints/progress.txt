@@ -1,0 +1,47 @@
+# Sprint 03: Trader Endpoints - Progress
+
+## Status: Not Started
+
+## Completed
+
+## In Progress
+
+## Blockers
+
+## Notes
+
+## Key Files to Create/Modify
+- src/prediction_data/api/traders/router.py
+- src/prediction_data/api/traders/service.py
+- src/prediction_data/api/traders/schemas.py
+- src/prediction_data/api/leaderboard/router.py (or add to traders)
+- src/prediction_data/api/trades/router.py
+- src/prediction_data/api/trades/service.py
+- src/prediction_data/api/trades/schemas.py
+- src/prediction_data/api/smart_score.py
+- src/prediction_data/api/main.py (register new routers)
+- web/src/hooks/useTraders.ts
+- web/src/hooks/useTrader.ts
+- web/src/hooks/useLeaderboard.ts
+- web/src/hooks/useSmartTrades.ts
+
+## ClickHouse Tables to Query
+- dim_wallet (trader metadata)
+- wallet_position_ledger (individual trades/transactions)
+- wallet_position_state (current positions)
+- wallet_pnl_daily (aggregated daily PnL)
+- dim_market (for joining market details)
+- dim_outcome (for joining outcome details)
+
+## Smart Score Components
+- Accuracy (30%): win_count / total_closed_positions
+- Consistency (25%): low stddev of returns, regular activity
+- Sizing (25%): avg position size / portfolio value
+- Timing (20%): entry price quality, early exit detection
+
+## Frontend Pages Dependent on This Sprint
+- /(dashboard)/trader-explorer - Trader listing
+- /(dashboard)/analyze-user - Individual trader analysis
+- /(dashboard)/pnl-leaderboard - PnL rankings
+- /(dashboard)/smart-scores - Smart trader identification
+- /(dashboard)/smart-trades-live - Real-time smart activity

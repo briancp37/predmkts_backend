@@ -1,0 +1,265 @@
+[
+  {
+    "category": "Error Handling Standardization",
+    "description": "Implement consistent error handling across all endpoints",
+    "steps": [
+      "Create src/prediction_data/api/exceptions.py with custom exception classes",
+      "Define APIError base class with status_code, detail, code attributes",
+      "Create specific exceptions: NotFoundError, DuplicateError, ValidationError, AuthenticationError, AuthorizationError, RateLimitError",
+      "Create global exception handler in api/main.py using @app.exception_handler",
+      "Return consistent JSON format: {detail: str, code: str, status: int}",
+      "Log errors with structlog including request context",
+      "Ensure stack traces not exposed in production (check DEBUG env var)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Request Validation",
+    "description": "Add comprehensive request validation",
+    "steps": [
+      "Add Pydantic validators for all input schemas",
+      "Validate email format in UserCreate/UserLogin",
+      "Validate password strength (min 8 chars) in UserCreate",
+      "Validate wallet addresses (0x prefix, 40 hex chars)",
+      "Validate market IDs against expected formats",
+      "Validate date ranges (start <= end)",
+      "Validate pagination params (limit > 0, offset >= 0)",
+      "Return 422 with field-level error details"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Rate Limiting",
+    "description": "Implement API rate limiting",
+    "steps": [
+      "Add slowapi or custom rate limiting middleware",
+      "Define rate limits by endpoint category:",
+      "  - Auth endpoints: 10 req/min per IP (prevent brute force)",
+      "  - Public read endpoints: 100 req/min per IP",
+      "  - Authenticated endpoints: 200 req/min per user",
+      "  - CLOB proxy endpoints: 50 req/min (to stay under Polymarket limits)",
+      "Return 429 Too Many Requests with Retry-After header",
+      "Add X-RateLimit-Limit, X-RateLimit-Remaining headers",
+      "Consider Redis for distributed rate limiting (future)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Request Logging",
+    "description": "Add comprehensive request/response logging",
+    "steps": [
+      "Create logging middleware in api/middleware.py",
+      "Log for each request: method, path, status_code, duration_ms, user_id (if auth)",
+      "Use structlog for structured JSON logging",
+      "Add request_id to each request for tracing",
+      "Include request_id in response headers (X-Request-ID)",
+      "Log slow requests (> 1s) at WARNING level",
+      "Log errors with full context at ERROR level",
+      "Exclude sensitive data from logs (passwords, tokens)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Health Check Enhancement",
+    "description": "Improve health check endpoint",
+    "steps": [
+      "Enhance GET /health to check all dependencies",
+      "Check PostgreSQL connection",
+      "Check ClickHouse connection",
+      "Return status for each dependency",
+      "Return overall status: healthy, degraded, unhealthy",
+      "Add GET /health/ready for k8s readiness probe",
+      "Add GET /health/live for k8s liveness probe",
+      "Include version info in health response"
+    ],
+    "passes": false
+  },
+  {
+    "category": "API Versioning",
+    "description": "Ensure proper API versioning",
+    "steps": [
+      "Verify all endpoints under /api/v1/ prefix",
+      "Document versioning strategy in CLAUDE.md",
+      "Plan for v2: add /api/v2/ when breaking changes needed",
+      "Consider Accept-Version header support (future)",
+      "Add version to OpenAPI info"
+    ],
+    "passes": false
+  },
+  {
+    "category": "OpenAPI Documentation Polish",
+    "description": "Improve API documentation",
+    "steps": [
+      "Add detailed descriptions to all endpoints",
+      "Add example values to all schemas",
+      "Document error responses for each endpoint",
+      "Add tags descriptions in OpenAPI",
+      "Add authentication requirements clearly",
+      "Add rate limit info to endpoint descriptions",
+      "Verify Swagger UI works at /docs",
+      "Verify ReDoc works at /redoc"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Error Boundaries",
+    "description": "Add error handling UI components",
+    "steps": [
+      "Create web/src/components/error-boundary.tsx React error boundary",
+      "Create ApiError display component for API errors",
+      "Handle 401 errors: redirect to login, clear tokens",
+      "Handle 403 errors: show upgrade prompt for tier limits",
+      "Handle 404 errors: show not found message",
+      "Handle 429 errors: show rate limit message with retry time",
+      "Handle 500 errors: show generic error with retry option",
+      "Add error boundary to layout components"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Loading States",
+    "description": "Implement proper loading states throughout frontend",
+    "steps": [
+      "Create skeleton components for market cards, trader rows, etc.",
+      "Add loading states to all data fetching hooks",
+      "Show skeletons during initial load",
+      "Show inline spinners during mutations",
+      "Disable buttons during pending mutations",
+      "Add optimistic updates for watchlist/tracked traders",
+      "Handle refetching states (show stale data with indicator)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend API Client Cleanup",
+    "description": "Remove old API routes and clean up frontend",
+    "steps": [
+      "Remove web/src/app/api/auth/[...nextauth]/ directory",
+      "Remove web/src/app/api/auth/register/ directory",
+      "Remove web/src/app/api/watchlist/ directory",
+      "Remove web/src/app/api/tracked-traders/ directory",
+      "Remove web/src/app/api/markets/ directory",
+      "Remove web/src/app/api/traders/ directory",
+      "Remove web/src/lib/prisma.ts if no longer needed",
+      "Remove NextAuth types from web/src/types/next-auth.d.ts",
+      "Remove Prisma from package.json if no longer needed",
+      "Remove next-auth from package.json",
+      "Update any remaining imports"
+    ],
+    "passes": false
+  },
+  {
+    "category": "End-to-End Testing",
+    "description": "Create E2E tests for critical flows",
+    "steps": [
+      "Set up pytest fixtures for API testing",
+      "Create test database setup/teardown",
+      "Test auth flow: register -> login -> access protected endpoint",
+      "Test watchlist flow: login -> add market -> list -> remove",
+      "Test tracked traders flow with tier limit enforcement",
+      "Test market listing with filters",
+      "Test trader detail endpoint",
+      "Test leaderboard endpoint",
+      "Add GitHub Actions workflow for API tests"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Integration Testing",
+    "description": "Add frontend integration tests",
+    "steps": [
+      "Set up MSW (Mock Service Worker) for API mocking",
+      "Test login page form submission",
+      "Test register page form submission",
+      "Test market list rendering",
+      "Test watchlist add/remove functionality",
+      "Test error state rendering",
+      "Test loading state rendering",
+      "Add to existing vitest setup"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Performance Optimization",
+    "description": "Optimize API performance",
+    "steps": [
+      "Add response caching headers for public endpoints (Cache-Control)",
+      "Implement ETags for conditional requests",
+      "Add database query optimization (indexes, explain analyze)",
+      "Add connection pooling for ClickHouse",
+      "Consider adding Redis cache for frequent queries (future)",
+      "Profile slow endpoints and optimize",
+      "Add pagination limits to prevent large result sets"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Security Hardening",
+    "description": "Security review and hardening",
+    "steps": [
+      "Review CORS configuration for production",
+      "Ensure JWT secret is strong and from environment",
+      "Add secure cookie flags if using cookies",
+      "Review SQL injection prevention (parameterized queries)",
+      "Review XSS prevention (React default escaping)",
+      "Add Content-Security-Policy headers",
+      "Add X-Content-Type-Options: nosniff",
+      "Add X-Frame-Options: DENY",
+      "Review rate limiting on auth endpoints",
+      "Ensure passwords never logged"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Documentation Update",
+    "description": "Update project documentation",
+    "steps": [
+      "Update CLAUDE.md with API section",
+      "Document all new environment variables",
+      "Document API endpoints summary",
+      "Document frontend-backend integration",
+      "Add API development workflow to CLAUDE.md",
+      "Document how to run full stack locally",
+      "Document how to regenerate TypeScript types"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Docker Compose Enhancement",
+    "description": "Improve local development setup",
+    "steps": [
+      "Add API service to docker-compose.yml (optional, for full containerized dev)",
+      "Add healthchecks to postgres service",
+      "Add volume for postgres data persistence",
+      "Consider adding Redis service for future caching",
+      "Add docker-compose.override.yml for dev-specific config",
+      "Document docker compose up workflow"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Final Verification",
+    "description": "End-to-end verification of all features",
+    "steps": [
+      "Fresh docker compose up (postgres + clickhouse)",
+      "Run uvicorn prediction_data.api.main:app",
+      "Run cd web && npm run dev",
+      "Test: Register new user",
+      "Test: Login with new user",
+      "Test: View markets list",
+      "Test: View market detail",
+      "Test: Add market to watchlist",
+      "Test: View watchlist",
+      "Test: Remove from watchlist",
+      "Test: View trader list",
+      "Test: View trader detail",
+      "Test: Add tracked trader",
+      "Test: View tracked traders activity",
+      "Test: View leaderboard",
+      "Test: Logout",
+      "Verify no console errors in browser",
+      "Verify no unhandled exceptions in API logs"
+    ],
+    "passes": false
+  }
+]

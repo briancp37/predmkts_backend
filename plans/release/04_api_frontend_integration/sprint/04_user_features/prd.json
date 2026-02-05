@@ -1,0 +1,280 @@
+[
+  {
+    "category": "Watchlist Router Setup",
+    "description": "Create the watchlist API router",
+    "steps": [
+      "Create src/prediction_data/api/watchlist/ directory",
+      "Create __init__.py, router.py, service.py, schemas.py files",
+      "Register watchlist router in api/main.py with prefix /api/v1/watchlist",
+      "Add 'watchlist' tag to router for OpenAPI grouping",
+      "All watchlist endpoints require authentication (use CurrentUser dependency)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Watchlist Schemas",
+    "description": "Define Pydantic schemas for watchlist",
+    "steps": [
+      "Create WatchlistItem schema: id (UUID), marketId (str), createdAt (datetime)",
+      "Create WatchlistItemWithMarket extending WatchlistItem with market details: marketQuestion (str), marketCategory (str | None), currentPrice (float), priceChange24h (float), resolved (bool)",
+      "Create WatchlistAddRequest: marketId (str)",
+      "Create WatchlistResponse: items (list[WatchlistItemWithMarket]), count (int)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /watchlist Endpoint",
+    "description": "Get user's watchlist with market details",
+    "steps": [
+      "Implement GET /watchlist endpoint",
+      "Require authentication via CurrentUser dependency",
+      "Query PostgreSQL watchlists table for user's entries",
+      "For each watchlist item, fetch market details from ClickHouse",
+      "Include current price and 24h change from market_mark_daily",
+      "Order by createdAt DESC (most recently added first)",
+      "Return WatchlistResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "POST /watchlist Endpoint",
+    "description": "Add market to watchlist",
+    "steps": [
+      "Implement POST /watchlist endpoint",
+      "Require authentication",
+      "Accept WatchlistAddRequest body with marketId",
+      "Validate market exists in ClickHouse dim_market",
+      "Check if already in user's watchlist (return 400 if duplicate)",
+      "Insert into PostgreSQL watchlists table",
+      "Return created WatchlistItem with 201 status"
+    ],
+    "passes": false
+  },
+  {
+    "category": "DELETE /watchlist/{market_id} Endpoint",
+    "description": "Remove market from watchlist",
+    "steps": [
+      "Implement DELETE /watchlist/{market_id} endpoint",
+      "Require authentication",
+      "Delete from PostgreSQL where user_id and market_id match",
+      "Return 204 No Content on success",
+      "Return 404 if not found in user's watchlist"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Tracked Traders Router Setup",
+    "description": "Create the tracked traders API router",
+    "steps": [
+      "Create src/prediction_data/api/tracked_traders/ directory",
+      "Create __init__.py, router.py, service.py, schemas.py files",
+      "Register router in api/main.py with prefix /api/v1/tracked-traders",
+      "Add 'tracked-traders' tag to router",
+      "All endpoints require authentication"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Tracked Traders Schemas",
+    "description": "Define Pydantic schemas for tracked traders",
+    "steps": [
+      "Create TrackedTraderBase: traderAddress (str), customName (str | None)",
+      "Create TrackedTraderCreate: traderAddress (str), customName (str | None = None)",
+      "Create TrackedTraderResponse extending TrackedTraderBase: id (UUID), createdAt (datetime)",
+      "Create TrackedTraderWithStats extending TrackedTraderResponse: totalPnl (float), recentTrades (int), smartScore (float | None)",
+      "Create TrackedTraderActivity: traderId (UUID), traderAddress (str), customName (str | None), trade (TradeResponse), timestamp (datetime)",
+      "Create TrackedTradersListResponse: items (list[TrackedTraderWithStats]), count (int), limit (int, the tier limit)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Tier Limits Implementation",
+    "description": "Implement tier-based limits for tracked traders",
+    "steps": [
+      "Define tier limits: FREE = 6 traders, PRO = 50 traders",
+      "Create helper function get_tier_limit(tier: UserTier) -> int",
+      "Create helper function check_tier_limit(user: User, current_count: int) -> bool",
+      "Return appropriate error message when limit exceeded",
+      "Include current count and limit in API responses"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /tracked-traders Endpoint",
+    "description": "Get user's tracked traders with stats",
+    "steps": [
+      "Implement GET /tracked-traders endpoint",
+      "Require authentication",
+      "Query PostgreSQL tracked_traders table for user's entries",
+      "For each tracked trader, fetch stats from ClickHouse:",
+      "  - Total PnL from wallet_pnl_daily",
+      "  - Recent trade count (last 7 days) from wallet_position_ledger",
+      "  - Smart score if available",
+      "Include tier limit in response",
+      "Return TrackedTradersListResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "POST /tracked-traders Endpoint",
+    "description": "Add trader to tracked list",
+    "steps": [
+      "Implement POST /tracked-traders endpoint",
+      "Require authentication",
+      "Accept TrackedTraderCreate body",
+      "Normalize trader address to lowercase",
+      "Check tier limit - return 403 with message if exceeded",
+      "Validate trader exists in ClickHouse dim_wallet (optional - may track unknown wallets)",
+      "Check for duplicate (same user + address) - return 400 if exists",
+      "Insert into PostgreSQL tracked_traders table",
+      "Return TrackedTraderResponse with 201 status"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /tracked-traders/{id} Endpoint",
+    "description": "Get single tracked trader details",
+    "steps": [
+      "Implement GET /tracked-traders/{id} endpoint",
+      "Require authentication",
+      "Query PostgreSQL for the tracked trader entry",
+      "Verify ownership (user_id matches current user)",
+      "Fetch detailed stats from ClickHouse",
+      "Return TrackedTraderWithStats",
+      "Return 404 if not found or not owned by user"
+    ],
+    "passes": false
+  },
+  {
+    "category": "DELETE /tracked-traders/{id} Endpoint",
+    "description": "Remove trader from tracked list",
+    "steps": [
+      "Implement DELETE /tracked-traders/{id} endpoint",
+      "Require authentication",
+      "Verify ownership before deletion",
+      "Delete from PostgreSQL",
+      "Return 204 No Content on success",
+      "Return 404 if not found or not owned"
+    ],
+    "passes": false
+  },
+  {
+    "category": "PATCH /tracked-traders/{id} Endpoint",
+    "description": "Update tracked trader (custom name)",
+    "steps": [
+      "Implement PATCH /tracked-traders/{id} endpoint",
+      "Require authentication",
+      "Accept partial update body: customName (str | None)",
+      "Verify ownership",
+      "Update PostgreSQL record",
+      "Return updated TrackedTraderResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /tracked-traders/activity Endpoint",
+    "description": "Activity feed from tracked traders",
+    "steps": [
+      "Implement GET /tracked-traders/activity endpoint",
+      "Require authentication",
+      "Accept query params: limit (default 50), startDate, endDate",
+      "Get list of user's tracked trader addresses from PostgreSQL",
+      "Query ClickHouse wallet_position_ledger for trades by those addresses",
+      "Join with dim_market and dim_outcome for trade context",
+      "Order by timestamp DESC",
+      "Return list of TrackedTraderActivity with trader name and trade details"
+    ],
+    "passes": false
+  },
+  {
+    "category": "User Profile Endpoint",
+    "description": "Add user profile management",
+    "steps": [
+      "Add PATCH /auth/me endpoint for profile updates",
+      "Accept body: name (str | None)",
+      "Update PostgreSQL users table",
+      "Return updated UserResponse",
+      "Consider adding: email change flow (requires verification), password change"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Watchlist Service Layer",
+    "description": "Implement watchlist business logic",
+    "steps": [
+      "Create service functions in watchlist/service.py:",
+      "  - get_user_watchlist(db, user_id) -> list[Watchlist]",
+      "  - add_to_watchlist(db, user_id, market_id) -> Watchlist",
+      "  - remove_from_watchlist(db, user_id, market_id) -> bool",
+      "  - is_in_watchlist(db, user_id, market_id) -> bool",
+      "Add ClickHouse queries to enrich watchlist items with market data"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Tracked Traders Service Layer",
+    "description": "Implement tracked traders business logic",
+    "steps": [
+      "Create service functions in tracked_traders/service.py:",
+      "  - get_user_tracked_traders(db, user_id) -> list[TrackedTrader]",
+      "  - add_tracked_trader(db, user_id, address, custom_name) -> TrackedTrader",
+      "  - remove_tracked_trader(db, user_id, tracker_id) -> bool",
+      "  - update_tracked_trader(db, user_id, tracker_id, custom_name) -> TrackedTrader",
+      "  - get_tracked_trader_activity(db, ch, user_id, limit) -> list[Activity]",
+      "  - get_tracked_addresses(db, user_id) -> list[str]"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Watchlist Integration",
+    "description": "Update frontend watchlist functionality",
+    "steps": [
+      "Update web/src/hooks/useWatchlist.ts to call /api/v1/watchlist",
+      "Update useAddToWatchlist mutation to POST /api/v1/watchlist",
+      "Update useRemoveFromWatchlist mutation to DELETE /api/v1/watchlist/{id}",
+      "Remove old Next.js API route calls",
+      "Add optimistic updates for instant UI feedback",
+      "Handle 401 errors (redirect to login)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Tracked Traders Integration",
+    "description": "Update frontend tracked traders functionality",
+    "steps": [
+      "Create web/src/hooks/useTrackedTraders.ts for GET /api/v1/tracked-traders",
+      "Create useAddTrackedTrader mutation",
+      "Create useRemoveTrackedTrader mutation",
+      "Create useTrackedTradersActivity for activity feed",
+      "Display tier limit and current count in UI",
+      "Show upgrade prompt when limit reached",
+      "Remove old Next.js API route calls"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Error Handling for User Features",
+    "description": "Implement proper error responses",
+    "steps": [
+      "Create custom exception classes: DuplicateError, TierLimitExceeded, NotFoundError",
+      "Return consistent error response format: {detail: str, code: str}",
+      "Tier limit error: 403 with code 'TIER_LIMIT_EXCEEDED', include limit and current count",
+      "Duplicate error: 400 with code 'ALREADY_EXISTS'",
+      "Not found: 404 with code 'NOT_FOUND'",
+      "Unauthorized: 401 with code 'UNAUTHORIZED'"
+    ],
+    "passes": false
+  },
+  {
+    "category": "OpenAPI Spec Update",
+    "description": "Regenerate OpenAPI spec with user feature endpoints",
+    "steps": [
+      "Run python scripts/export_openapi.py",
+      "Verify watchlist and tracked-traders endpoints documented",
+      "Verify tier limit info in response schemas",
+      "Run npm run generate-api in web/",
+      "Verify TypeScript types"
+    ],
+    "passes": false
+  }
+]

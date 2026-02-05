@@ -1,0 +1,22 @@
+# Sprint 01: Foundation & Auth - Progress
+
+## Status: Complete
+
+## Completed
+- [x] FastAPI app structure created (src/prediction_data/api/)
+- [x] PostgreSQL added to docker-compose.yml
+- [x] SQLAlchemy models for User, Watchlist, TrackedTrader
+- [x] Auth endpoints: register, login, refresh, me
+- [x] JWT middleware with Annotated dependencies
+- [x] OpenAPI spec export (openapi.json)
+- [x] Frontend auth context (replaces NextAuth)
+- [x] Login/register pages updated to use new auth
+- [x] TypeScript codegen script added (npm run generate-api)
+
+## In Progress
+
+## Blockers
+
+## Notes
+- 2026-02-05: Sprint started
+- 2026-02-05: Sprint completed - all auth infrastructure in place

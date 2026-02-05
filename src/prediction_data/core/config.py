@@ -52,6 +52,27 @@ class Settings(BaseSettings):
     kalshi_private_key_path: str | None = None
     kalshi_api_base_url: str = "https://api.elections.kalshi.com/trade-api/v2"
 
+    # PostgreSQL settings (for API user data)
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+    postgres_user: str = "predmkts"
+    postgres_password: str = "predmkts"
+    postgres_database: str = "predmkts"
+
+    # JWT settings
+    jwt_secret: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+    jwt_refresh_token_expire_days: int = 30
+
+    @property
+    def postgres_url(self) -> str:
+        """Get async PostgreSQL connection URL."""
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
+        )
+
 
 @lru_cache
 def get_settings() -> Settings:

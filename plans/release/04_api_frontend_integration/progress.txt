@@ -1,0 +1,32 @@
+# Release 04: API & Frontend Integration - Progress
+
+## Status: In Progress
+
+## Completed
+- [x] Architecture design and planning
+- [x] Frontend code copied to web/
+- [x] Sprint 01: Foundation & Auth
+- [x] Sprint PRDs created for all sprints
+
+## In Progress
+- [ ] Sprint 02: Market Endpoints
+
+## Pending
+- [ ] Sprint 03: Trader Endpoints
+- [ ] Sprint 04: User Features
+- [ ] Sprint 05: Integration & Polish
+
+## Sprint Summary
+
+| Sprint | Categories | Endpoints |
+|--------|------------|-----------|
+| 01 Foundation & Auth | 8 | 4 auth endpoints |
+| 02 Market Endpoints | 16 | 9 market/event/tag endpoints |
+| 03 Trader Endpoints | 15 | 8 trader/leaderboard/trade endpoints |
+| 04 User Features | 21 | 9 watchlist/tracked-trader endpoints |
+| 05 Integration & Polish | 17 | 0 (polish, testing, cleanup) |
+
+## Notes
+- 2026-02-05: Release planning completed, starting Sprint 01
+- 2026-02-05: Sprint 01 completed - auth infrastructure ready
+- 2026-02-05: All sprint PRDs created with detailed implementation steps

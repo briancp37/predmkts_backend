@@ -1,0 +1,77 @@
+# Sprint 05: Integration & Polish - Progress
+
+## Status: Not Started
+
+## Completed
+
+## In Progress
+
+## Blockers
+
+## Notes
+
+## Key Files to Create/Modify
+- src/prediction_data/api/exceptions.py
+- src/prediction_data/api/middleware.py
+- src/prediction_data/api/main.py (add middleware, exception handlers)
+- web/src/components/error-boundary.tsx
+- web/src/components/loading-skeleton.tsx
+- tests/api/ (new test directory)
+- CLAUDE.md (documentation updates)
+- docker-compose.yml (enhancements)
+
+## Files to Remove (Frontend Cleanup)
+- web/src/app/api/auth/[...nextauth]/
+- web/src/app/api/auth/register/
+- web/src/app/api/watchlist/
+- web/src/app/api/tracked-traders/
+- web/src/app/api/markets/
+- web/src/app/api/traders/
+- web/src/app/api/leaderboard/
+- web/src/app/api/trades/
+- web/src/app/api/events/
+- web/src/app/api/tags/
+- web/src/lib/prisma.ts
+- web/src/types/next-auth.d.ts
+
+## Dependencies to Remove from web/package.json
+- next-auth
+- @auth/prisma-adapter
+- prisma
+- @prisma/client
+
+## Rate Limits to Implement
+- Auth endpoints: 10 req/min per IP
+- Public read: 100 req/min per IP
+- Authenticated: 200 req/min per user
+- CLOB proxy: 50 req/min
+
+## Security Headers to Add
+- Content-Security-Policy
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: DENY
+- X-Request-ID (for tracing)
+
+## E2E Test Scenarios
+1. Auth flow: register -> login -> protected endpoint
+2. Watchlist: add -> list -> remove
+3. Tracked traders: add (with tier limit) -> activity -> remove
+4. Markets: list -> filter -> detail -> trades
+5. Traders: list -> detail -> trades
+6. Leaderboard: view by period
+
+## Final Verification Checklist
+- [ ] docker compose up works
+- [ ] API starts without errors
+- [ ] Frontend starts without errors
+- [ ] Can register new user
+- [ ] Can login
+- [ ] Can view markets
+- [ ] Can view market detail
+- [ ] Can add/remove watchlist
+- [ ] Can view traders
+- [ ] Can add/remove tracked traders
+- [ ] Can view leaderboard
+- [ ] Can logout
+- [ ] No console errors
+- [ ] No API errors

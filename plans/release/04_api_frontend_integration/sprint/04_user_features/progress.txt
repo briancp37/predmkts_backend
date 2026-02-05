@@ -1,0 +1,51 @@
+# Sprint 04: User Features - Progress
+
+## Status: Not Started
+
+## Completed
+
+## In Progress
+
+## Blockers
+
+## Notes
+
+## Key Files to Create/Modify
+- src/prediction_data/api/watchlist/router.py
+- src/prediction_data/api/watchlist/service.py
+- src/prediction_data/api/watchlist/schemas.py
+- src/prediction_data/api/tracked_traders/router.py
+- src/prediction_data/api/tracked_traders/service.py
+- src/prediction_data/api/tracked_traders/schemas.py
+- src/prediction_data/api/auth/router.py (add PATCH /me)
+- src/prediction_data/api/main.py (register new routers)
+- web/src/hooks/useWatchlist.ts
+- web/src/hooks/useTrackedTraders.ts
+
+## PostgreSQL Tables Used
+- watchlists (user_id, market_id, created_at)
+- tracked_traders (user_id, trader_address, custom_name, created_at)
+- users (for tier checking)
+
+## ClickHouse Tables for Enrichment
+- dim_market (watchlist market details)
+- market_mark_daily (price changes)
+- dim_wallet (trader info)
+- wallet_pnl_daily (trader PnL)
+- wallet_position_ledger (trader activity)
+
+## Tier Limits
+- FREE tier: 6 tracked traders
+- PRO tier: 50 tracked traders
+- No watchlist limit currently defined
+
+## Frontend Pages Dependent on This Sprint
+- /(dashboard)/tracked-traders - Tracked traders management
+- Market pages - Watchlist add/remove buttons
+- Various pages - Watchlist indicator icons
+
+## Error Codes
+- TIER_LIMIT_EXCEEDED: 403
+- ALREADY_EXISTS: 400
+- NOT_FOUND: 404
+- UNAUTHORIZED: 401

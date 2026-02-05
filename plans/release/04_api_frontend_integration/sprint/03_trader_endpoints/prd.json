@@ -1,0 +1,205 @@
+[
+  {
+    "category": "Traders Router Setup",
+    "description": "Create the traders API router structure",
+    "steps": [
+      "Create src/prediction_data/api/traders/ directory",
+      "Create __init__.py, router.py, service.py, schemas.py files",
+      "Register traders router in api/main.py with prefix /api/v1/traders",
+      "Add 'traders' tag to router for OpenAPI grouping"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Trader Schemas",
+    "description": "Define Pydantic schemas for trader data",
+    "steps": [
+      "Create TraderPosition schema: marketId (str), marketQuestion (str), outcomeId (str), outcomeName (str), quantity (float), avgCost (float), currentPrice (float), unrealizedPnl (float), realizedPnl (float)",
+      "Create TraderBase schema: address (str), username (str | None), firstSeen (str), totalPnl (float), realizedPnl (float), totalTrades (int), winCount (int), lossCount (int)",
+      "Create TraderResponse extending TraderBase with: id (str), smartScore (float | None), createdAt (str), updatedAt (str)",
+      "Create TraderDetailResponse extending TraderResponse with: positions (list[TraderPosition]), tradeCount (int), winRate (float)",
+      "Create TraderListResponse: items (list[TraderResponse]), total (int), page (int), limit (int)",
+      "Create SmartScoreResponse: address (str), smartScore (float), components (dict with accuracy, consistency, sizing, timing scores)",
+      "Create TraderFilters: search (str | None), sortBy (Literal['smartScore', 'totalPnl', 'totalTrades', 'winRate']), sortOrder (Literal['asc', 'desc']), limit (int = 50), offset (int = 0)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /traders Endpoint",
+    "description": "List traders with search and sorting",
+    "steps": [
+      "Implement GET /traders endpoint",
+      "Accept query params: search (wallet address prefix or username), sortBy (smartScore, totalPnl, totalTrades), sortOrder (asc, desc), limit (default 50, max 500), offset",
+      "Query ClickHouse dim_wallet for trader metadata",
+      "Join with aggregated PnL data from wallet_pnl_daily",
+      "Calculate total trades from wallet_position_ledger",
+      "Apply search filter on address (ILIKE) or username",
+      "Apply sorting (default: totalPnl DESC)",
+      "Return TraderListResponse with pagination"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /traders/smart-scores Endpoint",
+    "description": "Get smart trader scores and rankings",
+    "steps": [
+      "Implement GET /traders/smart-scores endpoint",
+      "Accept query params: minScore (float), limit (default 100), timeWindow (7d, 30d, 90d, all)",
+      "Query or compute smart scores based on trading performance",
+      "Smart score components to consider: accuracy (win rate), consistency (regular profitable trades), sizing (appropriate position sizes), timing (entry/exit quality)",
+      "If smart scores not pre-computed, calculate from wallet_position_ledger data",
+      "Return list of SmartScoreResponse ordered by smartScore DESC"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /traders/{address} Endpoint",
+    "description": "Single trader detail with positions",
+    "steps": [
+      "Implement GET /traders/{address} endpoint",
+      "Accept wallet address as path parameter (normalize to lowercase)",
+      "Query ClickHouse dim_wallet for trader metadata",
+      "Query wallet_position_state for current positions",
+      "Join positions with dim_market and dim_outcome for market details",
+      "Calculate unrealized PnL using current market prices",
+      "Query wallet_pnl_daily for historical PnL aggregates",
+      "Calculate win rate from wallet_position_ledger (closed positions with positive PnL)",
+      "Return TraderDetailResponse",
+      "Return 404 if trader not found"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /traders/{address}/trades Endpoint",
+    "description": "Trades for a specific trader",
+    "steps": [
+      "Implement GET /traders/{address}/trades endpoint",
+      "Accept wallet address as path parameter",
+      "Accept query params: limit (default 100, max 1000), offset, startDate, endDate, marketId (optional filter)",
+      "Query ClickHouse wallet_position_ledger for trader's transactions",
+      "Join with dim_market and dim_outcome for readable names",
+      "Include: timestamp, market question, outcome name, side (BUY/SELL), price, quantity, fees, realized PnL (if closing)",
+      "Order by timestamp DESC",
+      "Return list of TradeResponse with pagination"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Leaderboard Router Setup",
+    "description": "Create leaderboard endpoint",
+    "steps": [
+      "Create src/prediction_data/api/leaderboard/ directory or add to traders router",
+      "Create LeaderboardEntry schema: rank (int), traderAddress (str), pnl (float), tradeCount (int), winRate (float)",
+      "Create LeaderboardResponse: period (str), entries (list[LeaderboardEntry]), generatedAt (str)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /leaderboard Endpoint",
+    "description": "PnL leaderboard by time period",
+    "steps": [
+      "Implement GET /leaderboard endpoint",
+      "Accept query params: period (Literal['1d', '7d', '30d', 'all']), limit (default 100, max 500)",
+      "Query ClickHouse wallet_pnl_daily aggregated by period",
+      "For '1d': filter to today's date",
+      "For '7d': filter to last 7 days, sum PnL",
+      "For '30d': filter to last 30 days, sum PnL",
+      "For 'all': aggregate all-time PnL",
+      "Calculate win rate and trade count for each trader",
+      "Order by PnL DESC, assign ranks",
+      "Return LeaderboardResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Trades Router Setup",
+    "description": "Create global trades endpoints",
+    "steps": [
+      "Create src/prediction_data/api/trades/ directory",
+      "Create router.py, service.py, schemas.py",
+      "Register trades router with prefix /api/v1/trades",
+      "Create SmartTradeResponse extending TradeResponse with: smartScore (float)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /trades/smart Endpoint",
+    "description": "Recent trades from smart traders",
+    "steps": [
+      "Implement GET /trades/smart endpoint",
+      "Accept query params: minScore (float, default 70), minAmount (float in USD), limit (default 50, max 200)",
+      "Query wallet_position_ledger for recent trades",
+      "Join with smart score data (pre-computed or from dim_wallet)",
+      "Filter to traders with smartScore >= minScore",
+      "Filter by trade USD value if minAmount specified",
+      "Order by timestamp DESC",
+      "Return list of SmartTradeResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Whales Router Setup",
+    "description": "Create whale trades endpoint",
+    "steps": [
+      "Add GET /whales/trades endpoint (can be in trades router)",
+      "Create WhaleTradeResponse: same as TradeResponse plus totalWalletValue (float)",
+      "Accept query params: minAmount (USD, default 10000), limit (default 50)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /whales/trades Endpoint",
+    "description": "Large trades from top traders",
+    "steps": [
+      "Implement GET /whales/trades endpoint",
+      "Query wallet_position_ledger for recent large trades",
+      "Filter by USD value >= minAmount",
+      "Optionally filter to wallets with high total value or high PnL",
+      "Include trader's total portfolio value if available",
+      "Order by timestamp DESC",
+      "Return list of WhaleTradeResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Smart Score Computation",
+    "description": "Implement smart score calculation logic",
+    "steps": [
+      "Create src/prediction_data/api/smart_score.py with scoring functions",
+      "Define scoring components and weights:",
+      "  - Accuracy (30%): win rate on closed positions",
+      "  - Consistency (25%): standard deviation of returns, regular trading",
+      "  - Sizing (25%): appropriate position sizes relative to portfolio",
+      "  - Timing (20%): entry price vs final outcome, early exits",
+      "Implement compute_smart_score(wallet_address, lookback_days) function",
+      "Consider caching scores with TTL (recompute daily)",
+      "Add CLI command or scheduled job to pre-compute scores"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Hooks Update",
+    "description": "Update frontend hooks for trader endpoints",
+    "steps": [
+      "Update web/src/hooks/useTraders.ts to call /api/v1/traders",
+      "Update web/src/hooks/useTrader.ts to call /api/v1/traders/{address}",
+      "Update web/src/hooks/useTraderTrades.ts to call /api/v1/traders/{address}/trades",
+      "Create useLeaderboard.ts hook for /api/v1/leaderboard",
+      "Create useSmartTrades.ts hook for /api/v1/trades/smart",
+      "Remove Prisma-based trader data fetching",
+      "Update React Query cache keys"
+    ],
+    "passes": false
+  },
+  {
+    "category": "OpenAPI Spec Update",
+    "description": "Regenerate OpenAPI spec with trader endpoints",
+    "steps": [
+      "Run python scripts/export_openapi.py",
+      "Verify all trader, leaderboard, and trade endpoints are documented",
+      "Run npm run generate-api in web/",
+      "Verify TypeScript types for trader-related schemas"
+    ],
+    "passes": false
+  }
+]

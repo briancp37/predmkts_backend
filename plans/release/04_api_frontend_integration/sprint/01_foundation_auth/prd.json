@@ -1,0 +1,101 @@
+[
+  {
+    "category": "FastAPI App Structure",
+    "description": "Set up FastAPI application with proper project structure",
+    "steps": [
+      "Create src/prediction_data/api/ directory structure",
+      "Create main.py with FastAPI app, CORS middleware",
+      "Create deps.py for dependency injection",
+      "Add fastapi, uvicorn to pyproject.toml",
+      "Verify app starts with uvicorn"
+    ],
+    "passes": true
+  },
+  {
+    "category": "PostgreSQL Setup",
+    "description": "Add PostgreSQL for user data storage",
+    "steps": [
+      "Add postgres service to docker-compose.yml",
+      "Add asyncpg, sqlalchemy to pyproject.toml",
+      "Create src/prediction_data/db/ directory",
+      "Create base.py with SQLAlchemy declarative base",
+      "Create session.py with async session factory",
+      "Add POSTGRES_* env vars to Settings",
+      "Verify postgres container starts and accepts connections"
+    ],
+    "passes": true
+  },
+  {
+    "category": "User Model",
+    "description": "Create SQLAlchemy user model and migrations",
+    "steps": [
+      "Create db/models/user.py with User model",
+      "Add password_hash, email, name, tier fields",
+      "Create watchlist and tracked_trader models",
+      "Add table creation script or alembic migration",
+      "Verify tables created in postgres"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Auth Endpoints",
+    "description": "Implement authentication endpoints",
+    "steps": [
+      "Create api/auth/ directory with router.py, service.py, schemas.py",
+      "Implement POST /auth/register - create user with hashed password",
+      "Implement POST /auth/login - verify password, return JWT",
+      "Implement POST /auth/refresh - refresh JWT",
+      "Implement GET /auth/me - return current user from JWT",
+      "Add python-jose, passlib[bcrypt] to pyproject.toml",
+      "Add JWT_SECRET, JWT_ALGORITHM to Settings"
+    ],
+    "passes": true
+  },
+  {
+    "category": "JWT Middleware",
+    "description": "Add JWT validation middleware for protected routes",
+    "steps": [
+      "Create get_current_user dependency in deps.py",
+      "Extract and validate JWT from Authorization header",
+      "Return 401 for missing/invalid tokens",
+      "Add optional get_current_user_optional for mixed routes",
+      "Verify protected endpoints require valid JWT"
+    ],
+    "passes": true
+  },
+  {
+    "category": "OpenAPI Export",
+    "description": "Configure OpenAPI spec generation",
+    "steps": [
+      "Configure FastAPI openapi metadata (title, version, description)",
+      "Add script to export openapi.json to repo root",
+      "Verify openapi.json contains all endpoints with schemas"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Frontend Auth Update",
+    "description": "Update frontend to use new backend auth",
+    "steps": [
+      "Add proxy rewrite to next.config.js for /api/v1/*",
+      "Remove NextAuth configuration",
+      "Create auth context/store for JWT management",
+      "Update login page to call /api/v1/auth/login",
+      "Update register page to call /api/v1/auth/register",
+      "Store JWT in localStorage or httpOnly cookie",
+      "Add JWT to Authorization header on API calls"
+    ],
+    "passes": true
+  },
+  {
+    "category": "TypeScript Codegen",
+    "description": "Set up OpenAPI to TypeScript type generation",
+    "steps": [
+      "Add openapi-typescript to web/package.json",
+      "Add npm script to generate types from openapi.json",
+      "Generate initial types in web/src/lib/api/",
+      "Verify types match API schemas"
+    ],
+    "passes": true
+  }
+]

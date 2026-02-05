@@ -1,0 +1,42 @@
+# Sprint 02: Market Endpoints - Progress
+
+## Status: Not Started
+
+## Completed
+
+## In Progress
+
+## Blockers
+
+## Notes
+
+## Key Files to Create/Modify
+- src/prediction_data/api/markets/router.py
+- src/prediction_data/api/markets/service.py
+- src/prediction_data/api/markets/schemas.py
+- src/prediction_data/api/events/router.py
+- src/prediction_data/api/events/service.py
+- src/prediction_data/api/events/schemas.py
+- src/prediction_data/api/tags/router.py (or add to markets)
+- src/prediction_data/api/clickhouse.py
+- src/prediction_data/api/clob_client.py
+- src/prediction_data/api/main.py (register new routers)
+- web/src/hooks/useMarkets.ts
+- web/src/hooks/useMarketsAdvanced.ts
+
+## ClickHouse Tables to Query
+- dim_market (market metadata)
+- dim_outcome (outcome details)
+- dim_event (event metadata)
+- market_mark_daily (price history, VWAP)
+- wallet_position_ledger (trades)
+
+## External APIs
+- Polymarket CLOB API: https://clob.polymarket.com/book?token_id={token_id}
+  - Rate limit: 500 req/10s
+  - Response: order book with bids/asks arrays
+
+## Frontend Pages Dependent on This Sprint
+- /(dashboard)/markets - Market listing with filters
+- /(dashboard)/analyze-market - Market detail page
+- /(dashboard)/screener - Market screener

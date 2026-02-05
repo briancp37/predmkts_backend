@@ -1,0 +1,218 @@
+[
+  {
+    "category": "Markets Router Setup",
+    "description": "Create the markets API router structure",
+    "steps": [
+      "Create src/prediction_data/api/markets/ directory",
+      "Create __init__.py, router.py, service.py, schemas.py files",
+      "Register markets router in api/main.py with prefix /api/v1/markets",
+      "Add 'markets' tag to router for OpenAPI grouping"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Market Schemas",
+    "description": "Define Pydantic schemas for market data matching frontend expectations",
+    "steps": [
+      "Create MarketOutcome schema with fields: id (str), tokenId (str), outcomeName (str), currentPrice (float), volume (float)",
+      "Create MarketBase schema with fields: id (str), polymarketId (str), conditionId (str | None), slug (str | None), question (str), description (str | None), category (str | None), endDate (str | None), resolved (bool), totalVolume (float), liquidity (float), createdAt (str), imageUrl (str | None)",
+      "Create MarketResponse schema extending MarketBase with outcomes: list[MarketOutcome]",
+      "Create MarketAdvancedResponse extending MarketResponse with CLOB fields: bid (float | None), ask (float | None), spread (float | None), spreadPercent (float | None), spreadCents (float | None), volume24h (float), priceChange24h (float)",
+      "Create MarketListResponse with items: list[MarketResponse], total: int, page: int, limit: int",
+      "Create MarketAdvancedListResponse with items: list[MarketAdvancedResponse], total: int, page: int, limit: int",
+      "Create TradeResponse schema with fields: id (str), traderAddress (str), marketId (str), outcomeId (str), outcomeName (str), side (Literal['BUY', 'SELL']), price (float), amount (float), usdValue (float), txHash (str), timestamp (str)",
+      "Create PriceHistoryPoint schema with fields: timestamp (str), price (float), volume (float)",
+      "Create MarketFilters schema for query params: category (str | None), search (str | None), resolved (bool | None), limit (int = 50), offset (int = 0)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets Endpoint",
+    "description": "List markets with basic filtering",
+    "steps": [
+      "Implement GET /markets endpoint in router.py",
+      "Accept query params: category, search, resolved, limit (default 50, max 500), offset (default 0)",
+      "Query ClickHouse dim_market table for market data",
+      "Join with dim_outcome for outcome details",
+      "Apply filters: category exact match, search ILIKE on question/description, resolved boolean",
+      "Order by totalVolume DESC as default",
+      "Return MarketListResponse with pagination metadata",
+      "Add service function get_markets() that builds and executes ClickHouse query"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets/advanced Endpoint",
+    "description": "Markets with CLOB bid/ask data for advanced filtering",
+    "steps": [
+      "Implement GET /markets/advanced endpoint",
+      "Accept extended query params: category, sortBy (volume, liquidity, spread, priceChange), minVolume, maxVolume, minLiquidity, maxLiquidity, minSpread, maxSpread, timeRemaining, createdDate, minChange, maxChange, tags (comma-separated), limit, offset, page",
+      "Query ClickHouse for base market data",
+      "For each market, fetch real-time CLOB data from Polymarket CLOB API (batch request if possible)",
+      "CLOB API: GET https://clob.polymarket.com/book with token_id parameter",
+      "Extract best bid/ask from order book response",
+      "Calculate spread = ask - bid, spreadPercent = spread / midpoint * 100, spreadCents = spread * 100",
+      "Apply advanced filters on computed fields (spread, priceChange, etc.)",
+      "Return MarketAdvancedListResponse",
+      "Handle CLOB API rate limits (500 req/10s) - batch requests, add delays if needed",
+      "Cache CLOB data for 30-60 seconds to reduce API calls"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets/screener Endpoint",
+    "description": "Market screener with time-based filtering",
+    "steps": [
+      "Implement GET /markets/screener endpoint",
+      "Accept query params: timeWindow (enum: 6h, 12h, 24h, 7d), minVolume, maxVolume, minPriceChange, maxPriceChange, category, resolved, sortBy (volume, priceChange), sortOrder (asc, desc), limit, offset",
+      "Query ClickHouse market_mark_daily for historical price data",
+      "Calculate price change over the specified time window",
+      "Calculate volume over the time window",
+      "Filter by computed price change and volume ranges",
+      "Return MarketAdvancedListResponse with computed fields"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets/{id} Endpoint",
+    "description": "Single market detail",
+    "steps": [
+      "Implement GET /markets/{id} endpoint",
+      "Accept market_id as path parameter (can be internal ID, polymarketId, or slug)",
+      "Query ClickHouse dim_market with flexible ID matching",
+      "Include full outcome details with current prices",
+      "Optionally fetch real-time CLOB bid/ask for the market",
+      "Return MarketResponse or MarketAdvancedResponse based on include_clob query param",
+      "Return 404 if market not found"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets/{id}/trades Endpoint",
+    "description": "Trades for a specific market",
+    "steps": [
+      "Implement GET /markets/{id}/trades endpoint",
+      "Accept path param: market_id",
+      "Accept query params: limit (default 100, max 1000), offset, startDate, endDate",
+      "Query ClickHouse trades table (Silver layer polymarket/trades or wallet_position_ledger)",
+      "Filter by market_id",
+      "Order by timestamp DESC (most recent first)",
+      "Include trader address, side, price, amount, outcome name",
+      "Return list of TradeResponse with pagination"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /markets/{id}/price-history Endpoint",
+    "description": "Price history for charting",
+    "steps": [
+      "Implement GET /markets/{id}/price-history endpoint",
+      "Accept path param: market_id",
+      "Accept query params: interval (enum: 1h, 4h, 1d, 1w), startDate, endDate, outcomeId (optional, defaults to YES outcome)",
+      "Query ClickHouse market_mark_daily for historical price marks",
+      "Aggregate by the specified interval",
+      "Return list of PriceHistoryPoint with timestamp, price, volume",
+      "Ensure chronological order (oldest first) for chart rendering"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Events Router Setup",
+    "description": "Create events API endpoints",
+    "steps": [
+      "Create src/prediction_data/api/events/ directory with router.py, service.py, schemas.py",
+      "Register events router in api/main.py with prefix /api/v1/events",
+      "Create EventResponse schema: id (str), polymarketEventId (str), title (str), description (str | None), slug (str), status (str), category (str | None), markets (list[MarketBase])",
+      "Create EventListResponse with items, total, page, limit"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /events Endpoint",
+    "description": "List events with filtering",
+    "steps": [
+      "Implement GET /events endpoint",
+      "Accept query params: category, search, status, limit, offset",
+      "Query ClickHouse dim_event table",
+      "Include associated markets count or basic market info",
+      "Return EventListResponse"
+    ],
+    "passes": false
+  },
+  {
+    "category": "GET /events/{id} Endpoint",
+    "description": "Single event with markets",
+    "steps": [
+      "Implement GET /events/{id} endpoint",
+      "Query ClickHouse dim_event by ID or slug",
+      "Include full list of associated markets with outcomes",
+      "Return EventResponse with nested markets",
+      "Return 404 if event not found"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Tags Router Setup",
+    "description": "Create tags API endpoint",
+    "steps": [
+      "Create src/prediction_data/api/tags/ directory or add to markets router",
+      "Create TagResponse schema: id (str), name (str), slug (str), marketCount (int)",
+      "Implement GET /tags endpoint",
+      "Query distinct tags from markets (may need to extract from market metadata)",
+      "Return list of TagResponse ordered by marketCount DESC"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ClickHouse Query Utilities",
+    "description": "Create reusable ClickHouse query helpers",
+    "steps": [
+      "Create src/prediction_data/api/clickhouse.py with query utilities",
+      "Create async wrapper around clickhouse_connect client",
+      "Add query builder helpers for common patterns (pagination, filtering, sorting)",
+      "Add connection pooling or singleton pattern for client reuse",
+      "Handle query timeouts (5-10 second default)",
+      "Add query result to Pydantic model conversion helpers"
+    ],
+    "passes": false
+  },
+  {
+    "category": "CLOB API Client",
+    "description": "Create Polymarket CLOB API client for real-time data",
+    "steps": [
+      "Create src/prediction_data/api/clob_client.py",
+      "Implement async function to fetch order book for a token_id",
+      "Implement batch fetching for multiple token_ids",
+      "Add rate limiting (max 500 req/10s)",
+      "Add response caching with TTL (30-60 seconds)",
+      "Extract best bid/ask from order book levels",
+      "Handle API errors gracefully (return None for failed fetches)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Hooks Update",
+    "description": "Update frontend hooks to call new backend endpoints",
+    "steps": [
+      "Update web/src/hooks/useMarkets.ts to call /api/v1/markets",
+      "Update web/src/hooks/useMarketsAdvanced.ts to call /api/v1/markets/advanced",
+      "Update any market detail fetching to use /api/v1/markets/{id}",
+      "Update price history fetching for charts",
+      "Remove or deprecate old Prisma-based data fetching in hooks",
+      "Update React Query keys to match new endpoint structure"
+    ],
+    "passes": false
+  },
+  {
+    "category": "OpenAPI Spec Update",
+    "description": "Regenerate OpenAPI spec with new endpoints",
+    "steps": [
+      "Run python scripts/export_openapi.py after adding all endpoints",
+      "Verify openapi.json includes all market, event, and tag endpoints",
+      "Verify all schemas are properly documented",
+      "Run npm run generate-api in web/ to regenerate TypeScript types",
+      "Verify generated types match expected frontend interfaces"
+    ],
+    "passes": false
+  }
+]
