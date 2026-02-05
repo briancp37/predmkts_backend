@@ -19,7 +19,7 @@
         "steps": [
             "[DONE] Audit the _run_catchup() hot path for no-op runs (committed in 3d03e41): path is state_store.load() → discover_manifests() → filter already-processed → early-return if empty. Markets reference and Glue catalog are NOT loaded on the no-op path. Architecture is correct — empirical timing verification deferred to deployment_and_validation category",
             "[DONE] Verified markets reference loading is ONLY triggered after the 'All manifests already processed' early-return check — confirmed in silver.py lines 629-650 (committed in 3d03e41). The most expensive startup operation is completely skipped on no-op runs",
-            "Add structured logging for the no-op exit path with timing: emit a 'silver_catchup_noop' structured log event with duration_seconds at the 'Silver is up to date' return point, so CloudWatch can track how fast no-op exits are and alert if they degrade",
+            "[DONE] Add structured logging for the no-op exit path with timing: emit a 'silver_catchup_noop' structured log event with duration_seconds at the 'Silver is up to date' return point, so CloudWatch can track how fast no-op exits are and alert if they degrade",
             "Consider adding a lightweight pre-check: before full manifest discovery, check if any new Bronze prefixes exist since the last known processed run_id using a single S3 list_objects_v2 with start_after — this could skip the full discover_manifests() call entirely on no-op runs (implement only if manifest discovery takes >5s in the no-new-data case, measured during deployment_and_validation)"
         ],
         "passes": false

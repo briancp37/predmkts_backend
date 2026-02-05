@@ -25,7 +25,7 @@ Added ECS concurrency guard to `silver catchup` and `silver maintain` CLI comman
      False proceeds, without flag guard not called
 7. mypy and ruff: no new errors introduced (all pre-existing). 1281 tests passing.
 
-### catchup_noop_optimization — steps 1, 2 (2026-02-04)
+### catchup_noop_optimization — steps 1, 2, 3 (2026-02-04)
 Verified from code committed in 3d03e41:
 1. Audited _run_catchup() no-op hot path: state_store.load() → discover_manifests()
    → filter already-processed → early-return "Silver is up to date". Markets reference,
@@ -34,6 +34,23 @@ Verified from code committed in 3d03e41:
 2. Confirmed markets reference loading (the most expensive startup operation for trades)
    is gated behind the "All manifests already processed" early-return check at silver.py
    lines 629-650. No-op runs never touch it.
+3. Added `silver_catchup_noop` structured log event at both no-op exit points in
+   _run_catchup() (silver.py). Uses structlog via `get_logger(__name__)` for CloudWatch-
+   compatible JSON output. Two exit paths instrumented:
+   - `reason=no_manifests`: when discover_manifests() returns empty — emits platform,
+     entity, start_date, end_date, duration_s
+   - `reason=all_processed`: when all discovered manifests are already in state store —
+     additionally emits manifests_discovered count
+   Timer starts with `time.monotonic()` immediately after lazy imports (right after the
+   concurrency guard, before S3Client construction), so duration_s captures the full
+   cost of a no-op invocation: state store load + manifest discovery + filtering.
+   Added 3 unit tests in TestCatchupNoopLogging:
+   - test_noop_log_emitted_when_no_manifests_found: verifies event name, fields, reason
+   - test_noop_log_emitted_when_all_manifests_processed: verifies manifests_discovered
+   - test_noop_log_not_emitted_when_manifests_to_process: negative case
+   Step 4 (lightweight pre-check) deferred per PRD — implement only if manifest discovery
+   takes >5s, to be measured during deployment_and_validation.
+   mypy and ruff: no new errors introduced. 1314 tests passing (34 silver CLI tests).
 
 ## Prerequisites Completed (not sprint steps, but foundations)
 

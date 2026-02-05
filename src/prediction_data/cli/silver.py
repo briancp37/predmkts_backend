@@ -6,6 +6,7 @@ import asyncio
 import gc
 import itertools
 import os
+import time
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Annotated
 
@@ -561,6 +562,7 @@ async def _run_catchup(
             )
             return
 
+    from prediction_data.core.logging import get_logger
     from prediction_data.silver.catalog import get_catalog
     from prediction_data.silver.discovery import (
         CATALOG_ENTITIES,
@@ -574,6 +576,9 @@ async def _run_catchup(
     )
     from prediction_data.silver.state import SilverStateStore
     from prediction_data.storage import S3Client
+
+    logger = get_logger(__name__)
+    t0 = time.monotonic()
 
     s3 = S3Client(bucket=bucket)
 
@@ -605,6 +610,16 @@ async def _run_catchup(
     )
 
     if not manifests:
+        duration = time.monotonic() - t0
+        logger.info(
+            "silver_catchup_noop",
+            platform=platform,
+            entity=entity,
+            reason="no_manifests",
+            start_date=start_date,
+            end_date=end_date,
+            duration_s=round(duration, 2),
+        )
         typer.echo("No manifests found.")
         return
 
@@ -619,6 +634,17 @@ async def _run_catchup(
             typer.echo(f"Skipping {skipped} already-processed manifest(s).")
 
     if not manifests:
+        duration = time.monotonic() - t0
+        logger.info(
+            "silver_catchup_noop",
+            platform=platform,
+            entity=entity,
+            reason="all_processed",
+            manifests_discovered=before,
+            start_date=start_date,
+            end_date=end_date,
+            duration_s=round(duration, 2),
+        )
         typer.echo("All manifests already processed. Silver is up to date.")
         return
 

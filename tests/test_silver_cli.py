@@ -904,6 +904,105 @@ class TestCatchup:
 
 
 # ---------------------------------------------------------------------------
+# Test: silver_catchup_noop structured logging
+# ---------------------------------------------------------------------------
+
+_GET_LOGGER = "prediction_data.core.logging.get_logger"
+
+
+class TestCatchupNoopLogging:
+    def test_noop_log_emitted_when_no_manifests_found(self) -> None:
+        """No-op structured log emitted with reason=no_manifests when discovery returns empty."""
+        fake_state = FakeStateStoreWithDates(latest_date="2024-06-15")
+        mock_logger = MagicMock()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=[]),
+            patch(_STATE, return_value=fake_state),
+            patch(_GET_LOGGER, return_value=mock_logger),
+        ):
+            result = runner.invoke(
+                app,
+                ["catchup", "--platform", "polymarket", "--entity", "trades"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert call_args[0][0] == "silver_catchup_noop"
+        assert call_args[1]["platform"] == "polymarket"
+        assert call_args[1]["entity"] == "trades"
+        assert call_args[1]["reason"] == "no_manifests"
+        assert "duration_s" in call_args[1]
+        assert isinstance(call_args[1]["duration_s"], float)
+
+    def test_noop_log_emitted_when_all_manifests_processed(self) -> None:
+        """No-op structured log emitted with reason=all_processed and manifest count."""
+        manifests = [_manifest(run_id="run-1", dt="2024-06-15")]
+        fake_state = FakeStateStoreWithDates(latest_date="2024-06-15")
+        fake_state._processed.add("run-1")
+        mock_logger = MagicMock()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_GET_LOGGER, return_value=mock_logger),
+        ):
+            result = runner.invoke(
+                app,
+                ["catchup", "--platform", "polymarket", "--entity", "trades"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args
+        assert call_args[0][0] == "silver_catchup_noop"
+        assert call_args[1]["platform"] == "polymarket"
+        assert call_args[1]["entity"] == "trades"
+        assert call_args[1]["reason"] == "all_processed"
+        assert call_args[1]["manifests_discovered"] == 1
+        assert "duration_s" in call_args[1]
+        assert isinstance(call_args[1]["duration_s"], float)
+
+    def test_noop_log_not_emitted_when_manifests_to_process(self) -> None:
+        """No silver_catchup_noop log when there are manifests to process."""
+        manifests = [_manifest(run_id="run-1", dt="2024-06-15")]
+        fake_state = FakeStateStoreWithDates(latest_date="2024-06-14")
+        mock_logger = MagicMock()
+
+        with (
+            patch(_LOGGING),
+            patch(_S3),
+            patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
+            patch(_STATE, return_value=fake_state),
+            patch(_CATALOG, return_value=MagicMock()),
+            patch(_LOAD_MARKETS_REF, new_callable=AsyncMock, return_value=_fake_markets_lookup()),
+            patch(
+                _PROCESS_CHUNKED,
+                new_callable=AsyncMock,
+                return_value=FakeProcessingResult(),
+            ),
+            patch(_GET_LOGGER, return_value=mock_logger),
+        ):
+            result = runner.invoke(
+                app,
+                ["catchup", "--platform", "polymarket", "--entity", "trades"],
+                env=_base_env(),
+            )
+
+        assert result.exit_code == 0
+        # Logger should NOT have been called with silver_catchup_noop
+        for call in mock_logger.info.call_args_list:
+            assert call[0][0] != "silver_catchup_noop"
+
+
+# ---------------------------------------------------------------------------
 # Test: --skip-if-concurrent concurrency guard
 # ---------------------------------------------------------------------------
 
