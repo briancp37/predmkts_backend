@@ -106,6 +106,25 @@
 - Note: Sub-daily intervals (1h, 4h) return daily granularity as hourly data is not yet computed.
   Future enhancement: compute hourly marks from Silver trades for finer-grained charting.
 
+### 2026-02-05: CLOB API Client
+- Created `src/prediction_data/api/clob_client.py` with:
+  - `ClobApiClient` class: Async client for Polymarket CLOB API order book data
+  - `get_order_book(token_id)`: Fetch order book for a single token (GET /book)
+  - `get_order_books(token_ids)`: Batch fetch order books for multiple tokens (POST /books)
+  - `OrderBookSummary` dataclass: Extracted bid/ask with computed spread metrics
+  - `OrderBookSummary.from_api_response()`: Parse CLOB API response, extract best bid/ask
+  - Spread calculations: spread, spreadPercent (based on midpoint), spreadCents
+  - Response caching with configurable TTL (default 30 seconds)
+  - Rate limiting (conservative 30 req/s, well under 500 req/10s limit)
+  - Batch requests support up to 500 tokens per request
+  - Graceful error handling: returns None for failed fetches
+  - `get_clob_client()` / `close_clob_client()`: Singleton management for dependency injection
+- Note: This is a public API client (no authentication required), distinct from the bronze layer
+  CLOB client which uses L2 authentication for trades data
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Next priority: Implement GET /markets/advanced endpoint using this client
+
 ## In Progress
 
 ## Blockers
@@ -114,7 +133,8 @@
 - The ClickHouse client uses clickhouse_connect library (same as Gold layer)
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
-- Next priority: Implement CLOB API client for real-time prices, or Events Router Setup
+- CLOB API Client now available for real-time bid/ask enrichment
+- Next priority: Implement GET /markets/advanced endpoint, GET /markets/screener, or Events Router Setup
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
@@ -125,7 +145,7 @@
 - src/prediction_data/api/events/schemas.py
 - src/prediction_data/api/tags/router.py (or add to markets)
 - src/prediction_data/api/clickhouse.py [DONE]
-- src/prediction_data/api/clob_client.py
+- src/prediction_data/api/clob_client.py [DONE]
 - src/prediction_data/api/main.py (register new routers)
 - web/src/hooks/useMarkets.ts
 - web/src/hooks/useMarketsAdvanced.ts

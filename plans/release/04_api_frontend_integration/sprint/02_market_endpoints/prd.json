@@ -188,7 +188,7 @@
       "Extract best bid/ask from order book levels",
       "Handle API errors gracefully (return None for failed fetches)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Hooks Update",
