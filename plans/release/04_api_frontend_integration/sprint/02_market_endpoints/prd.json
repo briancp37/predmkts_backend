@@ -8,7 +8,7 @@
       "Register markets router in api/main.py with prefix /api/v1/markets",
       "Add 'markets' tag to router for OpenAPI grouping"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Market Schemas",
@@ -24,7 +24,7 @@
       "Create PriceHistoryPoint schema with fields: timestamp (str), price (float), volume (float)",
       "Create MarketFilters schema for query params: category (str | None), search (str | None), resolved (bool | None), limit (int = 50), offset (int = 0)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets Endpoint",
@@ -39,7 +39,7 @@
       "Return MarketListResponse with pagination metadata",
       "Add service function get_markets() that builds and executes ClickHouse query"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets/advanced Endpoint",

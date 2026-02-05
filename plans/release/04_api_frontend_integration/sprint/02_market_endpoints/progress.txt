@@ -27,6 +27,24 @@
   - TradeResponse, PriceHistoryPoint, MarketFilters
 - Markets router registered in `api/main.py` with prefix `/api/v1/markets`
 
+### 2026-02-05: GET /markets Endpoint
+- Implemented `get_markets()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse dim_market table with LEFT JOIN to dim_event for category filtering
+  - Queries dim_outcome for outcome details per market
+  - Falls back to parsing tokens JSON if outcomes not in dim_outcome
+  - Supports filters: category (exact match via event), search (ILIKE on question/description), resolved (boolean)
+  - Returns paginated results ordered by updated_at DESC
+  - Helper function `_parse_tokens_to_outcomes()` for extracting outcomes from tokens JSON
+- Implemented `GET /markets` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Query params: category, search, resolved, limit (1-500, default 50), offset
+  - Returns MarketListResponse with items, total, page, limit
+  - Full OpenAPI documentation with descriptions
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: totalVolume, liquidity, currentPrice, endDate, imageUrl fields return default values
+  (0.0, 0.5, None) as they are not in current ClickHouse dim_market schema. Will be populated
+  when market_mark_daily integration is added or CLOB API client is implemented.
+
 ## In Progress
 
 ## Blockers
@@ -35,7 +53,7 @@
 - The ClickHouse client uses clickhouse_connect library (same as Gold layer)
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
-- Next priority: Implement GET /markets endpoint using the new utilities
+- Next priority: Implement GET /markets/{id} endpoint or CLOB API client for real-time prices
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
