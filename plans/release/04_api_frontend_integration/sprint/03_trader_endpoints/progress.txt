@@ -28,6 +28,16 @@
   - WhaleTradeFilters: minAmount, limit
   - All schemas aligned with Gold layer ClickHouse data model (dim_wallet, wallet_position_ledger, wallet_pnl_daily, wallet_position_state)
 
+- [2026-02-05] GET /traders Endpoint - Implemented full trader listing with search/sort
+  - Added GET /traders endpoint in router.py with query params: search, sortBy, sortOrder, limit, offset
+  - Implemented get_traders() in service.py with ClickHouse query
+  - Joins dim_wallet with aggregated wallet_pnl_daily for PnL and trade statistics
+  - Search filters by wallet address prefix using ILIKE
+  - Sort options: totalPnl, totalTrades, winRate (smartScore uses totalPnl as proxy until computed)
+  - Win rate calculated as wins / (wins + losses) * 100
+  - Returns TraderListResponse with pagination (page calculated from offset/limit)
+  - All types pass mypy, all tests pass
+
 ## In Progress
 
 ## Blockers

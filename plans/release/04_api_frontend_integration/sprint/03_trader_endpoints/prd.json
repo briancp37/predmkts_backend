@@ -37,7 +37,7 @@
       "Apply sorting (default: totalPnl DESC)",
       "Return TraderListResponse with pagination"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /traders/smart-scores Endpoint",
