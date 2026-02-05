@@ -1,14 +1,41 @@
 # Sprint 02: Market Endpoints - Progress
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed
+
+### 2026-02-05: ClickHouse Query Utilities
+- Created `src/prediction_data/api/clickhouse.py` with:
+  - `get_clickhouse_client()`: Singleton pattern for ClickHouse client reuse
+  - `execute_query()`: Async wrapper that runs queries in thread pool to avoid blocking
+  - `execute_query_count()`: Convenience function for COUNT queries
+  - `build_where_clause()`: Builds WHERE clauses with ILIKE support for search fields
+  - `build_pagination()`: Builds LIMIT/OFFSET with max limit clamping
+  - `build_order_by()`: Builds ORDER BY with field validation
+  - `rows_to_models()`: Converts query results to Pydantic models
+  - `ping()`: Async health check function
+- Default query timeout: 10 seconds
+- Thread pool with 4 workers for concurrent query execution
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+
+### Previously Completed (before this sprint started)
+- Markets router structure already exists at `src/prediction_data/api/markets/`
+- Market schemas already defined in `schemas.py`:
+  - MarketOutcome, MarketBase, MarketResponse, MarketAdvancedResponse
+  - MarketListResponse, MarketAdvancedListResponse
+  - TradeResponse, PriceHistoryPoint, MarketFilters
+- Markets router registered in `api/main.py` with prefix `/api/v1/markets`
 
 ## In Progress
 
 ## Blockers
 
 ## Notes
+- The ClickHouse client uses clickhouse_connect library (same as Gold layer)
+- Query execution is wrapped in ThreadPoolExecutor to provide async interface
+- The build_where_clause function supports parameterized queries to prevent SQL injection
+- Next priority: Implement GET /markets endpoint using the new utilities
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
@@ -18,7 +45,7 @@
 - src/prediction_data/api/events/service.py
 - src/prediction_data/api/events/schemas.py
 - src/prediction_data/api/tags/router.py (or add to markets)
-- src/prediction_data/api/clickhouse.py
+- src/prediction_data/api/clickhouse.py [DONE]
 - src/prediction_data/api/clob_client.py
 - src/prediction_data/api/main.py (register new routers)
 - web/src/hooks/useMarkets.ts

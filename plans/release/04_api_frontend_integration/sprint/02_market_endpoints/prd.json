@@ -174,7 +174,7 @@
       "Handle query timeouts (5-10 second default)",
       "Add query result to Pydantic model conversion helpers"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "CLOB API Client",
