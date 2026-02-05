@@ -113,9 +113,9 @@ Detailed endpoint parameters, response schemas, and pagination details are in `d
 # Backfill all platforms/entities for a date range
 prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-31
 
-# Backfill only Polymarket trades
+# Backfill only Polymarket order_filled
 prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
-    --platform polymarket --entity trades
+    --platform polymarket --entity order_filled
 
 # Dry run (preview without executing)
 prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-07 --dry-run
@@ -151,7 +151,7 @@ prediction-data backfill catchup --dry-run
 **Incremental modes by entity type:**
 - **Catalog entities (markets, events):** Catchup uses incremental ingestion by default — finds the latest manifest, extracts the `updatedAt` cursor, and fetches only records changed since then via Gamma API (`order=updatedAt&ascending=false`). Writes delta partitions with `snapshot_type="delta"`. Use `--full` to force a full snapshot instead. Falls back to full snapshot automatically on first run or if no cursor exists.
 - **order_filled:** Incremental via Goldsky subgraph — finds the latest timestamp and fetches only newer records.
-- **trades:** Finds the latest date and backfills missing days.
+- **Kalshi trades:** Finds the latest date and backfills missing days.
 
 ### Parquet-to-Bronze Backfill (order_filled)
 
@@ -177,7 +177,6 @@ python scripts/backfill_order_filled_from_parquet.py \
     --start-date 2024-01-01 --end-date 2024-03-31 --dry-run
 ```
 
-- Polymarket trades backfill uses the CLOB API (cursor-based, no record limit).
 - Kalshi trades backfill uses `min_ts`/`max_ts` to scope each day.
 - Markets/events run existing snapshot ingestion per day.
 - On per-day failure, continues to next day and prints failure summary at end.
@@ -279,8 +278,8 @@ bronze/{platform}/{entity}/dt={YYYY-MM-DD}/run_id={uuid}/
 
 ## Data Volumes (Estimates)
 
-- **Polymarket trades:** ~5,000-50,000 trades/day (varies with market activity). At 500/page, expect 10-100 API calls per day.
+- **Polymarket order_filled:** ~50,000-500,000 events/day (varies with market activity). Trades are constructed in Silver from these events.
 - **Kalshi trades:** ~1,000-10,000 trades/day.
 - **Polymarket markets catalog:** ~360,000 records (~163 MB gzipped). Full fetch takes ~10 min at 500/page.
 - **Polymarket events catalog:** ~176,000 records (~165 MB gzipped). Full fetch takes ~4 min at 500/page.
-- **Full historical trades backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.
+- **Full historical Kalshi trades backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.

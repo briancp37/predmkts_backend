@@ -9,7 +9,7 @@ Data pipeline for prediction market data ingestion and processing. Ingests trade
 python scripts/check_setup.py
 
 # 2. Run an ingestion locally
-prediction-data ingest polymarket-trades --dt 2024-01-28
+prediction-data ingest polymarket-order-filled --dt 2024-01-28
 prediction-data ingest kalshi-markets --dt 2024-01-28
 ```
 
@@ -25,7 +25,7 @@ prediction-data ingest kalshi-markets --dt 2024-01-28
 
 | Command | Description |
 |---------|-------------|
-| `prediction-data ingest polymarket-trades --dt DATE` | Ingest Polymarket trades |
+| `prediction-data ingest polymarket-order-filled --dt DATE` | Ingest Polymarket order_filled events |
 | `prediction-data ingest polymarket-markets --dt DATE` | Ingest Polymarket markets |
 | `prediction-data ingest polymarket-events --dt DATE` | Ingest Polymarket events |
 | `prediction-data ingest kalshi-trades --dt DATE` | Ingest Kalshi trades |

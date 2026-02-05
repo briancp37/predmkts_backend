@@ -2,7 +2,7 @@
 # Release: 01_bronze_level
 # Created: 2026-02-05
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 - [2026-02-05] fix_kalshi_trades_schedule: Fixed broken Kalshi trades EventBridge schedule
@@ -39,6 +39,14 @@
   - Verified `polymarket-trades` command is no longer in `prediction-data ingest --help` output
   - Ran `prediction-data status coverage` - command works correctly, shows Bronze entities with data
   - CLI commands (ingest, backfill, status, silver, gold) all functional
+
+- [2026-02-05] update_documentation: Updated all documentation to reflect Bronze no longer has Polymarket trades
+  - Updated RELEASE.md entity table to remove Polymarket trades, added note explaining trades constructed in Silver
+  - Updated RELEASE.md exit criteria, schedule table, and CLI contract section
+  - Updated CLAUDE.md backfill examples, incremental modes, and data volumes sections
+  - Updated README.md Quick Start example and Key Commands table
+  - Updated infrastructure/README.md architecture diagram
+  - All 1321 tests still pass, mypy reports no issues
 
 ## In Progress
 

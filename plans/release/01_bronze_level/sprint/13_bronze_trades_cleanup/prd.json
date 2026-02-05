@@ -52,7 +52,7 @@
             "Update README.md if it has Bronze polymarket trades examples",
             "Update infrastructure/README.md if needed"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "validation",

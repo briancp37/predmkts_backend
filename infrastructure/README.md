@@ -8,8 +8,8 @@ CloudFormation templates for the Bronze-level prediction data ingestion pipeline
 ┌─────────────────────────────────────────────────────────────┐
 │                    EventBridge Scheduler                     │
 │  ┌──────────────────┐  ┌──────────────────┐                │
-│  │ polymarket-trades │  │  kalshi-trades   │  (every 5 min) │
-│  │ polymarket-markets│  │  kalshi-markets  │  (every 1 hr)  │
+│  │polymarket-order- │  │  kalshi-trades   │  (every 5 min) │
+│  │filled, markets   │  │  kalshi-markets  │  (every 1 hr)  │
 │  └────────┬─────────┘  └────────┬─────────┘                │
 │           └──────────┬──────────┘                           │
 └──────────────────────┼──────────────────────────────────────┘

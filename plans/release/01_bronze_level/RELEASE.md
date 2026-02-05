@@ -24,7 +24,7 @@ Release 1 establishes a **correct, replayable, production-grade Bronze layer** t
 Release 1 is complete when:
 
 1. ✅ S3 Bronze bucket exists with **versioning enabled**
-2. ✅ Polymarket `trades`, `markets`, and `events` ingestion runs on schedule via EventBridge
+2. ✅ Polymarket `order_filled`, `markets`, and `events` ingestion runs on schedule via EventBridge
 3. ✅ Kalshi `trades`, `markets`, and `events` ingestion runs on schedule via EventBridge
 4. ✅ Each run writes:
    - raw `part-000.jsonl.gz`
@@ -45,13 +45,14 @@ Release 1 is complete when:
 ### Entities (MVP)
 | Platform | Entity | Type | Ingestion model | Recommended cadence |
 |---|---|---|---|---|
-| Polymarket | `trades` | high-frequency | date-scoped (per-day) | every 5 minutes |
 | Polymarket | `markets` | catalog | full fetch (not date-scoped) | every 1–6 hours |
 | Polymarket | `events` | catalog | full fetch (not date-scoped) | every 1–6 hours |
+| Polymarket | `order_filled` | high-frequency | date-scoped (per-day) | every 5 minutes |
 | Kalshi | `trades` | high-frequency | date-scoped (per-day) | every 5 minutes |
 | Kalshi | `markets` | slowly-changing | date-scoped (per-day) | every 1–6 hours |
 | Kalshi | `events` | slowly-changing | date-scoped (per-day) | every 1–6 hours |
-| Polymarket | `order_filled` | high-frequency | date-scoped (per-day) | every 5 minutes |
+
+> **Note:** Polymarket `trades` are NOT ingested at Bronze level. Instead, trades are constructed in the Silver layer from Bronze `order_filled` events.
 
 **Catalog vs date-scoped entities:**
 - **Date-scoped** (trades): Fetched per-day using timestamp filters. Backfill iterates over each day in the range.
@@ -253,14 +254,14 @@ Each scheduled run is **stateless**, **short-lived**, and **self-contained**.
 
 ### 8.4 Recommended Schedules (America/Chicago)
 
-| Job                | Schedule        |
-| ------------------ | --------------- |
-| Polymarket trades  | every 5 minutes |
-| Kalshi trades      | every 5 minutes |
-| Polymarket markets | every 1–6 hours |
-| Polymarket events  | every 1–6 hours |
-| Kalshi markets     | every 1–6 hours |
-| Kalshi events      | every 1–6 hours |
+| Job                    | Schedule        |
+| ---------------------- | --------------- |
+| Polymarket order_filled| every 5 minutes |
+| Kalshi trades          | every 5 minutes |
+| Polymarket markets     | every 1–6 hours |
+| Polymarket events      | every 1–6 hours |
+| Kalshi markets         | every 1–6 hours |
+| Kalshi events          | every 1–6 hours |
 
 ---
 
@@ -291,13 +292,12 @@ All ingestion is driven via CLI.
 Required commands:
 
 ```bash
-prediction-data ingest polymarket-trades --dt YYYY-MM-DD
 prediction-data ingest polymarket-markets --dt YYYY-MM-DD
 prediction-data ingest polymarket-events --dt YYYY-MM-DD
+prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD
 prediction-data ingest kalshi-trades --dt YYYY-MM-DD
 prediction-data ingest kalshi-markets --dt YYYY-MM-DD
 prediction-data ingest kalshi-events --dt YYYY-MM-DD
-prediction-data ingest polymarket-order-filled --dt YYYY-MM-DD
 
 # Monitoring & status
 prediction-data status coverage --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--platform] [--entity]
