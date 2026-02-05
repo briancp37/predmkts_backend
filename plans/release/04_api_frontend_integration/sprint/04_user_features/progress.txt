@@ -1,8 +1,17 @@
 # Sprint 04: User Features - Progress
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed
+- 2026-02-05: Watchlist API Backend Implementation
+  - Created watchlist module at src/prediction_data/api/watchlist/
+  - Implemented schemas: WatchlistItem, WatchlistItemWithMarket, WatchlistAddRequest, WatchlistResponse
+  - Implemented service layer with all CRUD functions + ClickHouse enrichment
+  - Implemented all endpoints: GET /watchlist, POST /watchlist, DELETE /watchlist/{market_id}
+  - Registered router in api/main.py with /api/v1/watchlist prefix and 'watchlist' tag
+  - All endpoints require authentication via CurrentUser dependency
+  - Enriches watchlist items with market question, category, price, 24h change from ClickHouse
+  - Type checks pass (mypy), all 1441 tests pass
 
 ## In Progress
 

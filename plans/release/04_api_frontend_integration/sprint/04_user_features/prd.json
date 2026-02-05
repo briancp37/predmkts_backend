@@ -9,7 +9,7 @@
       "Add 'watchlist' tag to router for OpenAPI grouping",
       "All watchlist endpoints require authentication (use CurrentUser dependency)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Watchlist Schemas",
@@ -20,7 +20,7 @@
       "Create WatchlistAddRequest: marketId (str)",
       "Create WatchlistResponse: items (list[WatchlistItemWithMarket]), count (int)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /watchlist Endpoint",
@@ -34,7 +34,7 @@
       "Order by createdAt DESC (most recently added first)",
       "Return WatchlistResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "POST /watchlist Endpoint",
@@ -48,7 +48,7 @@
       "Insert into PostgreSQL watchlists table",
       "Return created WatchlistItem with 201 status"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "DELETE /watchlist/{market_id} Endpoint",
@@ -60,7 +60,7 @@
       "Return 204 No Content on success",
       "Return 404 if not found in user's watchlist"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Tracked Traders Router Setup",
@@ -209,7 +209,7 @@
       "  - is_in_watchlist(db, user_id, market_id) -> bool",
       "Add ClickHouse queries to enrich watchlist items with market data"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Tracked Traders Service Layer",
