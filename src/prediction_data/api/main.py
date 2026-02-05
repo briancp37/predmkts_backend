@@ -7,9 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from prediction_data.api.auth.router import router as auth_router
+from prediction_data.api.clob_client import close_clob_client
 from prediction_data.api.markets.router import router as markets_router
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
+from prediction_data.api.trades.router import router as trades_router
 from prediction_data.api.watchlist.router import router as watchlist_router
 from prediction_data.db.session import create_tables
 
@@ -20,7 +22,8 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: create database tables
     await create_tables()
     yield
-    # Shutdown: cleanup if needed
+    # Shutdown: cleanup CLOB client
+    await close_clob_client()
 
 
 app = FastAPI(
@@ -48,6 +51,7 @@ app.include_router(watchlist_router, prefix="/api/v1/watchlist", tags=["watchlis
 app.include_router(
     tracked_traders_router, prefix="/api/v1/tracked-traders", tags=["tracked-traders"]
 )
+app.include_router(trades_router, prefix="/api/v1/trades", tags=["trades"])
 
 
 @app.get("/health")

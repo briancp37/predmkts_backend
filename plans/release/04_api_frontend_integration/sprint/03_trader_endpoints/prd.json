@@ -120,7 +120,7 @@
       "Register trades router with prefix /api/v1/trades",
       "Create SmartTradeResponse extending TradeResponse with: smartScore (float)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /trades/smart Endpoint",
@@ -135,7 +135,7 @@
       "Order by timestamp DESC",
       "Return list of SmartTradeResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Whales Router Setup",
@@ -145,7 +145,7 @@
       "Create WhaleTradeResponse: same as TradeResponse plus totalWalletValue (float)",
       "Accept query params: minAmount (USD, default 10000), limit (default 50)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /whales/trades Endpoint",
@@ -159,7 +159,7 @@
       "Order by timestamp DESC",
       "Return list of WhaleTradeResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Smart Score Computation",

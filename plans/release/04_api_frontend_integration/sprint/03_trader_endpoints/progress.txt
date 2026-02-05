@@ -83,6 +83,25 @@
   - Endpoint placed before /{address} to avoid path conflict
   - All types pass mypy, all tests pass
 
+- [2026-02-05] Trades Router Setup + GET /trades/smart + GET /trades/whales - Implemented global trades endpoints
+  - Created src/prediction_data/api/trades/ directory with __init__.py, router.py, service.py, schemas.py
+  - Registered trades router in api/main.py with prefix /api/v1/trades and 'trades' tag
+  - Schemas re-export SmartTradeResponse, WhaleTradeResponse from traders/schemas.py (already defined)
+  - GET /trades/smart endpoint:
+    - Accepts query params: minScore (0-100, default 70), minAmount (optional USD filter), limit (1-200, default 50)
+    - Queries wallet_position_ledger joined with computed smart scores
+    - Smart score computed as PnL-based rank percentile (top PnL traders get higher scores)
+    - Filters to traders with smartScore >= minScore
+    - Orders by timestamp DESC (newest trades first)
+    - Returns list of SmartTradeResponse with trade details + smartScore
+  - GET /trades/whales endpoint:
+    - Accepts query params: minAmount (USD, default 10000), limit (1-200, default 50)
+    - Queries wallet_position_ledger for trades with USD value >= minAmount
+    - Joins with wallet_position_state to get trader's total portfolio value
+    - Orders by timestamp DESC
+    - Returns list of WhaleTradeResponse with trade details + totalWalletValue
+  - All types pass mypy, all 1441 tests pass
+
 ## In Progress
 
 ## Blockers
