@@ -41,6 +41,19 @@
   - Uses exclude_unset=True to support partial updates
   - Type checks pass (mypy), all 1441 tests pass
 
+- 2026-02-05: OpenAPI Spec Update
+  - Regenerated openapi.json with watchlist and tracked-traders endpoints
+  - Verified all endpoints are documented:
+    - /api/v1/watchlist (GET, POST)
+    - /api/v1/watchlist/{market_id} (DELETE)
+    - /api/v1/tracked-traders (GET, POST)
+    - /api/v1/tracked-traders/{tracker_id} (GET, DELETE, PATCH)
+    - /api/v1/tracked-traders/activity (GET)
+  - Generated TypeScript types via npm run generate-api
+  - Verified types include: WatchlistItem, WatchlistItemWithMarket, WatchlistAddRequest, WatchlistResponse
+  - Verified types include: TrackedTraderCreate, TrackedTraderResponse, TrackedTraderWithStats, TrackedTraderActivity, TrackedTradersListResponse
+  - Tier limit info included in TrackedTradersListResponse schema
+
 ## In Progress
 
 ## Blockers
