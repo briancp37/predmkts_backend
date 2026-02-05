@@ -75,6 +75,22 @@ class SmartScoreResponse(BaseModel):
     components: SmartScoreComponents
 
 
+class SmartScoreListResponse(BaseModel):
+    """List of smart scores."""
+
+    items: list[SmartScoreResponse]
+    timeWindow: str
+    generatedAt: str
+
+
+class SmartScoreFilters(BaseModel):
+    """Query parameters for smart scores endpoint."""
+
+    minScore: float = Field(default=0, ge=0, le=100)
+    limit: int = Field(default=100, ge=1, le=500)
+    timeWindow: Literal["7d", "30d", "90d", "all"] = "30d"
+
+
 class TraderFilters(BaseModel):
     """Query parameters for filtering traders."""
 

@@ -50,7 +50,7 @@
       "If smart scores not pre-computed, calculate from wallet_position_ledger data",
       "Return list of SmartScoreResponse ordered by smartScore DESC"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /traders/{address} Endpoint",
@@ -175,7 +175,7 @@
       "Consider caching scores with TTL (recompute daily)",
       "Add CLI command or scheduled job to pre-compute scores"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Hooks Update",

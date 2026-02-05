@@ -6,9 +6,13 @@ from clickhouse_connect.driver.client import Client
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
+from prediction_data.api.smart_score import compute_smart_scores_batch
 from prediction_data.api.traders.schemas import (
     LeaderboardEntry,
     LeaderboardResponse,
+    SmartScoreComponents,
+    SmartScoreListResponse,
+    SmartScoreResponse,
     TradeListResponse,
     TradeResponse,
     TraderDetailResponse,
@@ -69,6 +73,72 @@ async def list_traders(
         total=total,
         page=page,
         limit=limit,
+    )
+
+
+@router.get("/smart-scores", response_model=SmartScoreListResponse)
+async def get_smart_scores(
+    minScore: float = Query(
+        0, ge=0, le=100, description="Minimum smart score to include"
+    ),
+    limit: int = Query(100, ge=1, le=500, description="Maximum entries to return"),
+    timeWindow: Literal["7d", "30d", "90d", "all"] = Query(
+        "30d", description="Time window for score calculation"
+    ),
+    client: Client = Depends(get_clickhouse_client),
+) -> SmartScoreListResponse:
+    """Get smart trader scores and rankings.
+
+    Computes smart scores for traders based on their trading performance
+    over the specified time window. Scores range from 0-100 and are based
+    on four weighted components:
+
+    - **Accuracy (30%)**: Win rate on closed positions
+    - **Consistency (25%)**: Trading regularity over the time period
+    - **Sizing (25%)**: Volume traded (log scale)
+    - **Timing (20%)**: ROI efficiency (return relative to volume)
+
+    Query Parameters:
+    - **minScore**: Minimum smart score to include (0-100, default 0)
+    - **limit**: Maximum number of traders to return (1-500, default 100)
+    - **timeWindow**: Time period for calculation
+      - `7d`: Last 7 days
+      - `30d`: Last 30 days (default)
+      - `90d`: Last 90 days
+      - `all`: All-time
+
+    Traders must have at least 5 trades in the time window to receive a score.
+    """
+    from datetime import datetime, timezone
+
+    results = await compute_smart_scores_batch(
+        client,
+        min_score=minScore,
+        limit=limit,
+        time_window=timeWindow,
+    )
+
+    # Convert results to response format
+    items = [
+        SmartScoreResponse(
+            address=r.address,
+            smartScore=r.smart_score,
+            components=SmartScoreComponents(
+                accuracy=r.components.accuracy,
+                consistency=r.components.consistency,
+                sizing=r.components.sizing,
+                timing=r.components.timing,
+            ),
+        )
+        for r in results
+    ]
+
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    return SmartScoreListResponse(
+        items=items,
+        timeWindow=timeWindow,
+        generatedAt=generated_at,
     )
 
 
@@ -208,5 +278,3 @@ async def list_trader_trades(
     )
 
 
-# Future endpoints:
-# - GET /traders/smart-scores (smart trader rankings)

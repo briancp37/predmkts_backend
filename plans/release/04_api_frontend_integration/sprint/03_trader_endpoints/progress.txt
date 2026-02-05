@@ -102,6 +102,24 @@
     - Returns list of WhaleTradeResponse with trade details + totalWalletValue
   - All types pass mypy, all 1441 tests pass
 
+- [2026-02-05] Smart Score Computation + GET /traders/smart-scores Endpoint - Full implementation
+  - Created src/prediction_data/api/smart_score.py with scoring functions
+  - Smart score algorithm based on 4 weighted components (0-100 final score):
+    - Accuracy (30%): Win rate on closed positions (0-30 points)
+    - Consistency (25%): Trade regularity over lookback period (0-25 points)
+    - Sizing (25%): Volume traded on log scale (0-25 points)
+    - Timing (20%): ROI efficiency (-20 to +20 points)
+  - Implemented compute_smart_score(wallet_address, lookback_days) for single wallet
+  - Implemented compute_smart_scores_batch() for bulk computation with filtering
+  - Minimum 5 trades required for meaningful score (returns 0 otherwise)
+  - Added GET /traders/smart-scores endpoint in traders/router.py:
+    - Query params: minScore (0-100), limit (1-500, default 100), timeWindow (7d, 30d, 90d, all)
+    - Returns SmartScoreListResponse with items, timeWindow, generatedAt
+    - Each item contains address, smartScore, and components breakdown
+  - Added SmartScoreListResponse and SmartScoreFilters schemas
+  - Scores computed on-demand from wallet_pnl_daily (no pre-computation yet)
+  - All types pass mypy, all 1441 tests pass
+
 ## In Progress
 
 ## Blockers
