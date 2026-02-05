@@ -110,3 +110,14 @@ class MarketFilters(BaseModel):
     resolved: bool | None = None
     limit: int = Field(default=50, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+class PriceHistoryResponse(BaseModel):
+    """Response for price history endpoint."""
+
+    items: list[PriceHistoryPoint]
+    marketId: str
+    outcomeId: str | None = None
+    interval: str
+    startDate: str | None = None
+    endDate: str | None = None

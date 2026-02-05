@@ -84,6 +84,28 @@
 - Note: txHash field returns None as the wallet_position_ledger table doesn't store transaction hashes.
   Full txHash support would require querying the Silver Iceberg trades table directly.
 
+### 2026-02-05: GET /markets/{id}/price-history Endpoint
+- Implemented `get_market_price_history()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse market_mark_daily table for historical price data
+  - Supports interval param: 1d (daily), 1w (weekly aggregation)
+  - Note: 1h and 4h intervals return daily data since hourly data is not yet available
+  - Supports filters: startDate, endDate (YYYY-MM-DD format)
+  - Optional outcomeId parameter; defaults to YES outcome if not specified
+  - Auto-selects YES outcome by querying dim_outcome for side='Yes' or label containing 'yes'
+  - Returns chronological order (oldest first) for chart rendering
+  - Weekly interval uses toMonday() for aggregation with sum(volume) and argMax(price)
+- Implemented `GET /markets/{id}/price-history` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Path parameter: market_id (resolved via get_market_by_id for flexible ID matching)
+  - Query params: interval (1h|4h|1d|1w, default 1d), startDate, endDate, outcomeId
+  - Returns PriceHistoryResponse with items, marketId, outcomeId, interval, startDate, endDate
+  - Returns 404 HTTPException if market not found
+  - Full OpenAPI documentation with descriptions
+- Added `PriceHistoryResponse` schema to schemas.py for structured response metadata
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: Sub-daily intervals (1h, 4h) return daily granularity as hourly data is not yet computed.
+  Future enhancement: compute hourly marks from Silver trades for finer-grained charting.
+
 ## In Progress
 
 ## Blockers
@@ -92,7 +114,7 @@
 - The ClickHouse client uses clickhouse_connect library (same as Gold layer)
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
-- Next priority: Implement CLOB API client for real-time prices, or GET /markets/{id}/price-history
+- Next priority: Implement CLOB API client for real-time prices, or Events Router Setup
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py

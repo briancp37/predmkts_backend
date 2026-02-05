@@ -114,7 +114,7 @@
       "Return list of PriceHistoryPoint with timestamp, price, volume",
       "Ensure chronological order (oldest first) for chart rendering"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Events Router Setup",

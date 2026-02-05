@@ -415,6 +415,144 @@ async def get_market_trades(
     return results, total
 
 
+async def get_market_price_history(
+    client: Client,
+    market_id: str,
+    *,
+    interval: str = "1d",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    outcome_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch price history for a market from ClickHouse.
+
+    Queries the market_mark_daily table for historical price data.
+    Results are returned in chronological order (oldest first) for chart rendering.
+
+    Args:
+        client: ClickHouse client.
+        market_id: Market identifier (platform_market_id).
+        interval: Time interval for aggregation (1h, 4h, 1d, 1w).
+            Note: Currently only daily data is available, so 1h/4h return daily data.
+        start_date: Start date filter (YYYY-MM-DD format).
+        end_date: End date filter (YYYY-MM-DD format).
+        outcome_id: Specific outcome ID to filter. If None, returns YES outcome or first.
+
+    Returns:
+        List of price history point dicts with timestamp, price, volume.
+    """
+    # Build WHERE conditions
+    conditions: list[str] = ["m.market_id = {market_id:String}"]
+    params: dict[str, Any] = {"market_id": market_id}
+
+    if start_date:
+        conditions.append("m.day_utc >= {start_date:Date}")
+        params["start_date"] = start_date
+
+    if end_date:
+        conditions.append("m.day_utc <= {end_date:Date}")
+        params["end_date"] = end_date
+
+    if outcome_id:
+        conditions.append("m.outcome_id = {outcome_id:String}")
+        params["outcome_id"] = outcome_id
+
+    where_clause = " AND ".join(conditions)
+
+    # For interval 1w, aggregate by week; otherwise return daily data
+    # Note: 1h and 4h intervals are not supported with current daily data
+    if interval == "1w":
+        # Aggregate by week (using toMonday for week start)
+        query = f"""
+            SELECT
+                toMonday(m.day_utc) AS week_start,
+                argMax(m.mark_price, m.day_utc) AS price,
+                sum(m.volume_usd_24h) AS volume,
+                m.outcome_id
+            FROM prediction_gold.market_mark_daily m
+            WHERE {where_clause}
+            GROUP BY toMonday(m.day_utc), m.outcome_id
+            ORDER BY week_start ASC
+        """
+    else:
+        # Return daily data (handles 1d, 1h, 4h - hourly not available)
+        query = f"""
+            SELECT
+                m.day_utc,
+                m.mark_price AS price,
+                m.volume_usd_24h AS volume,
+                m.outcome_id
+            FROM prediction_gold.market_mark_daily m
+            WHERE {where_clause}
+            ORDER BY m.day_utc ASC
+        """
+
+    rows = await execute_query(query, params, client=client)
+
+    if not rows:
+        return []
+
+    # If no specific outcome_id was requested, filter to a single outcome
+    # Prefer "Yes" outcome or just take the first one consistently
+    if not outcome_id and rows:
+        # Get unique outcome IDs
+        outcome_ids = list({row["outcome_id"] for row in rows})
+        if len(outcome_ids) > 1:
+            # Try to find a YES outcome by looking it up in dim_outcome
+            yes_query = """
+                SELECT o.outcome_id
+                FROM prediction_gold.dim_outcome o
+                WHERE o.market_id = {market_id:String}
+                    AND o.outcome_id IN {outcome_ids:Array(String)}
+                    AND (o.side = 'Yes' OR o.outcome_label ILIKE '%yes%')
+                LIMIT 1
+            """
+            yes_rows = await execute_query(
+                yes_query,
+                {"market_id": market_id, "outcome_ids": outcome_ids},
+                client=client,
+            )
+            if yes_rows:
+                selected_outcome = yes_rows[0]["outcome_id"]
+            else:
+                # Just pick the first outcome consistently
+                selected_outcome = sorted(outcome_ids)[0]
+
+            rows = [r for r in rows if r["outcome_id"] == selected_outcome]
+
+    # Format results
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        # Format timestamp based on interval
+        if interval == "1w":
+            day_val = row.get("week_start")
+        else:
+            day_val = row.get("day_utc")
+
+        if day_val:
+            if hasattr(day_val, "isoformat"):
+                ts_str = day_val.isoformat()
+            else:
+                ts_str = str(day_val)
+        else:
+            ts_str = ""
+
+        price = row.get("price")
+        volume = row.get("volume", 0.0)
+
+        # Skip rows with no price data
+        if price is None:
+            continue
+
+        results.append({
+            "timestamp": ts_str,
+            "price": float(price),
+            "volume": float(volume) if volume else 0.0,
+        })
+
+    return results
+
+
 def _parse_tokens_to_outcomes(
     market_id: str, tokens_json: str | None
 ) -> list[dict[str, Any]]:
