@@ -128,6 +128,44 @@
 - All 36 tests pass. mypy strict mode clean. ruff clean.
 - Full test suite: 1274 tests pass (no regressions).
 
+### batch_processor (2026-02-04)
+- Created `src/prediction_data/gold/trade_processor.py` with:
+  - `process_day(dt, platform, gold_bucket, ...)`: main entry point that orchestrates
+    the full pipeline for a single day:
+    1. Reads Silver polymarket.trades via PyIceberg (date-filtered scan)
+    2. Loads existing position state from ClickHouse via `read_position_states()`
+    3. Splits trades into fills via `trades_to_fills()` (sorted by timestamp)
+    4. Processes fills through accounting engine via `build_ledger_for_day()`
+    5. Writes ledger to S3 Gold Parquet + ClickHouse via `LedgerWriter.flush()`
+    6. Updates position state in ClickHouse via `write_position_states()`
+    7. Records the day as processed in S3 state store (JSONL at
+       `gold/_state/trade_processor/processed.jsonl`)
+  - `process_date_range(start_date, end_date, ...)`: sequential processing of a date range
+    (order matters for cumulative position state). Returns dict mapping dates to rows written.
+  - Idempotency: checks S3 state store before processing; skips already-processed dates.
+    Supports `force_reprocess=True` to override.
+  - `dry_run` mode: logs what would be written but doesn't persist.
+  - State store functions: `_load_processed_dates()`, `_mark_processed()`.
+  - Summary logging: fills processed, positions updated, realized PnL total.
+- Integrated with existing `gold CLI daily-run`:
+  - `_run_daily_step("process-trades", ...)` in `cli/gold.py` now successfully imports
+    and calls `process_day()` (was previously a placeholder raising NotImplementedError).
+  - Updated `tests/gold/test_daily_run.py::test_process_trades_not_implemented` to
+    `test_process_trades_step` — now verifies process_day is called with correct args.
+- 28 unit tests in `tests/test_gold_trade_processor.py` covering:
+  - State store: empty state, load dates, generic exception handling, entries without day
+  - Mark processed: append to empty, append to existing, field verification
+  - _compute_summary: empty writer/positions, buy-then-sell PnL verification
+  - _read_silver_trades_for_day: PyIceberg call verification, empty result, custom platform
+  - process_day: no trades returns 0, dry_run produces no writes, single trade → 2 fills,
+    idempotency skip, force_reprocess, writes ledger and state, marks processed in state store,
+    existing positions loaded from CH, multiple trades accounting, no gold_bucket skips S3
+  - process_date_range: single day, multi-day, options passthrough
+  - End-to-end: buy/sell PnL, round-trip with mock CH, daily-run CLI integration,
+    state store round-trip
+- All 28 tests pass. mypy strict mode clean. ruff clean.
+- Full test suite: 1312 tests pass (no regressions).
+
 ## In Progress
 
 
@@ -135,21 +173,18 @@
 
 
 ## Notes
-- Next priority: batch_processor — orchestrator that reads Silver trades, loads existing
-  position state from ClickHouse via read_position_states(), processes through fill_splitter
-  and ledger, then writes ledger via LedgerWriter.flush() and position state via
-  write_position_states().
-- The Fill dataclass is frozen (immutable) by design. The batch_processor will create fills
-  via trades_to_fills() and iterate through them to feed the accounting engine.
+- Next priority: cli — add `prediction-data gold process-trades` CLI command with
+  `--dt`, `--start-date/--end-date`, `--force-reprocess`, and `--dry-run` flags.
+  The batch_processor `process_day()` and `process_date_range()` functions are
+  already fully implemented and ready to be wired into the CLI.
+- The `gold daily-run` command already calls `process_day()` via `_run_daily_step()`.
+  The `process-trades` CLI command will provide direct access for ad-hoc processing.
 - fees_usd is set to 0.0 for all fills. Polymarket's Silver trades schema does not include
   per-trade fee data. If fee data becomes available later, the Fill dataclass and splitter
   already support it - just needs a source to read from.
-- PositionState is mutable by design - it accumulates state across fills for a given
-  wallet/market/outcome. The batch_processor will maintain a dict of PositionState objects
-  keyed by (wallet, platform, market_id, outcome_id).
-- build_ledger_for_day() is the main integration point: it takes sorted fills and a positions
-  dict, processes everything through the accounting engine, and returns a LedgerWriter ready
-  for flush(). The batch_processor (next sprint category) will call this function.
 - Closed positions (qty=0) are written to ClickHouse so that ReplacingMergeTree can
   overwrite stale open rows. Downstream queries use WHERE qty != 0 to exclude them.
 - read_position_states() uses FINAL to get deduplicated results from ReplacingMergeTree.
+- State store for trade_processor lives at `gold/_state/trade_processor/processed.jsonl`
+  in the Gold S3 bucket. Each line records: day, processed_at, fills_processed,
+  positions_updated, realized_pnl_total.

@@ -64,7 +64,7 @@
             "Add idempotency: track processed dates in state store, support --force-reprocess",
             "Write end-to-end test with mock Silver data"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "cli",

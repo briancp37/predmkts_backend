@@ -209,15 +209,17 @@ class TestRunDailyStep:
         mock_platform.assert_called_once_with(gold_bucket="test-gold", dry_run=True)
         mock_market.assert_called_once_with(gold_bucket="test-gold", dry_run=True)
 
-    def test_process_trades_not_implemented(self) -> None:
+    @patch("prediction_data.gold.trade_processor.process_day", return_value=200)
+    def test_process_trades_step(self, mock_process: MagicMock) -> None:
         from prediction_data.cli.gold import _run_daily_step
 
-        import pytest
-
-        with pytest.raises(NotImplementedError, match="not yet implemented"):
-            _run_daily_step(
-                "process-trades", date(2024, 6, 15), gold_bucket="test-gold"
-            )
+        rows = _run_daily_step(
+            "process-trades", date(2024, 6, 15), gold_bucket="test-gold", dry_run=True
+        )
+        assert rows == 200
+        mock_process.assert_called_once_with(
+            dt=date(2024, 6, 15), gold_bucket="test-gold", dry_run=True
+        )
 
     @patch("prediction_data.gold.market_marks.compute_market_marks", return_value=42)
     def test_compute_marks_step(self, mock_marks: MagicMock) -> None:
