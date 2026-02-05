@@ -178,6 +178,113 @@ async def get_markets(
     return results, total
 
 
+async def get_market_by_id(
+    client: Client,
+    market_id: str,
+) -> dict[str, Any] | None:
+    """Fetch a single market by ID from ClickHouse.
+
+    The market_id can be:
+    - Internal ID (platform_market_id)
+    - Polymarket ID (same as platform_market_id for Polymarket)
+    - Market slug
+
+    Args:
+        client: ClickHouse client.
+        market_id: Market identifier (ID, polymarketId, or slug).
+
+    Returns:
+        Market dict formatted for MarketResponse, or None if not found.
+    """
+    # Query market with flexible ID matching (ID or slug)
+    market_query = """
+        SELECT
+            m.platform_market_id AS id,
+            m.platform_market_id AS polymarketId,
+            m.canonical_market_id AS conditionId,
+            m.market_slug AS slug,
+            m.question,
+            m.description,
+            e.category,
+            m.status,
+            m.tokens,
+            m.updated_at AS updatedAt
+        FROM prediction_gold.dim_market m
+        LEFT JOIN prediction_gold.dim_event e
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        WHERE m.platform_market_id = {market_id:String}
+           OR m.market_slug = {market_id:String}
+        LIMIT 1
+    """
+    market_rows = await execute_query(
+        market_query, {"market_id": market_id}, client=client
+    )
+
+    if not market_rows:
+        return None
+
+    row = market_rows[0]
+    market_id_resolved = row["id"]
+
+    # Query outcomes for this market
+    outcomes_query = """
+        SELECT
+            o.outcome_id AS id,
+            o.token_id AS tokenId,
+            o.outcome_label AS outcomeName,
+            o.side
+        FROM prediction_gold.dim_outcome o
+        WHERE o.platform = 'polymarket'
+            AND o.market_id = {market_id:String}
+    """
+    outcome_rows = await execute_query(
+        outcomes_query, {"market_id": market_id_resolved}, client=client
+    )
+
+    # Build outcomes list
+    market_outcomes: list[dict[str, Any]] = []
+    for outcome in outcome_rows:
+        market_outcomes.append(
+            {
+                "id": outcome["id"],
+                "tokenId": outcome["tokenId"],
+                "outcomeName": outcome["outcomeName"] or outcome["side"],
+                "currentPrice": 0.5,  # Default price, real-time comes from CLOB
+                "volume": 0.0,  # Volume comes from market_mark_daily
+            }
+        )
+
+    # Fall back to parsing tokens JSON if no outcomes found in dim_outcome
+    if not market_outcomes and row.get("tokens"):
+        market_outcomes = _parse_tokens_to_outcomes(market_id_resolved, row["tokens"])
+
+    # Format updated_at as ISO string
+    updated_at = row.get("updatedAt")
+    created_at_str = ""
+    if updated_at:
+        if hasattr(updated_at, "isoformat"):
+            created_at_str = updated_at.isoformat()
+        else:
+            created_at_str = str(updated_at)
+
+    return {
+        "id": market_id_resolved,
+        "polymarketId": row["polymarketId"],
+        "conditionId": row.get("conditionId"),
+        "slug": row.get("slug"),
+        "question": row["question"] or "",
+        "description": row.get("description"),
+        "category": row.get("category"),
+        "endDate": None,  # Not in current schema
+        "resolved": row.get("status") == "resolved",
+        "totalVolume": 0.0,  # Would come from market_mark_daily aggregate
+        "liquidity": 0.0,  # Would come from CLOB or market_mark_daily
+        "createdAt": created_at_str,
+        "imageUrl": None,  # Not in current schema
+        "outcomes": market_outcomes,
+    }
+
+
 def _parse_tokens_to_outcomes(
     market_id: str, tokens_json: str | None
 ) -> list[dict[str, Any]]:

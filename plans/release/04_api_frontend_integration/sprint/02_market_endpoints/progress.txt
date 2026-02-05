@@ -45,6 +45,22 @@
   (0.0, 0.5, None) as they are not in current ClickHouse dim_market schema. Will be populated
   when market_mark_daily integration is added or CLOB API client is implemented.
 
+### 2026-02-05: GET /markets/{id} Endpoint
+- Implemented `get_market_by_id()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse dim_market with flexible ID matching (platform_market_id OR market_slug)
+  - LEFT JOIN to dim_event for category data
+  - Queries dim_outcome for outcome details
+  - Falls back to parsing tokens JSON if outcomes not in dim_outcome
+  - Returns market dict formatted for MarketResponse, or None if not found
+- Implemented `GET /markets/{id}` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Path parameter: market_id (can be internal ID, polymarketId, or slug)
+  - Returns MarketResponse with full outcome details
+  - Returns 404 HTTPException if market not found
+  - Full OpenAPI documentation with descriptions
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: CLOB integration (include_clob param) deferred to CLOB API Client implementation
+
 ## In Progress
 
 ## Blockers
@@ -53,7 +69,7 @@
 - The ClickHouse client uses clickhouse_connect library (same as Gold layer)
 - Query execution is wrapped in ThreadPoolExecutor to provide async interface
 - The build_where_clause function supports parameterized queries to prevent SQL injection
-- Next priority: Implement GET /markets/{id} endpoint or CLOB API client for real-time prices
+- Next priority: Implement CLOB API client for real-time prices, or GET /markets/{id}/trades
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py

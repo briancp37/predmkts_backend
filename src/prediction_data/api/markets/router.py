@@ -1,11 +1,11 @@
 """Markets API routes."""
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.markets.schemas import MarketListResponse, MarketResponse
-from prediction_data.api.markets.service import get_markets
+from prediction_data.api.markets.service import get_market_by_id, get_markets
 
 router = APIRouter()
 
@@ -53,9 +53,33 @@ async def list_markets(
     )
 
 
+@router.get("/{market_id}", response_model=MarketResponse)
+async def get_market(
+    market_id: str = Path(
+        ...,
+        description="Market identifier (can be internal ID, polymarketId, or slug)",
+    ),
+    client: Client = Depends(get_clickhouse_client),
+) -> MarketResponse:
+    """Get a single market by ID.
+
+    The market_id can be any of:
+    - Internal market ID (platform_market_id)
+    - Polymarket ID (same as platform_market_id for Polymarket markets)
+    - Market slug (URL-friendly identifier)
+
+    Returns the market with all its outcome details.
+    """
+    market = await get_market_by_id(client, market_id)
+
+    if market is None:
+        raise HTTPException(status_code=404, detail=f"Market not found: {market_id}")
+
+    return MarketResponse.model_validate(market)
+
+
 # Future endpoints:
 # - GET /markets/advanced (with CLOB data)
 # - GET /markets/screener (time-based filtering)
-# - GET /markets/{id} (single market detail)
 # - GET /markets/{id}/trades (market trades)
 # - GET /markets/{id}/price-history (price history for charting)

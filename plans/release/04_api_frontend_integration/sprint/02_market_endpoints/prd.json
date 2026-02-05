@@ -85,7 +85,7 @@
       "Return MarketResponse or MarketAdvancedResponse based on include_clob query param",
       "Return 404 if market not found"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets/{id}/trades Endpoint",
