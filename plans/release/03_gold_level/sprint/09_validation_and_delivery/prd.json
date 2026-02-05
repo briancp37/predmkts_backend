@@ -22,7 +22,7 @@
             "Test case 4: concurrent positions in multiple markets for same wallet",
             "Verify wallet_pnl_daily totals match sum of per-fill realized PnL from ledger"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "data_quality_validation",

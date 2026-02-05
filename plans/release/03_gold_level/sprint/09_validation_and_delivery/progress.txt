@@ -31,6 +31,39 @@ Verified:
 
 All tests pass. Types check clean (mypy). Full test suite passes (1366 tests).
 
+### 2026-02-05: PnL Reconciliation Tests (Category: pnl_reconciliation)
+
+Implemented comprehensive PnL reconciliation test suite verifying accuracy with known trade sequences:
+
+**New test file:** `tests/test_gold_pnl_reconciliation.py` (20 tests)
+
+Test coverage:
+1. **Test Case 1 - Simple Buy-Sell Cycle:** Buy 100 @ $0.50, sell 100 @ $0.70 → verified $20 PnL
+2. **Test Case 2 - Multiple Buys, Partial Sell:** Verified weighted average cost basis calculation
+   - Buy 100 @ $0.50, Buy 50 @ $0.80 → avg_cost = $0.60
+   - Sell 60 @ $0.75 → PnL = 60 * (0.75 - 0.60) = $9
+3. **Test Case 3 - Position Flip:** Long to short via oversized sell
+   - Buy 100 @ $0.50, Sell 150 @ $0.70 → close long PnL = $20, open short 50
+   - Buy 50 @ $0.60 → close short PnL = $5
+   - Total verified: $25
+4. **Test Case 4 - Concurrent Positions Multiple Markets:** Same wallet trading in MKT_A (+$20) and MKT_B (-$10)
+   - Verified separate position tracking
+   - Verified aggregated wallet PnL = $10
+5. **Ledger to wallet_pnl_daily Reconciliation:** Verified sum of per-fill realized_pnl_this_fill_usd equals wallet_pnl_daily total
+   - Single wallet reconciliation
+   - Multi-wallet reconciliation
+   - Reconciliation with fees
+
+Additional test coverage:
+- Multiple partial closes with mixed wins/losses
+- Reopen position after close (fresh cost basis)
+- Short position PnL (profit when price decreases)
+- Edge cases: price at 0 (total loss), price at 1 (max profit), fractional quantities, breakeven trades, high fees turning profit to loss
+
+All hand-calculated expected values documented in test docstrings.
+
+All tests pass. Types check clean (mypy). Full test suite passes (1386 tests).
+
 ## In Progress
 
 
