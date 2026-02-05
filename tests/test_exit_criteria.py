@@ -254,3 +254,54 @@ class TestNoSilverGoldAssumptions:
             content = py_file.read_text().lower()
             assert "aggregate" not in content, f"Found aggregation logic in {py_file}"
             assert "transform" not in content, f"Found transformation logic in {py_file}"
+
+
+class TestOperationalVerification:
+    """Tests for verifying Bronze operational state.
+
+    Note: These tests check local artifacts only. For live AWS verification,
+    run: python scripts/verify_bronze_operational.py
+    """
+
+    def test_verification_script_exists(self) -> None:
+        """Verify the operational verification script exists."""
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "verify_bronze_operational.py"
+        assert script_path.exists(), (
+            "Missing scripts/verify_bronze_operational.py - "
+            "run this script to verify AWS deployment state"
+        )
+
+    def test_eventbridge_template_has_all_expected_schedules(self) -> None:
+        """Verify template defines all 6 expected Bronze schedules."""
+        content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
+        expected_schedules = [
+            "PolymarketOrderFilledSchedule",
+            "KalshiTradesSchedule",
+            "PolymarketMarketsSchedule",
+            "KalshiMarketsSchedule",
+            "PolymarketEventsSchedule",
+            "KalshiEventsSchedule",
+        ]
+        for schedule in expected_schedules:
+            assert schedule in content, f"Missing schedule definition: {schedule}"
+
+    def test_no_polymarket_trades_schedule_in_template(self) -> None:
+        """Verify PolymarketTradesSchedule is NOT in the template (trades only in Silver)."""
+        content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
+        # The template should NOT have a PolymarketTradesSchedule resource
+        # (order_filled is used instead, trades are derived in Silver)
+        assert "PolymarketTradesSchedule:" not in content, (
+            "Template should not define PolymarketTradesSchedule - "
+            "Polymarket trades are derived from order_filled in Silver layer"
+        )
+
+    def test_order_filled_uses_catchup_command(self) -> None:
+        """Verify order_filled schedule uses backfill catchup, not ingest."""
+        content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
+        # Find the PolymarketOrderFilledSchedule section and verify command
+        assert '"backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled"' in content
+
+    def test_kalshi_trades_uses_catchup_command(self) -> None:
+        """Verify Kalshi trades schedule uses backfill catchup, not ingest."""
+        content = (INFRA_DIR / "eventbridge-schedules.yaml").read_text()
+        assert '"backfill", "catchup", "--platform", "kalshi", "--entity", "trades"' in content

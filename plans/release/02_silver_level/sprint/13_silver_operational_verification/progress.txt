@@ -1,0 +1,41 @@
+# Sprint Progress: Silver Operational Verification
+# Release: 02_silver_level
+# Created: 2026-02-05
+
+## Status: In Progress
+
+## Completed Tasks
+- [2026-02-05] create_verification_script: Created scripts/verify_silver_operational.py
+  - Checks all 8 Silver EventBridge schedules
+  - Checks 6 Glue Catalog tables
+  - Checks data freshness for Polymarket entities
+  - Checks CloudWatch logs for pyarrow errors
+
+- [2026-02-05] deploy_docker_image: Pushed Docker image with pyarrow to ECR
+  - Fixed Dockerfile shell glob issue with wheel install
+  - Built and pushed image via ./scripts/push_ecr.sh
+  - Image pushed at 2026-02-05T15:01:24 (tag: latest)
+  - Scheduled tasks will pick up new image within 10-30 minutes
+
+- [2026-02-05] verify_silver_schedules: All 8 schedules verified correct
+  - 5 Polymarket schedules ENABLED (trades, markets, events, compact, full maintenance)
+  - 3 Kalshi schedules DISABLED (scaffolded, no Bronze data)
+
+## In Progress
+- verify_silver_processing: Waiting for scheduled tasks to pick up new Docker image (within 10-30 min)
+
+
+## Blockers/Issues
+- Docker image needs to be rebuilt with pyarrow (code fix in sprint 12, deployment pending)
+- Silver processing failing with ModuleNotFoundError: No module named 'pyarrow'
+
+## Notes
+- Sprint 12 fixed the code (Dockerfile updated) but ./scripts/push_ecr.sh was never run
+- Silver schedules are deployed and ENABLED for Polymarket entities
+- Kalshi Silver schedules are DISABLED (no Bronze data available yet)
+- Latest Silver trades data: 2026-02-04
+- This sprint focuses on deploying the fix and verifying operational status
+
+## Prerequisites
+- Bronze layer must be operational (schedules deployed, data flowing)
+- AWS credentials with ECR push permissions

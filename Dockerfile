@@ -24,9 +24,10 @@ RUN groupadd --gid 1000 appgroup && \
 
 WORKDIR /app
 
-# Install the wheel from builder stage with silver dependencies (pyarrow, etc.)
+# Install the wheel from builder stage with backfill dependencies (pyarrow, etc.)
 COPY --from=builder /build/wheels/*.whl /tmp/
-RUN pip install --no-cache-dir "/tmp/prediction_data-*.whl[backfill]" && \
+RUN WHEEL=$(ls /tmp/prediction_data-*.whl) && \
+    pip install --no-cache-dir "${WHEEL}[backfill]" && \
     rm /tmp/*.whl
 
 # Switch to non-root user

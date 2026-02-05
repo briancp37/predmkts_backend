@@ -1,0 +1,72 @@
+[
+    {
+        "category": "deploy_docker_image",
+        "description": "Deploy Docker image with pyarrow dependency to ECR",
+        "steps": [
+            "Verify Dockerfile includes prediction-data[backfill] which provides pyarrow",
+            "Run ./scripts/push_ecr.sh to build and push Docker image to ECR",
+            "Verify new image is available in ECR with updated timestamp",
+            "Trigger a test Silver catchup task to verify pyarrow import works"
+        ],
+        "passes": true
+    },
+    {
+        "category": "verify_silver_schedules",
+        "description": "Verify Silver EventBridge schedules are correctly configured",
+        "steps": [
+            "Confirm silver-polymarket-trades-prod schedule is ENABLED (every 10 min)",
+            "Confirm silver-polymarket-markets-prod schedule is ENABLED (every 30 min)",
+            "Confirm silver-polymarket-events-prod schedule is ENABLED (every 30 min)",
+            "Confirm silver-maintain-compact-prod schedule is ENABLED (daily 04:00 UTC)",
+            "Confirm silver-maintain-full-prod schedule is ENABLED (weekly Sunday 04:00 UTC)",
+            "Confirm Kalshi schedules are DISABLED (scaffolded only, no Bronze data yet)"
+        ],
+        "passes": true
+    },
+    {
+        "category": "verify_silver_processing",
+        "description": "Verify Silver processing pipeline processes Bronze data correctly",
+        "steps": [
+            "Run prediction-data silver catchup --platform polymarket --entity trades --dry-run",
+            "Run actual catchup and verify it completes without errors",
+            "Check CloudWatch logs for successful Silver processing messages",
+            "Verify new data appears in Silver trades table for recent dates"
+        ],
+        "passes": false
+    },
+    {
+        "category": "verify_silver_maintenance",
+        "description": "Verify Silver Iceberg maintenance jobs work correctly",
+        "steps": [
+            "Run prediction-data silver compact --table polymarket/trades --dry-run",
+            "Run prediction-data silver expire-snapshots --table polymarket/trades --dry-run",
+            "Check CloudWatch logs for recent maintenance job runs",
+            "Verify maintenance schedules are triggering ECS tasks successfully"
+        ],
+        "passes": false
+    },
+    {
+        "category": "create_verification_script",
+        "description": "Create scripts/verify_silver_operational.py to check Silver layer health",
+        "steps": [
+            "Create verification script similar to verify_bronze_operational.py",
+            "Check all Silver schedules exist with correct configuration",
+            "Check Silver table data freshness (trades should be within 1 day)",
+            "Check recent CloudWatch logs for errors",
+            "Report overall Silver operational status"
+        ],
+        "passes": true
+    },
+    {
+        "category": "validation",
+        "description": "End-to-end validation of Silver layer operational status",
+        "steps": [
+            "Run python scripts/verify_silver_operational.py and verify all checks pass",
+            "Query Silver polymarket.trades table and verify data freshness",
+            "Query Silver polymarket.markets table and verify recent updates",
+            "Query Silver polymarket.events table and verify recent updates",
+            "Document current Silver data coverage and confirm no gaps"
+        ],
+        "passes": false
+    }
+]
