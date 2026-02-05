@@ -65,14 +65,14 @@
         "category": "infrastructure_docs",
         "description": "Update infrastructure documentation, operational runbooks, and CLAUDE.md for the new Silver automation layer",
         "steps": [
-            "Add eventbridge-silver-schedules.yaml to infrastructure/README.md templates table with stack name prediction-data-silver-schedules and description",
-            "Add deployment command to README.md deployment order section as step 5c (between Gold schedules at 5b and CloudWatch monitoring at 6), including full aws cloudformation deploy example with parameter-overrides",
-            "Add Silver schedule group to README.md Resource Summary table: prediction-data-silver-{env}",
-            "Add Silver schedules to README.md rollback procedures (delete between Gold schedules and ECS cluster in reverse order)",
-            "Update OPERATIONS.md Silver Processing section: replace the example cron expressions with references to the deployed EventBridge schedules, update the production cadence description to reflect near-continuous model (every 10 min for trades, every 30 min for catalog), update the 'Future: Near-Real-Time Silver' section to note this is now implemented",
-            "Update CLAUDE.md Silver CLI section to document the --skip-if-concurrent flag on silver catchup and silver maintain, and document the silver catchup command"
+            "[DONE] Add eventbridge-silver-schedules.yaml to infrastructure/README.md templates table with stack name prediction-data-silver-schedules and description",
+            "[DONE] Add deployment command to README.md deployment order section as step 5c (between Gold schedules at 5b and CloudWatch monitoring at 6), including full aws cloudformation deploy example with parameter-overrides",
+            "[DONE] Add Silver schedule group to README.md Resource Summary table: prediction-data-silver-{env}",
+            "[DONE] Add Silver schedules to README.md rollback procedures (delete between Gold schedules and ECS cluster in reverse order)",
+            "[DONE] Update OPERATIONS.md Silver Processing section: replace the example cron expressions with references to the deployed EventBridge schedules, update the production cadence description to reflect near-continuous model (every 10 min for trades, every 30 min for catalog), update the 'Future: Near-Real-Time Silver' section to note this is now implemented",
+            "[DONE] Update CLAUDE.md Silver CLI section to document the --skip-if-concurrent flag on silver catchup and silver maintain, and document the silver catchup command"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "deployment_and_validation",

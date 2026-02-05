@@ -212,7 +212,17 @@ prediction-data status validate --start-date 2024-06-01 --end-date 2024-06-30 \
 prediction-data silver init-tables
 prediction-data silver init-tables --dry-run
 
-# Process Bronze manifests into Silver Iceberg tables
+# Catch up Silver processing to present (near-continuous mode)
+# Auto-detects latest processed date from state store, discovers new Bronze manifests
+prediction-data silver catchup --platform polymarket --entity trades
+prediction-data silver catchup --platform polymarket --entity trades --dry-run
+prediction-data silver catchup --platform polymarket --entity trades --from-date 2025-01-15
+
+# Catchup with ECS concurrency guard (used by EventBridge schedules)
+# Exits cleanly if another task for the same entity is already running
+prediction-data silver catchup --platform polymarket --entity trades --skip-if-concurrent
+
+# Process Bronze manifests into Silver Iceberg tables (manual/backfill)
 prediction-data silver process --platform polymarket --entity trades --dt 2024-06-15
 prediction-data silver process --platform polymarket --entity markets \
     --start-date 2024-06-01 --end-date 2024-06-30
@@ -239,11 +249,16 @@ prediction-data silver maintain
 prediction-data silver maintain --op compact              # compaction only
 prediction-data silver maintain --op expire --op orphans  # expiration + orphan cleanup
 prediction-data silver maintain --dry-run
+prediction-data silver maintain --skip-if-concurrent      # with ECS concurrency guard
 ```
 
-**Recommended maintenance schedules:**
-- **Daily:** `prediction-data silver maintain --op compact`
-- **Weekly:** `prediction-data silver maintain --op expire --op orphans`
+**Near-continuous scheduling (EventBridge):**
+- **Trades:** every 10 min via `silver catchup --skip-if-concurrent`
+- **Catalog (markets, events):** every 30 min via `silver catchup --skip-if-concurrent`
+- **Daily maintenance:** `silver maintain --op compact --skip-if-concurrent` at 04:00 UTC
+- **Weekly maintenance:** `silver maintain --skip-if-concurrent` Sundays at 04:00 UTC
+
+Concurrency is scoped per entity type (`silver-{platform}-{entity}`) so different entities can run concurrently but the same entity type cannot overlap. Maintenance uses filter `silver-maintain`.
 
 **Valid platform/entity targets:** polymarket/trades, polymarket/markets, polymarket/events, kalshi/trades, kalshi/markets, kalshi/events.
 

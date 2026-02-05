@@ -51,6 +51,7 @@ CloudFormation templates for the Bronze-level prediction data ingestion pipeline
 | `ecs-cluster.yaml` | `prediction-data-ecs` | ECS cluster, task definition, log group |
 | `eventbridge-schedules.yaml` | `prediction-data-schedules` | 4 scheduled ingestion jobs |
 | `eventbridge-gold-schedules.yaml` | `prediction-data-gold-schedules` | 3 Gold layer daily processing schedules |
+| `eventbridge-silver-schedules.yaml` | `prediction-data-silver-schedules` | 11 Silver layer near-continuous processing schedules |
 | `cloudwatch-monitoring.yaml` | `prediction-data-monitoring` | Alarms, metric filters, dashboard, SNS alerts |
 
 ## Deployment Order
@@ -129,6 +130,18 @@ aws cloudformation deploy \
     SecurityGroupIds=<your-security-group-id> \
   --capabilities CAPABILITY_NAMED_IAM
 
+# 5c. EventBridge Silver Schedules (near-continuous Silver processing)
+aws cloudformation deploy \
+  --template-file infrastructure/eventbridge-silver-schedules.yaml \
+  --stack-name prediction-data-silver-schedules \
+  --parameter-overrides \
+    Environment=$ENV \
+    ECSClusterArn=$CLUSTER_ARN \
+    TaskDefinitionArn=$TASK_DEF_ARN \
+    SubnetIds=<your-subnet-ids> \
+    SecurityGroupIds=<your-security-group-id> \
+  --capabilities CAPABILITY_NAMED_IAM
+
 # 6. CloudWatch Monitoring (needs log group and cluster name)
 aws cloudformation deploy \
   --template-file infrastructure/cloudwatch-monitoring.yaml \
@@ -148,6 +161,12 @@ Stacks must be deleted in **reverse** deployment order to respect dependencies:
 # Delete in reverse order
 aws cloudformation delete-stack --stack-name prediction-data-monitoring
 aws cloudformation wait stack-delete-complete --stack-name prediction-data-monitoring
+
+aws cloudformation delete-stack --stack-name prediction-data-silver-schedules
+aws cloudformation wait stack-delete-complete --stack-name prediction-data-silver-schedules
+
+aws cloudformation delete-stack --stack-name prediction-data-gold-schedules
+aws cloudformation wait stack-delete-complete --stack-name prediction-data-gold-schedules
 
 aws cloudformation delete-stack --stack-name prediction-data-schedules
 aws cloudformation wait stack-delete-complete --stack-name prediction-data-schedules
@@ -187,5 +206,6 @@ All resources are parameterized by environment (`dev`, `staging`, `prod`).
 | Dashboard | `prediction-data-{env}` |
 | Schedule Group (Bronze/Silver) | `prediction-data-{env}` |
 | Schedule Group (Gold) | `prediction-data-gold-{env}` |
+| Schedule Group (Silver) | `prediction-data-silver-{env}` |
 | IAM Execution Role | `prediction-data-execution-{env}` |
 | IAM Task Role | `prediction-data-task-{env}` |

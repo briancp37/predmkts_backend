@@ -16,19 +16,20 @@ Operational procedures for the prediction data pipeline (Bronze ingestion and Si
 | Kalshi Events | `prediction-data ingest kalshi-events --dt {date}` | Every 1 hr | `/ecs/prediction-data-{env}` |
 | Polymarket Order Filled | `prediction-data backfill catchup --platform polymarket --entity order_filled` | Every 15 min | `/ecs/prediction-data-{env}` |
 
-### Silver Processing Jobs
+### Silver Processing Jobs (Near-Continuous via EventBridge)
+
+Silver processing uses a near-continuous model via EventBridge Scheduler (`eventbridge-silver-schedules.yaml`). The `silver catchup` command auto-detects new Bronze manifests and processes them incrementally, with per-entity concurrency guards to prevent overlapping runs.
 
 | Job | Command | Schedule | Log Group |
 |-----|---------|----------|-----------|
-| Silver Trades (end-of-day) | `prediction-data silver process --platform polymarket --entity trades --start-date {7d_ago} --end-date {today} --closed-days-only` | Daily 06:00 UTC | `/ecs/prediction-data-{env}` |
-| Silver Order Filled (end-of-day) | `prediction-data silver process --platform polymarket --entity order_filled --start-date {7d_ago} --end-date {today} --closed-days-only` | Daily 06:00 UTC | `/ecs/prediction-data-{env}` |
-| Silver Markets (same-day) | `prediction-data silver process --platform polymarket --entity markets --dt {today}` | Daily 07:00 UTC | `/ecs/prediction-data-{env}` |
-| Silver Events (same-day) | `prediction-data silver process --platform polymarket --entity events --dt {today}` | Daily 07:00 UTC | `/ecs/prediction-data-{env}` |
-| Kalshi Silver Trades | `prediction-data silver process --platform kalshi --entity trades --start-date {7d_ago} --end-date {today} --closed-days-only` | Daily 06:00 UTC | `/ecs/prediction-data-{env}` |
-| Kalshi Silver Markets | `prediction-data silver process --platform kalshi --entity markets --dt {today}` | Daily 07:00 UTC | `/ecs/prediction-data-{env}` |
-| Kalshi Silver Events | `prediction-data silver process --platform kalshi --entity events --dt {today}` | Daily 07:00 UTC | `/ecs/prediction-data-{env}` |
-| Silver Maintenance (compact) | `prediction-data silver maintain --op compact` | Daily 08:00 UTC | `/ecs/prediction-data-{env}` |
-| Silver Maintenance (full) | `prediction-data silver maintain` | Weekly Sun 08:00 UTC | `/ecs/prediction-data-{env}` |
+| Polymarket Trades | `prediction-data silver catchup --platform polymarket --entity trades --skip-if-concurrent` | Every 10 min | `/ecs/prediction-data-{env}` |
+| Polymarket Markets | `prediction-data silver catchup --platform polymarket --entity markets --skip-if-concurrent` | Every 30 min | `/ecs/prediction-data-{env}` |
+| Polymarket Events | `prediction-data silver catchup --platform polymarket --entity events --skip-if-concurrent` | Every 30 min | `/ecs/prediction-data-{env}` |
+| Kalshi Trades | `prediction-data silver catchup --platform kalshi --entity trades --skip-if-concurrent` | Every 10 min (DISABLED) | `/ecs/prediction-data-{env}` |
+| Kalshi Markets | `prediction-data silver catchup --platform kalshi --entity markets --skip-if-concurrent` | Every 30 min (DISABLED) | `/ecs/prediction-data-{env}` |
+| Kalshi Events | `prediction-data silver catchup --platform kalshi --entity events --skip-if-concurrent` | Every 30 min (DISABLED) | `/ecs/prediction-data-{env}` |
+| Silver Maintenance (compact) | `prediction-data silver maintain --op compact --skip-if-concurrent` | Daily 04:00 UTC | `/ecs/prediction-data-{env}` |
+| Silver Maintenance (full) | `prediction-data silver maintain --skip-if-concurrent` | Weekly Sun 04:00 UTC | `/ecs/prediction-data-{env}` |
 
 ### Gold Processing Jobs
 
@@ -211,41 +212,38 @@ This streams the parquet file once and buckets by date, flushing completed days 
 
 ### Production Cadence by Entity Type
 
-Entity types have different processing models based on their data characteristics:
+Silver processing uses a **near-continuous model** where `silver catchup` runs on a frequent schedule via EventBridge Scheduler. Each invocation auto-detects new Bronze manifests and processes them. The majority of invocations are no-ops (no new data) and exit within seconds.
 
 **Stream entities (trades, order_filled):**
 - Bronze ingestion runs continuously (every 5-15 min), producing independent manifests per run.
-- Silver processing uses **end-of-day batch model**: each morning, process yesterday's complete data.
-- Use `--closed-days-only` to prevent processing today's incomplete partition.
-- The 7-day lookback window (`--start-date {7d_ago}`) catches any days missed due to failures.
-- Already-processed manifests are skipped via the Silver state store (idempotent).
+- Silver catchup runs **every 10 minutes**, discovering and processing new Bronze manifests immediately.
+- Per-entity concurrency guards (`--skip-if-concurrent`) prevent overlapping runs — if the previous catchup is still processing, the new invocation exits cleanly (code 0).
+- Data appears in Silver within ~15 minutes of the on-chain event.
 
 **Catalog entities (markets, events):**
-- Bronze ingestion runs daily (full snapshot or incremental delta).
-- Silver processing runs **same-day** after ingestion completes — catalog snapshots are complete upon ingestion.
-- No `--closed-days-only` needed since the snapshot is self-contained.
+- Bronze ingestion runs hourly (full snapshot or incremental delta).
+- Silver catchup runs **every 30 minutes**, processing new Bronze manifests as they appear.
+- Snapshot-supersedes-deltas: a snapshot manifest supersedes earlier delta manifests for the same day.
 
 ### Running Silver Processing
 
 ```bash
-# End-of-day processing for stream entities (trades, order_filled)
-# Processes only completed days — safe for cron
-prediction-data silver process \
-    --platform polymarket --entity trades \
-    --start-date 2026-01-27 --end-date 2026-02-03 \
-    --closed-days-only
+# Near-continuous catchup (used by EventBridge schedules)
+prediction-data silver catchup --platform polymarket --entity trades --skip-if-concurrent
 
-# Same-day processing for catalog entities (markets, events)
-# Process today's snapshot immediately after ingestion
-prediction-data silver process \
-    --platform polymarket --entity markets \
-    --dt 2026-02-03
+# Manual catchup without concurrency guard
+prediction-data silver catchup --platform polymarket --entity trades
+
+# Catchup with explicit start date (overrides auto-detect)
+prediction-data silver catchup --platform polymarket --entity trades --from-date 2026-01-15
 
 # Dry run to preview what would be processed
+prediction-data silver catchup --platform polymarket --entity trades --dry-run
+
+# Single-date or date-range processing (for manual backfills)
 prediction-data silver process \
     --platform polymarket --entity trades \
-    --start-date 2026-01-27 --end-date 2026-02-03 \
-    --closed-days-only --dry-run
+    --start-date 2026-01-27 --end-date 2026-02-03
 
 # Force reprocess (ignore state store)
 prediction-data silver process \
@@ -253,39 +251,34 @@ prediction-data silver process \
     --dt 2026-02-02 --force-reprocess
 ```
 
-### EventBridge Cron Schedules
+### EventBridge Schedules
 
-Example cron expressions for AWS EventBridge Scheduler:
+Silver schedules are deployed via `infrastructure/eventbridge-silver-schedules.yaml` into the `prediction-data-silver-{env}` schedule group:
 
+```bash
+# Deploy Silver schedules
+aws cloudformation deploy \
+  --template-file infrastructure/eventbridge-silver-schedules.yaml \
+  --stack-name prediction-data-silver-schedules \
+  --parameter-overrides \
+    Environment=$ENV \
+    ECSClusterArn=$CLUSTER_ARN \
+    TaskDefinitionArn=$TASK_DEF_ARN \
+    SubnetIds=<your-subnet-ids> \
+    SecurityGroupIds=<your-security-group-id> \
+  --capabilities CAPABILITY_NAMED_IAM
+
+# List Silver schedules
+aws scheduler list-schedules --group-name prediction-data-silver-$ENV
 ```
-# Stream entities: end-of-day processing at 06:00 UTC daily
-cron(0 6 * * ? *)
 
-# Catalog entities: same-day processing at 07:00 UTC daily (after ingestion)
-cron(0 7 * * ? *)
+Schedule cadences (configurable via CloudFormation parameters):
+- **Trades:** `rate(10 minutes)` — Bronze order_filled ingests every 5 min; data in Silver within ~15 min
+- **Catalog (markets, events):** `rate(30 minutes)` — Bronze ingests hourly; 30-min catches updates within one cycle
+- **Maintenance (compact):** `cron(0 4 * * ? *)` — daily at 04:00 UTC
+- **Maintenance (full):** `cron(0 4 ? * SUN *)` — weekly Sunday at 04:00 UTC
 
-# Silver maintenance (compact): daily at 08:00 UTC
-cron(0 8 * * ? *)
-
-# Silver maintenance (full — compact + expire + orphans): weekly Sunday 08:00 UTC
-cron(0 8 ? * SUN *)
-```
-
-### Future: Near-Real-Time Silver
-
-The current model processes stream entities as end-of-day batches. The architecture
-already supports near-real-time processing because each Bronze catchup cycle produces
-an independent `run_id` and manifest. To enable near-real-time Silver:
-
-1. Run `silver process` more frequently (e.g., every 30 min) without `--closed-days-only`.
-2. Each invocation discovers new unprocessed manifests and appends to Silver.
-3. Deduplication is handled by Iceberg merge/upsert with merge keys.
-4. Trade-off: more frequent processing means more small files, requiring more
-   frequent compaction.
-
-This is a scheduling change, not a code change. The continuous ingestion architecture
-(independent run_ids, per-manifest state tracking, Iceberg upsert dedup) already
-supports it.
+All catchup schedules use `--skip-if-concurrent` to prevent overlapping runs. Concurrency is scoped per entity type (e.g., `silver-polymarket-trades`), so trades and markets can run concurrently but two trades runs cannot.
 
 ## Checking Run Status
 
@@ -479,7 +472,9 @@ All resources are parameterized by environment (`dev`, `staging`, `prod`).
 | Log Group | `/ecs/prediction-data-{env}` | `prediction-data-ecs` |
 | SNS Topic | `prediction-data-alerts-{env}` | `prediction-data-monitoring` |
 | Dashboard | `prediction-data-{env}` | `prediction-data-monitoring` |
-| Schedule Group | `prediction-data-{env}` | `prediction-data-schedules` |
+| Schedule Group (Bronze) | `prediction-data-{env}` | `prediction-data-schedules` |
+| Schedule Group (Gold) | `prediction-data-gold-{env}` | `prediction-data-gold-schedules` |
+| Schedule Group (Silver) | `prediction-data-silver-{env}` | `prediction-data-silver-schedules` |
 | IAM Execution Role | `prediction-data-execution-{env}` | `prediction-data-iam-roles` |
 | IAM Task Role | `prediction-data-task-{env}` | `prediction-data-iam-roles` |
 | ECR Repository | `prediction-data` | Manual |

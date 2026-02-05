@@ -91,6 +91,33 @@ all Silver EventBridge Scheduler schedules, following the exact conventions of t
 Total: 11 schedules (6 Polymarket ENABLED, 3 Kalshi DISABLED, 2 maintenance ENABLED).
 mypy: 3 pre-existing errors only. Tests: 1312 passed (no new failures).
 
+### infrastructure_docs — all 6 steps (2026-02-04)
+Updated infrastructure documentation, operational runbooks, and CLAUDE.md for the
+new Silver automation layer:
+1. Added `eventbridge-silver-schedules.yaml` to infrastructure/README.md templates
+   table with stack name `prediction-data-silver-schedules`.
+2. Added deployment command as step 5c in README.md deployment order section (between
+   Gold schedules at 5b and CloudWatch monitoring at 6), with full `aws cloudformation
+   deploy` example including parameter-overrides.
+3. Added `prediction-data-silver-{env}` to README.md Resource Summary table.
+4. Added Silver schedules to README.md rollback procedures — delete Silver and Gold
+   schedule stacks before Bronze schedules in reverse deployment order.
+5. Updated OPERATIONS.md Silver Processing section:
+   - Replaced end-of-day batch model with near-continuous model description
+   - Replaced `silver process` jobs with `silver catchup --skip-if-concurrent` jobs
+   - Updated schedule cadences: trades every 10 min, catalog every 30 min
+   - Maintenance schedules updated to 04:00 UTC (matching CloudFormation template)
+   - Replaced example cron expressions with EventBridge deployment commands
+   - Removed "Future: Near-Real-Time Silver" section (now implemented)
+   - Added Silver schedule group to AWS Resource Inventory table
+6. Updated CLAUDE.md Silver CLI section:
+   - Added `silver catchup` command with all options (--platform, --entity,
+     --from-date, --skip-if-concurrent, --dry-run)
+   - Added `silver maintain --skip-if-concurrent` example
+   - Added near-continuous scheduling reference section with cadences
+   - Documented per-entity concurrency scoping
+mypy: 3 pre-existing errors only. Tests: 1323 passed (no new failures).
+
 ## In Progress
 
 
