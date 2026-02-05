@@ -6,6 +6,26 @@
 
 ## Completed Tasks
 
+### catchup_noop_optimization — steps 1, 2 (2026-02-04)
+Verified from code committed in 3d03e41:
+1. Audited _run_catchup() no-op hot path: state_store.load() → discover_manifests()
+   → filter already-processed → early-return "Silver is up to date". Markets reference,
+   Glue catalog, and chunked processing are NOT loaded on the no-op path. Architecture
+   is correct for near-continuous scheduling.
+2. Confirmed markets reference loading (the most expensive startup operation for trades)
+   is gated behind the "All manifests already processed" early-return check at silver.py
+   lines 629-650. No-op runs never touch it.
+
+## Prerequisites Completed (not sprint steps, but foundations)
+
+Commit 3d03e41 implemented the following prerequisites that this sprint depends on:
+- `silver catchup` CLI command with auto-detect from state store (latest_processed_date)
+- `process_manifest_chunked` for memory-safe file-by-file stream entity processing
+- `read_single_file` in reader.py for per-file Bronze reads
+- `SilverStateStore.latest_processed_date()` for efficient start-date detection
+- `bronze_entity_for()` / `silver_entity_for()` entity mapping in discovery.py
+- Stream entities auto-default to append writes (from hotfix, included in commit)
+- Comprehensive tests for all of the above (1128 passing)
 
 ## In Progress
 
@@ -22,9 +42,7 @@
   - Kalshi: schedules created but DISABLED until data pipeline is activated
   - Maintenance: daily compact at 04:00 UTC, weekly full at Sunday 04:00 UTC
   - Concurrency guard is per-entity (trades can run concurrently with markets, but not two trades runs)
-- Architecture already supports this (from sprint 10): independent run_ids, per-manifest state
-  tracking, fast append for stream entities. This sprint is primarily scheduling + infrastructure.
+- Architecture already supports this (from sprint 10 + 3d03e41): independent run_ids, per-manifest
+  state tracking, fast append for stream entities, memory-safe chunked processing.
 - Expected cost profile: ~$0.50-1.00/day for schedule invocations (mostly no-op exits at 0.25 vCPU)
   plus actual processing costs proportional to data volume.
-- The hotfix (2026-02-04) switching stream entities to append writes is a prerequisite —
-  without it, trades upsert scans would make 10-min cadence impossible.
