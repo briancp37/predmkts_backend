@@ -41,7 +41,7 @@
             "Verify schedule no longer appears in aws scheduler list-schedules output",
             "Confirm no more 'Missing option --dt' errors in CloudWatch logs for polymarket-trades"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "update_documentation",

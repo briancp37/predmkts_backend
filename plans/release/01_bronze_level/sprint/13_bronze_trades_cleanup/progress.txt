@@ -13,6 +13,13 @@
   - Updated test_exit_criteria.py to expect the new command pattern
   - All tests pass (26/26 in test_exit_criteria.py)
 
+- [2026-02-05] delete_orphaned_schedule: Deleted orphaned polymarket-trades-prod AWS schedule
+  - Confirmed schedule existed in prediction-data-prod schedule group (was ENABLED and producing errors)
+  - Deleted via `aws scheduler delete-schedule --name polymarket-trades-prod --group-name prediction-data-prod`
+  - Verified schedule no longer appears in list-schedules output
+  - Remaining Bronze schedules: polymarket-events-prod, kalshi-events-prod, polymarket-markets-prod, kalshi-markets-prod, kalshi-trades-prod
+  - No more "Missing option --dt" errors will occur for polymarket-trades
+
 ## In Progress
 
 
