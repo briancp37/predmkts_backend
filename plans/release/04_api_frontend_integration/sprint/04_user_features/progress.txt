@@ -13,6 +13,26 @@
   - Enriches watchlist items with market question, category, price, 24h change from ClickHouse
   - Type checks pass (mypy), all 1441 tests pass
 
+- 2026-02-05: Tracked Traders API Backend Implementation
+  - Created tracked_traders module at src/prediction_data/api/tracked_traders/
+  - Implemented schemas: TrackedTraderBase, TrackedTraderCreate, TrackedTraderUpdate, TrackedTraderResponse, TrackedTraderWithStats, TrackedTraderActivity, TrackedTradersListResponse, ActivityFilters
+  - Implemented tier limits: FREE=6, PRO=50 tracked traders with get_tier_limit() and check_tier_limit() helpers
+  - Implemented service layer with all CRUD functions + ClickHouse stats enrichment:
+    - get_user_tracked_traders, add_tracked_trader, remove_tracked_trader, update_tracked_trader
+    - get_tracked_addresses, get_trader_stats (PnL, recent trades)
+    - get_tracked_trader_activity (activity feed from wallet_position_ledger)
+  - Implemented all endpoints:
+    - GET /tracked-traders - List with stats and tier limit
+    - POST /tracked-traders - Add with tier limit check and duplicate detection
+    - GET /tracked-traders/{id} - Single tracker with stats
+    - DELETE /tracked-traders/{id} - Remove with ownership verification
+    - PATCH /tracked-traders/{id} - Update custom name
+    - GET /tracked-traders/activity - Activity feed with date filters
+  - Registered router in api/main.py with /api/v1/tracked-traders prefix and 'tracked-traders' tag
+  - All endpoints require authentication via CurrentUser dependency
+  - Proper error codes: TIER_LIMIT_EXCEEDED (403), ALREADY_EXISTS (400), NOT_FOUND (404)
+  - Type checks pass (mypy), all 1441 tests pass
+
 ## In Progress
 
 ## Blockers

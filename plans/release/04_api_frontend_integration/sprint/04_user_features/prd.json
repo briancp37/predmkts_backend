@@ -72,7 +72,7 @@
       "Add 'tracked-traders' tag to router",
       "All endpoints require authentication"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Tracked Traders Schemas",
@@ -85,7 +85,7 @@
       "Create TrackedTraderActivity: traderId (UUID), traderAddress (str), customName (str | None), trade (TradeResponse), timestamp (datetime)",
       "Create TrackedTradersListResponse: items (list[TrackedTraderWithStats]), count (int), limit (int, the tier limit)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Tier Limits Implementation",
@@ -97,7 +97,7 @@
       "Return appropriate error message when limit exceeded",
       "Include current count and limit in API responses"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /tracked-traders Endpoint",
@@ -113,7 +113,7 @@
       "Include tier limit in response",
       "Return TrackedTradersListResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "POST /tracked-traders Endpoint",
@@ -129,7 +129,7 @@
       "Insert into PostgreSQL tracked_traders table",
       "Return TrackedTraderResponse with 201 status"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /tracked-traders/{id} Endpoint",
@@ -143,7 +143,7 @@
       "Return TrackedTraderWithStats",
       "Return 404 if not found or not owned by user"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "DELETE /tracked-traders/{id} Endpoint",
@@ -156,7 +156,7 @@
       "Return 204 No Content on success",
       "Return 404 if not found or not owned"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "PATCH /tracked-traders/{id} Endpoint",
@@ -169,7 +169,7 @@
       "Update PostgreSQL record",
       "Return updated TrackedTraderResponse"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /tracked-traders/activity Endpoint",
@@ -184,7 +184,7 @@
       "Order by timestamp DESC",
       "Return list of TrackedTraderActivity with trader name and trade details"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "User Profile Endpoint",
@@ -223,7 +223,7 @@
       "  - get_tracked_trader_activity(db, ch, user_id, limit) -> list[Activity]",
       "  - get_tracked_addresses(db, user_id) -> list[str]"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Watchlist Integration",
