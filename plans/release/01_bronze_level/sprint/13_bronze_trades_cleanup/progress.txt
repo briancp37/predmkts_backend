@@ -20,6 +20,19 @@
   - Remaining Bronze schedules: polymarket-events-prod, kalshi-events-prod, polymarket-markets-prod, kalshi-markets-prod, kalshi-trades-prod
   - No more "Missing option --dt" errors will occur for polymarket-trades
 
+- [2026-02-05] remove_polymarket_trades_cli: Removed Bronze-level Polymarket trades CLI command
+  - Deleted `@ingest_app.command(name='polymarket-trades')` function from src/prediction_data/cli/main.py
+  - The backfill _ingest_one() function still routes polymarket/trades to ingest_trades_clob (CLOB API version kept for future use)
+  - Verified `ingest polymarket-trades` command no longer exists in CLI help output
+
+- [2026-02-05] remove_bronze_trades_ingestion: Removed Bronze ingestion functions for Polymarket trades
+  - Deleted `ingest_trades()` async function (Data API version) from src/prediction_data/bronze/polymarket/ingest.py
+  - Deleted `run_ingest_trades()` sync wrapper function from ingest.py
+  - Kept `ingest_trades_clob()` and `run_ingest_trades_clob()` (CLOB API versions) for potential future use
+  - Updated __init__.py exports to expose CLOB versions instead of Data API versions
+  - Updated tests in test_backfill.py, test_e2e_ingestion.py, and test_failure_recovery.py to use CLOB mocks
+  - All 1321 tests pass, mypy reports no type errors
+
 ## In Progress
 
 

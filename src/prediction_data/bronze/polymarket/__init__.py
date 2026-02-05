@@ -9,10 +9,10 @@ from prediction_data.bronze.polymarket.client import (
 from prediction_data.bronze.polymarket.ingest import (
     ingest_events,
     ingest_markets,
-    ingest_trades,
+    ingest_trades_clob,
     run_ingest_events,
     run_ingest_markets,
-    run_ingest_trades,
+    run_ingest_trades_clob,
 )
 
 __all__ = [
@@ -22,8 +22,8 @@ __all__ = [
     "PolymarketClient",
     "ingest_events",
     "ingest_markets",
-    "ingest_trades",
+    "ingest_trades_clob",
     "run_ingest_events",
     "run_ingest_markets",
-    "run_ingest_trades",
+    "run_ingest_trades_clob",
 ]

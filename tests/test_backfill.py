@@ -27,7 +27,7 @@ from prediction_data.bronze.polymarket.ingest import (
     ingest_events as poly_ingest_events,
 )
 from prediction_data.bronze.polymarket.ingest import (
-    ingest_trades as poly_ingest_trades,
+    ingest_trades_clob as poly_ingest_trades,
 )
 from prediction_data.core.compression import decompress_jsonl
 from prediction_data.storage.manifest import Manifest
@@ -92,17 +92,26 @@ def _make_kalshi_mocks(fake_s3: FakeS3Client):
 
 
 async def _run_poly_backfill(fake_s3: FakeS3Client, dt: str = PAST_DATE) -> str:
-    """Run a Polymarket trades backfill and return the run_id."""
+    """Run a Polymarket trades backfill and return the run_id.
+
+    Uses ingest_trades_clob which fetches via the CLOB API.
+    """
     with (
-        patch("prediction_data.bronze.polymarket.ingest.PolymarketClient") as MockClient,
+        patch(
+            "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
+        ) as MockClobClient,
+        patch(
+            "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+        ) as mock_creds,
         patch("prediction_data.bronze.polymarket.ingest.S3Client") as MockS3,
         patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
     ):
         mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+        mock_creds.return_value = MagicMock()
         client_instance = AsyncMock()
-        client_instance.fetch_trades.return_value = (SAMPLE_POLY_TRADES, False)
-        MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
-        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+        client_instance.fetch_all_trades.return_value = SAMPLE_POLY_TRADES
+        MockClobClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+        MockClobClient.return_value.__aexit__ = AsyncMock(return_value=False)
         MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
         return await poly_ingest_trades(dt=dt)
 

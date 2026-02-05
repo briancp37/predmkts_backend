@@ -21,7 +21,7 @@ from prediction_data.bronze.polymarket.client import (
     GAMMA_API_BASE_URL,
     PolymarketClient,
 )
-from prediction_data.bronze.polymarket.ingest import ingest_markets, ingest_trades
+from prediction_data.bronze.polymarket.ingest import ingest_markets, ingest_trades_clob
 from prediction_data.storage.s3 import S3Client
 
 

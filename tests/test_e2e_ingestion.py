@@ -35,7 +35,7 @@ from prediction_data.bronze.polymarket.ingest import (
     ingest_markets as poly_ingest_markets,
 )
 from prediction_data.bronze.polymarket.ingest import (
-    ingest_trades as poly_ingest_trades,
+    ingest_trades_clob as poly_ingest_trades,
 )
 from prediction_data.core.compression import decompress_jsonl
 from prediction_data.storage.manifest import Manifest
@@ -152,7 +152,7 @@ def _validate_s3_output(
 
 
 class TestPolymarketTradesE2E:
-    """End-to-end test for Polymarket trades ingestion."""
+    """End-to-end test for Polymarket trades ingestion via CLOB API."""
 
     @pytest.mark.asyncio
     async def test_full_pipeline_produces_valid_bronze_output(self) -> None:
@@ -160,20 +160,24 @@ class TestPolymarketTradesE2E:
 
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
-            ) as MockClient,
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
+            ) as MockClobClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
-            # Mock the Polymarket client
+            # Mock the CLOB client
             client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_POLY_TRADES, False)
-            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
-            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            client_instance.fetch_all_trades.return_value = SAMPLE_POLY_TRADES
+            MockClobClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClobClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
             MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
 
@@ -348,19 +352,23 @@ class TestManifestAccuracy:
 
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
-            ) as MockClient,
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
+            ) as MockClobClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_POLY_TRADES, False)
-            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
-            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            client_instance.fetch_all_trades.return_value = SAMPLE_POLY_TRADES
+            MockClobClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClobClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
             MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=fake_s3)
 

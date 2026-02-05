@@ -8,7 +8,7 @@
             "Remove 'trades' from polymarket entity handling in backfill resolution if it routes to Bronze",
             "Verify `ingest polymarket-trades` command no longer exists in CLI"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "remove_bronze_trades_ingestion",
@@ -19,7 +19,7 @@
             "Keep `ingest_trades_clob()` and CLOB client code in clob.py for potential future use",
             "Remove any Bronze trades-related imports that are no longer needed"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "fix_kalshi_trades_schedule",
