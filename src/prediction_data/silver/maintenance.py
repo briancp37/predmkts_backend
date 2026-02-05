@@ -12,7 +12,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow as pa
 
 from prediction_data.core.logging import get_logger
 from prediction_data.silver.tables import SILVER_TABLES

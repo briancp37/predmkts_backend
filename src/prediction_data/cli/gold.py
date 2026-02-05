@@ -823,7 +823,7 @@ def _run_daily_step(
         # Position accounting engine (sprint 03). Call if available,
         # otherwise raise NotImplementedError so fail-forward kicks in.
         try:
-            from prediction_data.gold.trade_processor import process_day  # type: ignore[import-untyped]
+            from prediction_data.gold.trade_processor import process_day
 
             result: int = process_day(dt=dt, gold_bucket=gold_bucket, dry_run=dry_run)
             return result

@@ -15,7 +15,7 @@ import dataclasses
 import time
 from typing import TYPE_CHECKING, Any
 
-import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow as pa
 from pyiceberg.io.pyarrow import schema_to_pyarrow
 
 from prediction_data.core.logging import get_logger

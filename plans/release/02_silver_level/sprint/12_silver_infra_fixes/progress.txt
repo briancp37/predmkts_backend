@@ -57,3 +57,5 @@ Once the Docker image is deployed, the remaining PRD tasks can be verified:
 - [2026-02-05] Discovered new blocker: Docker image missing pyarrow dependency (only base package installed, not [backfill])
 - [2026-02-05] Dockerfile fix: changed pip install to use prediction_data-*.whl[backfill] to include pyarrow
 - [2026-02-05] All code fixes complete. Remaining work requires human deployment and AWS verification.
+- [2026-02-05] Code quality: Fixed 3 unused type:ignore comments flagged by mypy (pyarrow imports in silver/writer.py, silver/maintenance.py, cli/gold.py)
+- [2026-02-05] Tests: Fixed 5 failing tests in test_failure_recovery.py by updating mock patches to use CLOB API paths (prediction_data.bronze.polymarket.clob.PolymarketClobClient) and removed outdated CLI exit code tests

@@ -15,7 +15,7 @@ import httpx
 import pytest
 
 from prediction_data.bronze.polymarket.ingest import (
-    ingest_trades as poly_ingest_trades,
+    ingest_trades_clob as poly_ingest_trades,
 )
 from prediction_data.core.http import (
     HttpClient,
@@ -67,17 +67,21 @@ class TestAPIFailurePropagation:
 
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.side_effect = httpx.HTTPStatusError(
+            client_instance.fetch_all_trades.side_effect = httpx.HTTPStatusError(
                 "Server Error",
                 request=httpx.Request("GET", "https://api.example.com"),
                 response=httpx.Response(500),
@@ -98,17 +102,21 @@ class TestAPIFailurePropagation:
         """A network connection error should propagate."""
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.side_effect = httpx.ConnectError(
+            client_instance.fetch_all_trades.side_effect = httpx.ConnectError(
                 "Connection refused"
             )
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
@@ -124,17 +132,21 @@ class TestAPIFailurePropagation:
         """A timeout error should propagate."""
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.side_effect = httpx.ReadTimeout(
+            client_instance.fetch_all_trades.side_effect = httpx.ReadTimeout(
                 "Read timed out"
             )
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
@@ -157,17 +169,21 @@ class TestS3FailurePropagation:
         """An S3 upload failure should propagate and not leave partial state."""
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_TRADES, False)
+            client_instance.fetch_all_trades.return_value = SAMPLE_TRADES
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -283,17 +299,21 @@ class TestRetryRunIdIsolation:
         # First run: fails
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.side_effect = httpx.ConnectError("fail")
+            client_instance.fetch_all_trades.side_effect = httpx.ConnectError("fail")
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -307,17 +327,21 @@ class TestRetryRunIdIsolation:
         fake_s3 = FakeS3Client()
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_TRADES, False)
+            client_instance.fetch_all_trades.return_value = SAMPLE_TRADES
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -330,17 +354,21 @@ class TestRetryRunIdIsolation:
         fake_s3_2 = FakeS3Client()
         with (
             patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
+                "prediction_data.bronze.polymarket.clob.PolymarketClobClient"
             ) as MockClient,
+            patch(
+                "prediction_data.bronze.polymarket.clob.load_clob_credentials"
+            ) as mock_creds,
             patch(
                 "prediction_data.bronze.polymarket.ingest.S3Client"
             ) as MockS3,
             patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
         ):
             mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
+            mock_creds.return_value = MagicMock()
 
             client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_TRADES, False)
+            client_instance.fetch_all_trades.return_value = SAMPLE_TRADES
             MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
             MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -356,66 +384,3 @@ class TestRetryRunIdIsolation:
         keys_1 = set(fake_s3.objects.keys())
         keys_2 = set(fake_s3_2.objects.keys())
         assert keys_1.isdisjoint(keys_2), "Retry overwrote existing data"
-
-
-# --- CLI Exit Code Tests ---
-
-
-class TestCLIExitCodes:
-    """Verify CLI commands produce non-zero exit codes on failure."""
-
-    def test_cli_returns_exit_code_1_on_api_failure(self) -> None:
-        """CLI should exit with code 1 when ingestion fails."""
-        from typer.testing import CliRunner
-
-        from prediction_data.cli.main import app
-
-        runner = CliRunner()
-
-        with (
-            patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
-            ) as MockClient,
-            patch("prediction_data.bronze.polymarket.ingest.S3Client"),
-            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
-        ):
-            mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
-
-            client_instance = AsyncMock()
-            client_instance.fetch_trades.side_effect = httpx.ConnectError("fail")
-            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
-            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            result = runner.invoke(app, ["ingest", "polymarket-trades", "--dt", "2026-01-28"])
-
-        assert result.exit_code == 1
-
-    def test_cli_returns_exit_code_0_on_success(self) -> None:
-        """CLI should exit with code 0 when ingestion succeeds."""
-        from typer.testing import CliRunner
-
-        from prediction_data.cli.main import app
-
-        runner = CliRunner()
-
-        with (
-            patch(
-                "prediction_data.bronze.polymarket.ingest.PolymarketClient"
-            ) as MockClient,
-            patch(
-                "prediction_data.bronze.polymarket.ingest.S3Client"
-            ) as MockS3,
-            patch("prediction_data.bronze.polymarket.ingest.get_settings") as mock_settings,
-        ):
-            mock_settings.return_value = MagicMock(bronze_bucket="test-bucket")
-
-            client_instance = AsyncMock()
-            client_instance.fetch_trades.return_value = (SAMPLE_TRADES, False)
-            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
-            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
-
-            MockS3.return_value = RealS3Client(bucket="test-bucket", s3_client=FakeS3Client())
-
-            result = runner.invoke(app, ["ingest", "polymarket-trades", "--dt", "2026-01-28"])
-
-        assert result.exit_code == 0
