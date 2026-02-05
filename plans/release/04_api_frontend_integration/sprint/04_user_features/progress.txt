@@ -33,6 +33,14 @@
   - Proper error codes: TIER_LIMIT_EXCEEDED (403), ALREADY_EXISTS (400), NOT_FOUND (404)
   - Type checks pass (mypy), all 1441 tests pass
 
+- 2026-02-05: User Profile Endpoint Implementation
+  - Added UserUpdate schema in auth/schemas.py (accepts name: str | None)
+  - Added update_user service function in auth/service.py
+  - Added PATCH /auth/me endpoint in auth/router.py
+  - Endpoint requires authentication via CurrentUser dependency
+  - Uses exclude_unset=True to support partial updates
+  - Type checks pass (mypy), all 1441 tests pass
+
 ## In Progress
 
 ## Blockers

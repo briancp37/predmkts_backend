@@ -10,7 +10,7 @@ from prediction_data.api.deps import get_current_user
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
 
-from .schemas import TokenRefresh, TokenResponse, UserCreate, UserLogin, UserResponse
+from .schemas import TokenRefresh, TokenResponse, UserCreate, UserLogin, UserResponse, UserUpdate
 from .service import (
     authenticate_user,
     create_access_token,
@@ -19,6 +19,7 @@ from .service import (
     decode_token,
     get_user_by_email,
     get_user_by_id,
+    update_user,
 )
 
 router = APIRouter()
@@ -111,3 +112,13 @@ async def get_current_user_info(
 ) -> User:
     """Get the current authenticated user's information."""
     return current_user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_current_user_profile(
+    user_data: UserUpdate,
+    current_user: CurrentUser,
+    db: DbSession,
+) -> User:
+    """Update the current authenticated user's profile."""
+    return await update_user(db, current_user, user_data)

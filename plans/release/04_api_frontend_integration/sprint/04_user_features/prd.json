@@ -196,7 +196,7 @@
       "Return updated UserResponse",
       "Consider adding: email change flow (requires verification), password change"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Watchlist Service Layer",

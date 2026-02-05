@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from prediction_data.core.config import get_settings
 from prediction_data.db.models.user import User
 
-from .schemas import UserCreate
+from .schemas import UserCreate, UserUpdate
 
 settings = get_settings()
 
@@ -98,4 +98,14 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
         return None
     if not verify_password(password, user.password_hash):
         return None
+    return user
+
+
+async def update_user(db: AsyncSession, user: User, user_data: UserUpdate) -> User:
+    """Update a user's profile."""
+    update_data = user_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    await db.flush()
+    await db.refresh(user)
     return user

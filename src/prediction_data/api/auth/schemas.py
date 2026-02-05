@@ -48,3 +48,9 @@ class TokenRefresh(BaseModel):
     """Schema for token refresh request."""
 
     refresh_token: str
+
+
+class UserUpdate(BaseModel):
+    """Schema for updating user profile."""
+
+    name: str | None = None
