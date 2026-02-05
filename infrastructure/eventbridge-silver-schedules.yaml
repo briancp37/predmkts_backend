@@ -1,0 +1,451 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EventBridge Scheduler schedules for Silver layer near-continuous processing
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name (used in resource naming)
+
+  ECSClusterArn:
+    Type: String
+    Description: ARN of the ECS cluster (from ecs-cluster stack)
+
+  TaskDefinitionArn:
+    Type: String
+    Description: ARN of the ECS task definition (from ecs-cluster stack)
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of subnet IDs for the ECS tasks (must have internet access)
+
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: List of security group IDs for the ECS tasks
+
+  ScheduleTimezone:
+    Type: String
+    Default: UTC
+    Description: Timezone for schedule expressions
+
+  SilverTradesScheduleExpression:
+    Type: String
+    Default: 'rate(10 minutes)'
+    Description: Schedule expression for Silver trades processing (default every 10 minutes)
+
+  SilverCatalogScheduleExpression:
+    Type: String
+    Default: 'rate(30 minutes)'
+    Description: Schedule expression for Silver catalog (markets/events) processing (default every 30 minutes)
+
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Description: Whether Polymarket schedules are enabled or disabled
+
+Resources:
+  # IAM Role for EventBridge Scheduler to invoke ECS tasks
+  SilverSchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'prediction-data-silver-scheduler-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ECSRunTaskPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                Resource:
+                  - !Ref TaskDefinitionArn
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Ref ECSClusterArn
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Layer
+          Value: silver
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Schedule Group for Silver schedules
+  SilverScheduleGroup:
+    Type: AWS::Scheduler::ScheduleGroup
+    Properties:
+      Name: !Sub 'prediction-data-silver-${Environment}'
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Layer
+          Value: silver
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # Polymarket Schedules (ENABLED)
+  # ============================================================
+
+  # Polymarket Trades - every 10 minutes
+  # Bronze order_filled ingests every 5 min; data appears in Silver within ~15 min of on-chain event
+  SilverPolymarketTradesSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-polymarket-trades-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Polymarket trades every 10 minutes
+      ScheduleExpression: !Ref SilverTradesScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "polymarket", "--entity", "trades", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # Polymarket Markets - every 30 minutes
+  # Bronze markets ingests hourly; 30-min Silver cadence catches updates within one Bronze cycle
+  SilverPolymarketMarketsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-polymarket-markets-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Polymarket markets every 30 minutes
+      ScheduleExpression: !Ref SilverCatalogScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "polymarket", "--entity", "markets", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # Polymarket Events - every 30 minutes
+  # Same rationale as markets
+  SilverPolymarketEventsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-polymarket-events-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Polymarket events every 30 minutes
+      ScheduleExpression: !Ref SilverCatalogScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "polymarket", "--entity", "events", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # ============================================================
+  # Kalshi Schedules (DISABLED — scaffold for when Kalshi pipeline is activated)
+  # ============================================================
+
+  # Kalshi Trades - every 10 minutes (DISABLED)
+  SilverKalshiTradesSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-kalshi-trades-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Kalshi trades every 10 minutes (disabled until Kalshi pipeline activated)
+      ScheduleExpression: !Ref SilverTradesScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: DISABLED
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "kalshi", "--entity", "trades", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # Kalshi Markets - every 30 minutes (DISABLED)
+  SilverKalshiMarketsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-kalshi-markets-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Kalshi markets every 30 minutes (disabled until Kalshi pipeline activated)
+      ScheduleExpression: !Ref SilverCatalogScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: DISABLED
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "kalshi", "--entity", "markets", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # Kalshi Events - every 30 minutes (DISABLED)
+  SilverKalshiEventsSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-kalshi-events-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Silver catchup for Kalshi events every 30 minutes (disabled until Kalshi pipeline activated)
+      ScheduleExpression: !Ref SilverCatalogScheduleExpression
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: DISABLED
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "catchup", "--platform", "kalshi", "--entity", "events", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 300
+          MaximumRetryAttempts: 1
+
+  # ============================================================
+  # Maintenance Schedules
+  # ============================================================
+
+  # Silver Maintain Compact - daily at 04:00 UTC
+  # Runs during overnight low-activity window after catchup processing settles
+  SilverMaintainCompactSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-maintain-compact-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Daily Silver compaction at 04:00 UTC
+      ScheduleExpression: 'cron(0 4 * * ? *)'
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "maintain", "--op", "compact", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 1800
+          MaximumRetryAttempts: 2
+
+  # Silver Maintain Full - weekly Sunday 04:00 UTC
+  # compact + expire + orphans; concurrency guard prevents overlap with daily compact
+  SilverMaintainFullSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'silver-maintain-full-${Environment}'
+      GroupName: !Ref SilverScheduleGroup
+      Description: Weekly full Silver maintenance (compact + expire + orphans) Sunday 04:00 UTC
+      ScheduleExpression: 'cron(0 4 ? * SUN *)'
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
+      State: !Ref ScheduleState
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !Ref ECSClusterArn
+        RoleArn: !GetAtt SilverSchedulerExecutionRole.Arn
+        EcsParameters:
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          LaunchType: FARGATE
+          NetworkConfiguration:
+            AwsvpcConfiguration:
+              AssignPublicIp: ENABLED
+              Subnets: !Ref SubnetIds
+              SecurityGroups: !Ref SecurityGroupIds
+          TaskCount: 1
+        Input: !Sub |
+          {
+            "containerOverrides": [
+              {
+                "name": "prediction-data",
+                "command": ["silver", "maintain", "--skip-if-concurrent"]
+              }
+            ]
+          }
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 1800
+          MaximumRetryAttempts: 2
+
+Outputs:
+  SilverScheduleGroupArn:
+    Description: ARN of the Silver schedule group
+    Value: !GetAtt SilverScheduleGroup.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SilverScheduleGroupArn'
+
+  SilverScheduleGroupName:
+    Description: Name of the Silver schedule group
+    Value: !Ref SilverScheduleGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SilverScheduleGroupName'
+
+  SilverSchedulerRoleArn:
+    Description: ARN of the Silver scheduler execution role
+    Value: !GetAtt SilverSchedulerExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SilverSchedulerRoleArn'
+
+  DeploymentCommand:
+    Description: Example AWS CLI command to deploy this stack
+    Value: !Sub |
+      aws cloudformation deploy \
+        --template-file infrastructure/eventbridge-silver-schedules.yaml \
+        --stack-name prediction-data-silver-schedules \
+        --parameter-overrides \
+          Environment=dev \
+          ECSClusterArn=<cluster-arn-from-ecs-stack> \
+          TaskDefinitionArn=<task-def-arn-from-ecs-stack> \
+          SubnetIds=subnet-xxx,subnet-yyy \
+          SecurityGroupIds=sg-xxx \
+        --capabilities CAPABILITY_NAMED_IAM

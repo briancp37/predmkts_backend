@@ -63,6 +63,34 @@ Commit 3d03e41 implemented the following prerequisites that this sprint depends 
 - Stream entities auto-default to append writes (from hotfix, included in commit)
 - Comprehensive tests for all of the above (1128 passing)
 
+### eventbridge_silver_template — all 16 steps (2026-02-04)
+Created CloudFormation template `infrastructure/eventbridge-silver-schedules.yaml` with
+all Silver EventBridge Scheduler schedules, following the exact conventions of the Bronze
+(`eventbridge-schedules.yaml`) and Gold (`eventbridge-gold-schedules.yaml`) templates:
+1. Parameters: Environment, ECSClusterArn, TaskDefinitionArn, SubnetIds, SecurityGroupIds,
+   ScheduleTimezone, ScheduleState, SilverTradesScheduleExpression (default rate(10 minutes)),
+   SilverCatalogScheduleExpression (default rate(30 minutes)).
+2. IAM role: `prediction-data-silver-scheduler-{Environment}` with scheduler.amazonaws.com
+   trust policy, ecs:RunTask scoped to TaskDefinitionArn, iam:PassRole scoped to ecs-tasks.
+3. Schedule group: `prediction-data-silver-{Environment}` with Project/Layer/Environment tags.
+4. Polymarket catchup schedules (3 ENABLED):
+   - silver-polymarket-trades: rate(10 min), RetryPolicy 1 retry / 300s age
+   - silver-polymarket-markets: rate(30 min), RetryPolicy 1 retry / 300s age
+   - silver-polymarket-events: rate(30 min), RetryPolicy 1 retry / 300s age
+   All use command: `["silver", "catchup", "--platform", "...", "--entity", "...", "--skip-if-concurrent"]`
+5. Kalshi catchup schedules (3 DISABLED — scaffold for future activation):
+   - silver-kalshi-trades: rate(10 min)
+   - silver-kalshi-markets: rate(30 min)
+   - silver-kalshi-events: rate(30 min)
+6. Maintenance schedules (2 ENABLED):
+   - silver-maintain-compact: cron(0 4 * * ? *) daily 04:00 UTC, RetryPolicy 2 retries / 1800s
+   - silver-maintain-full: cron(0 4 ? * SUN *) weekly Sunday 04:00 UTC, RetryPolicy 2 retries / 1800s
+7. All schedules: FlexibleTimeWindow Mode=OFF, FARGATE with public IP, TaskCount=1.
+8. Outputs: SilverScheduleGroupArn, SilverScheduleGroupName, SilverSchedulerRoleArn,
+   DeploymentCommand (with full aws cloudformation deploy example).
+Total: 11 schedules (6 Polymarket ENABLED, 3 Kalshi DISABLED, 2 maintenance ENABLED).
+mypy: 3 pre-existing errors only. Tests: 1312 passed (no new failures).
+
 ## In Progress
 
 
