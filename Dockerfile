@@ -1,7 +1,7 @@
 # Dockerfile for prediction-data ingestion container
 # Runs on ECS Fargate for scheduled Bronze layer data ingestion
 
-FROM python:3.11-slim AS builder
+FROM --platform=linux/amd64 python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ COPY src/ ./src/
 RUN pip wheel --no-deps --wheel-dir /build/wheels .
 
 
-FROM python:3.11-slim
+FROM --platform=linux/amd64 python:3.11-slim
 
 # Security: run as non-root user
 RUN groupadd --gid 1000 appgroup && \
@@ -24,9 +24,9 @@ RUN groupadd --gid 1000 appgroup && \
 
 WORKDIR /app
 
-# Install the wheel from builder stage
+# Install the wheel from builder stage with silver dependencies (pyarrow, etc.)
 COPY --from=builder /build/wheels/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && \
+RUN pip install --no-cache-dir "/tmp/prediction_data-*.whl[backfill]" && \
     rm /tmp/*.whl
 
 # Switch to non-root user

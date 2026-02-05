@@ -12,12 +12,16 @@
   - All 5 policies now present: CloudWatchLogsAccess, ECSConcurrencyGuard, GlueCatalogAccess, S3BronzeBucketAccess, S3SilverBucketAccess
 
 ## In Progress
-
+- [2026-02-05] fix_docker_pyarrow: Fixing Docker image missing pyarrow dependency
+  - Discovered Silver catchup tasks fail with ModuleNotFoundError: No module named 'pyarrow'
+  - Updated Dockerfile to install prediction-data[backfill] which includes pyarrow
+  - PENDING: Rebuild and push Docker image to ECR to complete fix
 
 ## Blockers/Issues
 - (RESOLVED) ECS task role missing ECSConcurrencyGuard policy - causes AccessDeniedException for ecs:ListTasks
 - (RESOLVED) ECS task role missing GlueCatalogAccess policy - may affect Iceberg operations
 - (RESOLVED) ECS task role missing S3SilverBucketAccess policy - may affect Silver writes
+- (IN PROGRESS) Docker image missing pyarrow - causes ModuleNotFoundError on Silver catchup, blocks all Silver verification
 
 ## Notes
 - IAM policies exist in infrastructure/iam-ecs-roles.yaml template but weren't deployed
@@ -25,3 +29,7 @@
 - Silver processing appears to be working despite missing policies (may be using different credentials)
 - Latest Silver trades data: 2026-02-04, markets/events: 2026-02-04
 - [2026-02-05] Stack successfully updated - next step is to verify ECS concurrency guard and Silver processing work correctly
+- [2026-02-05] IAM fix verified working: no AccessDeniedException errors in logs after 18:33 UTC stack update
+- [2026-02-05] Discovered new blocker: Docker image missing pyarrow dependency (only base package installed, not [backfill])
+- [2026-02-05] Dockerfile fix: changed pip install to use prediction_data-*.whl[backfill] to include pyarrow
+- [2026-02-05] Next steps: rebuild Docker image, push to ECR, then verify ECS concurrency guard and Silver processing

@@ -13,6 +13,17 @@
         "passes": true
     },
     {
+        "category": "fix_docker_pyarrow",
+        "description": "Fix Docker image missing pyarrow dependency that blocks all Silver operations",
+        "steps": [
+            "Identify that Silver catchup tasks fail with ModuleNotFoundError: No module named 'pyarrow'",
+            "Update Dockerfile to install prediction-data[backfill] which includes pyarrow",
+            "Rebuild and push Docker image to ECR",
+            "Verify Silver catchup task starts without pyarrow import error"
+        ],
+        "passes": false
+    },
+    {
         "category": "verify_ecs_concurrency_guard",
         "description": "Verify ECS concurrency guard works after IAM fix",
         "steps": [
