@@ -4,11 +4,12 @@ from typing import Annotated
 from uuid import UUID
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
+from prediction_data.api.exceptions import DuplicateError, NotFoundError, TierLimitExceededError
 from prediction_data.api.traders.schemas import TradeResponse
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
@@ -102,14 +103,10 @@ async def add_tracked(
     tier_limit = get_tier_limit(current_user.tier)
 
     if not check_tier_limit(current_user.tier, current_count):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "message": f"Tracked traders limit reached ({tier_limit}). Upgrade to PRO for more.",
-                "code": "TIER_LIMIT_EXCEEDED",
-                "limit": tier_limit,
-                "count": current_count,
-            },
+        raise TierLimitExceededError(
+            message=f"Tracked traders limit reached ({tier_limit}). Upgrade to PRO for more.",
+            limit=tier_limit,
+            count=current_count,
         )
 
     # Normalize address
@@ -118,13 +115,7 @@ async def add_tracked(
     # Check for duplicate
     existing = await get_tracked_trader_by_address(db, current_user.id, address)
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "message": "Trader already in tracked list",
-                "code": "ALREADY_EXISTS",
-            },
-        )
+        raise DuplicateError(message="Trader already in tracked list")
 
     # Add tracked trader
     tracker = await add_tracked_trader(
@@ -224,13 +215,7 @@ async def get_tracked_trader(
     tracker = await get_tracked_trader_by_id(db, current_user.id, tracker_id)
 
     if not tracker:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Tracked trader not found",
-                "code": "NOT_FOUND",
-            },
-        )
+        raise NotFoundError(message="Tracked trader not found")
 
     # Get stats from ClickHouse
     stats = await get_trader_stats(ch, [tracker.trader_address])
@@ -260,13 +245,7 @@ async def delete_tracked_trader(
     deleted = await remove_tracked_trader(db, current_user.id, tracker_id)
 
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Tracked trader not found",
-                "code": "NOT_FOUND",
-            },
-        )
+        raise NotFoundError(message="Tracked trader not found")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -287,13 +266,7 @@ async def patch_tracked_trader(
     )
 
     if not tracker:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Tracked trader not found",
-                "code": "NOT_FOUND",
-            },
-        )
+        raise NotFoundError(message="Tracked trader not found")
 
     return TrackedTraderResponse(
         id=tracker.id,

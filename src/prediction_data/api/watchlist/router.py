@@ -3,11 +3,12 @@
 from typing import Annotated
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
+from prediction_data.api.exceptions import DuplicateError, NotFoundError, ValidationError
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
 
@@ -89,17 +90,11 @@ async def add_market_to_watchlist(
     """
     # Validate market exists in ClickHouse
     if not await market_exists(ch, request.marketId):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Market not found",
-        )
+        raise ValidationError(message="Market not found")
 
     # Check if already in watchlist
     if await is_in_watchlist(db, current_user.id, request.marketId):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Market already in watchlist",
-        )
+        raise DuplicateError(message="Market already in watchlist")
 
     # Add to watchlist
     watchlist = await add_to_watchlist(db, current_user.id, request.marketId)
@@ -124,9 +119,6 @@ async def remove_market_from_watchlist(
     deleted = await remove_from_watchlist(db, current_user.id, market_id)
 
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Market not found in watchlist",
-        )
+        raise NotFoundError(message="Market not found in watchlist")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

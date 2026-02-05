@@ -263,7 +263,7 @@
       "Not found: 404 with code 'NOT_FOUND'",
       "Unauthorized: 401 with code 'UNAUTHORIZED'"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "OpenAPI Spec Update",

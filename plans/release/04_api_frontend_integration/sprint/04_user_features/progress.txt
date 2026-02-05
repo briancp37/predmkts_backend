@@ -54,6 +54,25 @@
   - Verified types include: TrackedTraderCreate, TrackedTraderResponse, TrackedTraderWithStats, TrackedTraderActivity, TrackedTradersListResponse
   - Tier limit info included in TrackedTradersListResponse schema
 
+- 2026-02-05: Error Handling for User Features
+  - Created src/prediction_data/api/exceptions.py with custom exception classes:
+    - APIError: Base class with consistent {message, code, ...extra} format
+    - NotFoundError: 404 with code 'NOT_FOUND'
+    - DuplicateError: 400 with code 'ALREADY_EXISTS'
+    - TierLimitExceededError: 403 with code 'TIER_LIMIT_EXCEEDED', includes limit and count
+    - UnauthorizedError: 401 with code 'UNAUTHORIZED', includes WWW-Authenticate header
+    - ValidationError: 400 with code 'VALIDATION_ERROR'
+  - Updated watchlist/router.py to use custom exceptions:
+    - ValidationError for "Market not found"
+    - DuplicateError for "Market already in watchlist"
+    - NotFoundError for "Market not found in watchlist"
+  - Updated tracked_traders/router.py to use custom exceptions:
+    - TierLimitExceededError with limit/count for tier limits
+    - DuplicateError for "Trader already in tracked list"
+    - NotFoundError for "Tracked trader not found" (GET, DELETE, PATCH)
+  - Consistent error response format across all user feature endpoints
+  - Type checks pass (mypy), all 1441 tests pass
+
 ## In Progress
 
 ## Blockers
@@ -61,6 +80,7 @@
 ## Notes
 
 ## Key Files to Create/Modify
+- src/prediction_data/api/exceptions.py (custom exception classes)
 - src/prediction_data/api/watchlist/router.py
 - src/prediction_data/api/watchlist/service.py
 - src/prediction_data/api/watchlist/schemas.py
