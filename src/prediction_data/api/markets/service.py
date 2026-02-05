@@ -861,6 +861,272 @@ async def get_markets_advanced(
     return results, total_after_filter
 
 
+async def get_markets_screener(
+    client: Client,
+    *,
+    time_window: str = "24h",
+    category: str | None = None,
+    search: str | None = None,
+    resolved: bool | None = None,
+    sort_by: str = "volume",
+    sort_order: str = "desc",
+    min_volume: float | None = None,
+    max_volume: float | None = None,
+    min_price_change: float | None = None,
+    max_price_change: float | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[dict[str, Any]], int]:
+    """Fetch markets with time-based price and volume metrics from ClickHouse.
+
+    This screener endpoint calculates price change and volume over a specific
+    time window using historical market_mark_daily data.
+
+    Args:
+        client: ClickHouse client.
+        time_window: Time window for calculations (6h, 12h, 24h, 7d).
+            Note: Currently only daily data is available, so 6h and 12h
+            behave like 24h until hourly data is computed.
+        category: Filter by category (exact match via event join).
+        search: Search query for question/description (ILIKE).
+        resolved: Filter by resolved status (True = "resolved", False = others).
+        sort_by: Sort field (volume, priceChange).
+        sort_order: Sort direction (asc, desc).
+        min_volume: Minimum volume filter for the time window.
+        max_volume: Maximum volume filter for the time window.
+        min_price_change: Minimum price change filter (e.g., -0.1 for -10%).
+        max_price_change: Maximum price change filter (e.g., 0.1 for +10%).
+        limit: Maximum number of results.
+        offset: Offset for pagination.
+
+    Returns:
+        Tuple of (list of market dicts formatted for MarketAdvancedResponse, total count).
+    """
+    # Map time window to days for ClickHouse query
+    # Note: Sub-daily windows use 1 day since only daily data is available
+    days_back = {
+        "6h": 1,
+        "12h": 1,
+        "24h": 1,
+        "7d": 7,
+    }.get(time_window, 1)
+
+    # Build WHERE conditions for base query
+    conditions: list[str] = []
+    params: dict[str, Any] = {"days_back": days_back}
+
+    if search:
+        conditions.append(
+            "(m.question ILIKE {search:String} OR m.description ILIKE {search:String})"
+        )
+        params["search"] = f"%{search}%"
+
+    if resolved is not None:
+        if resolved:
+            conditions.append("m.status = 'resolved'")
+        else:
+            conditions.append("m.status != 'resolved'")
+
+    if category:
+        conditions.append("e.category = {category:String}")
+        params["category"] = category
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    # Get total count first (without price/volume filters)
+    count_query = f"""
+        SELECT COUNT(DISTINCT m.platform_market_id)
+        FROM prediction_gold.dim_market m
+        LEFT JOIN prediction_gold.dim_event e
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        WHERE {where_clause}
+    """
+    base_total = await execute_query_count(count_query, params, client=client)
+
+    if base_total == 0:
+        return [], 0
+
+    # Fetch more markets than needed to allow for post-filtering
+    fetch_limit = min(limit * 3, 500)
+
+    # Get markets with aggregated price change and volume over the time window
+    # Price change is calculated from the earliest mark price to the latest
+    # Volume is summed over the period
+    markets_query = f"""
+        SELECT
+            m.platform_market_id AS id,
+            m.platform_market_id AS polymarketId,
+            m.canonical_market_id AS conditionId,
+            m.market_slug AS slug,
+            m.question,
+            m.description,
+            e.category,
+            m.status,
+            m.tokens,
+            m.updated_at AS updatedAt,
+            metrics.window_volume,
+            metrics.price_change,
+            metrics.latest_price,
+            metrics.earliest_price
+        FROM prediction_gold.dim_market m
+        LEFT JOIN prediction_gold.dim_event e
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        LEFT JOIN (
+            SELECT
+                market_id,
+                sum(volume_usd_24h) AS window_volume,
+                -- Get latest price (most recent day in window)
+                argMax(mark_price, day_utc) AS latest_price,
+                -- Get earliest price (oldest day in window)
+                argMin(mark_price, day_utc) AS earliest_price,
+                -- Calculate price change as percentage
+                CASE
+                    WHEN argMin(mark_price, day_utc) > 0
+                    THEN (argMax(mark_price, day_utc) - argMin(mark_price, day_utc))
+                         / argMin(mark_price, day_utc)
+                    ELSE 0
+                END AS price_change
+            FROM prediction_gold.market_mark_daily
+            WHERE day_utc >= today() - {{days_back:UInt32}}
+            GROUP BY market_id
+        ) metrics ON metrics.market_id = m.platform_market_id
+        WHERE {where_clause}
+        ORDER BY COALESCE(metrics.window_volume, 0) DESC
+        LIMIT {fetch_limit}
+    """
+    market_rows = await execute_query(markets_query, params, client=client)
+
+    if not market_rows:
+        return [], base_total
+
+    # Get market IDs for outcome lookup
+    market_ids = [row["id"] for row in market_rows]
+
+    # Query outcomes for these markets
+    outcomes_query = """
+        SELECT
+            o.market_id,
+            o.outcome_id AS id,
+            o.token_id AS tokenId,
+            o.outcome_label AS outcomeName,
+            o.side
+        FROM prediction_gold.dim_outcome o
+        WHERE o.platform = 'polymarket'
+            AND o.market_id IN {market_ids:Array(String)}
+    """
+    outcome_rows = await execute_query(
+        outcomes_query, {"market_ids": market_ids}, client=client
+    )
+
+    # Group outcomes by market_id
+    outcomes_by_market: dict[str, list[dict[str, Any]]] = {}
+    for outcome in outcome_rows:
+        market_id = outcome["market_id"]
+        if market_id not in outcomes_by_market:
+            outcomes_by_market[market_id] = []
+        outcomes_by_market[market_id].append(
+            {
+                "id": outcome["id"],
+                "tokenId": outcome["tokenId"],
+                "outcomeName": outcome["outcomeName"] or outcome["side"],
+                "currentPrice": 0.5,  # Will be updated with latest price
+                "volume": 0.0,
+            }
+        )
+
+    # Build response dicts with screener metrics
+    results: list[dict[str, Any]] = []
+
+    for row in market_rows:
+        market_id = row["id"]
+
+        # Get volume and price change from the query
+        window_volume = float(row.get("window_volume") or 0.0)
+        price_change = float(row.get("price_change") or 0.0)
+        latest_price = row.get("latest_price")
+
+        # Apply volume filters
+        if min_volume is not None and window_volume < min_volume:
+            continue
+        if max_volume is not None and window_volume > max_volume:
+            continue
+
+        # Apply price change filters
+        if min_price_change is not None and price_change < min_price_change:
+            continue
+        if max_price_change is not None and price_change > max_price_change:
+            continue
+
+        # Parse tokens JSON if outcomes not in dim_outcome
+        market_outcomes = outcomes_by_market.get(market_id, [])
+        if not market_outcomes and row.get("tokens"):
+            market_outcomes = _parse_tokens_to_outcomes(market_id, row["tokens"])
+
+        # Update outcome prices with latest mark price if available
+        if latest_price is not None:
+            for outcome in market_outcomes:
+                # Set YES outcome to latest_price, NO to 1-latest_price
+                outcome_name = outcome.get("outcomeName", "").lower()
+                if "yes" in outcome_name:
+                    outcome["currentPrice"] = float(latest_price)
+                elif "no" in outcome_name:
+                    outcome["currentPrice"] = 1.0 - float(latest_price)
+                else:
+                    outcome["currentPrice"] = float(latest_price)
+
+        # Format updated_at as ISO string
+        updated_at = row.get("updatedAt")
+        created_at_str = ""
+        if updated_at:
+            if hasattr(updated_at, "isoformat"):
+                created_at_str = updated_at.isoformat()
+            else:
+                created_at_str = str(updated_at)
+
+        results.append(
+            {
+                "id": market_id,
+                "polymarketId": row["polymarketId"],
+                "conditionId": row.get("conditionId"),
+                "slug": row.get("slug"),
+                "question": row["question"] or "",
+                "description": row.get("description"),
+                "category": row.get("category"),
+                "endDate": None,  # Not in current schema
+                "resolved": row.get("status") == "resolved",
+                "totalVolume": window_volume,
+                "liquidity": 0.0,  # Not computed for screener
+                "createdAt": created_at_str,
+                "imageUrl": None,  # Not in current schema
+                "outcomes": market_outcomes,
+                # Advanced fields (no CLOB data for screener)
+                "bid": None,
+                "ask": None,
+                "spread": None,
+                "spreadPercent": None,
+                "spreadCents": None,
+                "volume24h": window_volume,  # Use window volume
+                "priceChange24h": price_change,  # Use window price change
+            }
+        )
+
+    # Sort results based on sort_by
+    def sort_key(m: dict[str, Any]) -> Any:
+        if sort_by == "volume":
+            return m.get("volume24h", 0.0) or 0.0
+        elif sort_by == "priceChange":
+            return abs(m.get("priceChange24h", 0.0) or 0.0)
+        return m.get("volume24h", 0.0) or 0.0
+
+    results.sort(key=sort_key, reverse=(sort_order == "desc"))
+
+    # Apply pagination after filtering and sorting
+    total_after_filter = len(results)
+    results = results[offset : offset + limit]
+
+    return results, total_after_filter
+
+
 def _parse_tokens_to_outcomes(
     market_id: str, tokens_json: str | None
 ) -> list[dict[str, Any]]:

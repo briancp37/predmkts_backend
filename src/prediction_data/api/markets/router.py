@@ -23,6 +23,7 @@ from prediction_data.api.markets.service import (
     get_market_trades,
     get_markets,
     get_markets_advanced,
+    get_markets_screener,
 )
 
 router = APIRouter()
@@ -165,6 +166,93 @@ async def list_markets_advanced(
         items=items,
         total=total,
         page=current_page,
+        limit=limit,
+    )
+
+
+@router.get("/screener", response_model=MarketAdvancedListResponse)
+async def list_markets_screener(
+    timeWindow: Literal["6h", "12h", "24h", "7d"] = Query(
+        "24h", description="Time window for volume and price change calculations"
+    ),
+    category: str | None = Query(None, description="Filter by category (exact match)"),
+    search: str | None = Query(None, description="Search in question and description"),
+    resolved: bool | None = Query(None, description="Filter by resolved status"),
+    sortBy: Literal["volume", "priceChange"] = Query(
+        "volume", description="Sort field (volume or priceChange)"
+    ),
+    sortOrder: Literal["asc", "desc"] = Query("desc", description="Sort direction"),
+    minVolume: float | None = Query(
+        None, description="Minimum volume in USD over the time window"
+    ),
+    maxVolume: float | None = Query(
+        None, description="Maximum volume in USD over the time window"
+    ),
+    minPriceChange: float | None = Query(
+        None, description="Minimum price change (e.g., -0.1 for -10%)"
+    ),
+    maxPriceChange: float | None = Query(
+        None, description="Maximum price change (e.g., 0.1 for +10%)"
+    ),
+    limit: int = Query(50, ge=1, le=500, description="Maximum results to return"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+    client: Client = Depends(get_clickhouse_client),
+) -> MarketAdvancedListResponse:
+    """Market screener with time-based filtering.
+
+    Returns markets with aggregated price change and volume metrics calculated
+    over a specified time window. This endpoint is optimized for screening
+    markets based on recent performance.
+
+    **Time windows:**
+    - `6h`: Last 6 hours (uses daily data - hourly not yet available)
+    - `12h`: Last 12 hours (uses daily data - hourly not yet available)
+    - `24h`: Last 24 hours
+    - `7d`: Last 7 days
+
+    **Sort options:**
+    - `volume`: Sort by trading volume over the time window
+    - `priceChange`: Sort by absolute price change magnitude
+
+    **Filters:**
+    - Volume range filters (minVolume, maxVolume)
+    - Price change filters as decimals (minPriceChange, maxPriceChange)
+      - Use -0.1 for -10% and 0.1 for +10%
+
+    **Response fields:**
+    - `volume24h`: Volume over the selected time window (not necessarily 24h)
+    - `priceChange24h`: Price change over the selected time window
+
+    Note: Sub-daily time windows (6h, 12h) currently return daily data
+    since hourly price marks are not yet available. This will be enhanced
+    when hourly data is computed from Silver trades.
+    """
+    markets, total = await get_markets_screener(
+        client,
+        time_window=timeWindow,
+        category=category,
+        search=search,
+        resolved=resolved,
+        sort_by=sortBy,
+        sort_order=sortOrder,
+        min_volume=minVolume,
+        max_volume=maxVolume,
+        min_price_change=minPriceChange,
+        max_price_change=maxPriceChange,
+        limit=limit,
+        offset=offset,
+    )
+
+    # Convert dicts to MarketAdvancedResponse models
+    items = [MarketAdvancedResponse.model_validate(m) for m in markets]
+
+    # Calculate page number (1-indexed)
+    page = (offset // limit) + 1 if limit > 0 else 1
+
+    return MarketAdvancedListResponse(
+        items=items,
+        total=total,
+        page=page,
         limit=limit,
     )
 
@@ -346,5 +434,10 @@ async def get_price_history(
     )
 
 
-# Future endpoints:
+# All market endpoints implemented:
+# - GET /markets (list with basic filtering)
+# - GET /markets/advanced (with CLOB bid/ask data)
 # - GET /markets/screener (time-based filtering)
+# - GET /markets/{id} (single market)
+# - GET /markets/{id}/trades (market trades)
+# - GET /markets/{id}/price-history (price history for charting)

@@ -71,7 +71,7 @@
       "Filter by computed price change and volume ranges",
       "Return MarketAdvancedListResponse with computed fields"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "GET /markets/{id} Endpoint",

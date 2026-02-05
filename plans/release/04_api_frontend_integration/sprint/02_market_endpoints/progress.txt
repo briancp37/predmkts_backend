@@ -151,6 +151,29 @@
 - Note: timeRemaining and createdDate filters not implemented as endDate not in current schema.
   Tags filter parameter is accepted but currently no-op (no tags in dim_market schema).
 
+### 2026-02-05: GET /markets/screener Endpoint
+- Implemented `get_markets_screener()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries ClickHouse dim_market table with LEFT JOIN to dim_event and market_mark_daily
+  - Aggregates volume and calculates price change over configurable time window
+  - Supports time windows: 6h, 12h, 24h, 7d (sub-daily use daily data until hourly available)
+  - Uses argMax/argMin for price change calculation (latest - earliest / earliest)
+  - Supports filters: category, search, resolved, minVolume, maxVolume, minPriceChange, maxPriceChange
+  - Sorts by volume or priceChange (absolute magnitude)
+  - Returns paginated results after filtering and sorting
+- Implemented `GET /markets/screener` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Query param: timeWindow (enum: 6h, 12h, 24h, 7d, default 24h)
+  - Query params: category, search, resolved (basic filters)
+  - Query params: sortBy (volume|priceChange), sortOrder (asc|desc)
+  - Query params: minVolume, maxVolume, minPriceChange, maxPriceChange (range filters)
+  - Pagination: limit (1-500, default 50), offset
+  - Returns MarketAdvancedListResponse (reuses schema from /markets/advanced)
+  - Full OpenAPI documentation with detailed descriptions
+- No CLOB API calls needed - uses historical market_mark_daily data only
+- All type checks pass (mypy)
+- All 1441 tests pass (pytest)
+- Note: Sub-daily intervals (6h, 12h) return daily data since hourly marks not yet computed.
+  Price change is calculated as a decimal (e.g., 0.1 = +10%, -0.1 = -10%).
+
 ## In Progress
 
 ## Blockers
@@ -161,7 +184,8 @@
 - The build_where_clause function supports parameterized queries to prevent SQL injection
 - CLOB API Client now available for real-time bid/ask enrichment
 - GET /markets/advanced endpoint implemented and working with CLOB enrichment
-- Next priority: Implement GET /markets/screener endpoint, or Events Router Setup
+- GET /markets/screener endpoint implemented for time-based screening (no CLOB needed)
+- All core markets endpoints now complete. Next priority: Events Router Setup
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
