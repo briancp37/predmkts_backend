@@ -118,6 +118,36 @@ new Silver automation layer:
    - Documented per-entity concurrency scoping
 mypy: 3 pre-existing errors only. Tests: 1323 passed (no new failures).
 
+### cloudwatch_observability — all 7 steps (2026-02-04)
+Added CloudWatch metric filters, alarms, and dashboard panels for Silver schedules
+to the existing `infrastructure/cloudwatch-monitoring.yaml` template:
+1. Metric filter `SilverProcessingSuccessMetricFilter`: pattern `"All manifests processed
+   successfully"` — unique to silver.py (Bronze uses different success messages). Emits
+   `SilverProcessingSuccess` metric in `PredictionData/{env}` namespace.
+2. Metric filter `SilverNoOpMetricFilter`: pattern `"silver_catchup_noop"` — matches the
+   structlog JSON event emitted on no-op exits. Emits `SilverNoOp` metric.
+3. Metric filter `SilverConcurrencySkipMetricFilter`: pattern `"Concurrent task detected"
+   "silver-"` — the "silver-" prefix in the concurrency filter string scopes this to
+   Silver commands only (Bronze uses different filter prefixes). Emits
+   `SilverConcurrencySkip` metric.
+4. Metric filter `SilverProcessingFailureMetricFilter`: pattern `"FAILED:"` — Silver uses
+   `FAILED: {exc}` (with colon) while Gold uses `FAILED ({exc})` (with parenthesis), so
+   the colon naturally scopes the filter to Silver. Emits `SilverProcessingFailure` metric.
+5. Alarm `SilverTradesMissingRunsAlarm`: uses metric math (success + noop) with
+   configurable period (default 3600s / 1 hour). TreatMissingData=breaching because zero
+   data means the schedule isn't firing. Fires to existing SNS AlertTopic.
+6. Alarm `SilverProcessingErrorsAlarm`: threshold > configurable count (default 3) in
+   30-minute window. TreatMissingData=notBreaching because zero failures is expected.
+7. Dashboard panels added to existing `prediction-data-{env}` dashboard:
+   - "Silver Runs by Outcome": stacked time series of success/noop/skip/failure (y=9)
+   - "Silver Concurrency Skip Rate": hourly sum of concurrency skips (y=9, x=12)
+   - Silver alarms added to existing "Alarm Status" widget
+   - Recent Logs widget moved down to y=15 to accommodate new panels
+8. Two new parameters: `SilverTradesMissingRunIntervalSeconds` (default 3600),
+   `SilverProcessingFailureThreshold` (default 3).
+9. Two new outputs: `SilverTradesMissingRunsAlarmArn`, `SilverProcessingErrorsAlarmArn`.
+mypy: 3 pre-existing errors only. Tests: 1323 passed (no new failures).
+
 ## In Progress
 
 

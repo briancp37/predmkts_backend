@@ -51,15 +51,15 @@
         "category": "cloudwatch_observability",
         "description": "Add CloudWatch metric filters, alarms, and dashboard panels for Silver schedules — must distinguish between actual processing, no-op exits, and concurrency skips to verify the near-continuous model is healthy",
         "steps": [
-            "Add metric filter: SilverProcessingSuccess — pattern 'All manifests processed successfully' in /ecs/prediction-data-{env} log group, filtered to silver commands",
-            "Add metric filter: SilverNoOp — pattern 'Silver is up to date' — tracks frequency of no-work invocations (expected to be >50% of runs under near-continuous scheduling; validates that the guard+state model is working efficiently)",
-            "Add metric filter: SilverConcurrencySkip — pattern 'Concurrent task detected' filtered to silver commands — tracks how often the concurrency guard fires; a sustained high rate indicates processing duration exceeds the schedule interval and cadence should be reduced",
-            "Add metric filter: SilverProcessingFailure — pattern 'FAILED' in Silver catchup output",
-            "Add alarm: SilverTradesMissingRuns — if zero (SilverProcessingSuccess + SilverNoOp) for polymarket trades in 1 hour, alert; at 10-min cadence we expect ~6 runs/hour, zero means the schedule or ECS is broken",
-            "Add alarm: SilverProcessingErrors — if SilverProcessingFailure count > 3 in 30 minutes, alert; occasional failures are expected (transient S3 errors) but sustained failures need investigation",
-            "Add Silver panels to the existing CloudWatch dashboard: Silver runs by entity type (success vs noop vs skip vs failure), concurrency skip rate over time, processing duration histogram"
+            "[DONE] Add metric filter: SilverProcessingSuccess — pattern 'All manifests processed successfully' in /ecs/prediction-data-{env} log group, filtered to silver commands",
+            "[DONE] Add metric filter: SilverNoOp — pattern 'silver_catchup_noop' — tracks frequency of no-work invocations (expected to be >50% of runs under near-continuous scheduling; validates that the guard+state model is working efficiently)",
+            "[DONE] Add metric filter: SilverConcurrencySkip — pattern 'Concurrent task detected' filtered to silver commands via 'silver-' prefix — tracks how often the concurrency guard fires; a sustained high rate indicates processing duration exceeds the schedule interval and cadence should be reduced",
+            "[DONE] Add metric filter: SilverProcessingFailure — pattern 'FAILED:' (colon distinguishes Silver from Gold 'FAILED (' pattern) in Silver catchup output",
+            "[DONE] Add alarm: SilverTradesMissingRuns — if zero (SilverProcessingSuccess + SilverNoOp) for polymarket trades in 1 hour, alert; at 10-min cadence we expect ~6 runs/hour, zero means the schedule or ECS is broken",
+            "[DONE] Add alarm: SilverProcessingErrors — if SilverProcessingFailure count > 3 in 30 minutes, alert; occasional failures are expected (transient S3 errors) but sustained failures need investigation",
+            "[DONE] Add Silver panels to the existing CloudWatch dashboard: Silver runs by outcome (success vs noop vs skip vs failure stacked), concurrency skip rate over time, Silver alarms added to alarm status widget"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "infrastructure_docs",

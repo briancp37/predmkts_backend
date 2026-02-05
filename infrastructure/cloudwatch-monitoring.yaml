@@ -44,6 +44,20 @@ Parameters:
     Default: 1
     Description: Number of evaluation periods for task failure alarm
 
+  SilverTradesMissingRunIntervalSeconds:
+    Type: Number
+    Default: 3600
+    Description: >-
+      Period in seconds to check for missing Silver trades runs.
+      At 10-min cadence, expect ~6 runs/hour; zero in this window means schedule or ECS is broken.
+
+  SilverProcessingFailureThreshold:
+    Type: Number
+    Default: 3
+    Description: >-
+      Number of Silver processing failures in a 30-minute window before alarming.
+      Occasional failures are expected (transient S3 errors) but sustained failures need investigation.
+
 Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
@@ -146,6 +160,62 @@ Resources:
           MetricValue: '1'
           DefaultValue: 0
           Unit: Count
+
+  # --- Silver Layer Metric Filters ---
+
+  # Metric Filter for Silver processing success (catchup or process completes all manifests)
+  SilverProcessingSuccessMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"All manifests processed successfully"'
+      MetricTransformations:
+        - MetricName: SilverProcessingSuccess
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Silver no-op exits (no new data to process — expected majority of runs)
+  SilverNoOpMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"silver_catchup_noop"'
+      MetricTransformations:
+        - MetricName: SilverNoOp
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Silver concurrency skips (guard prevents overlapping runs)
+  SilverConcurrencySkipMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"Concurrent task detected" "silver-"'
+      MetricTransformations:
+        - MetricName: SilverConcurrencySkip
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # Metric Filter for Silver processing failures (per-manifest FAILED: output)
+  SilverProcessingFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref LogGroupName
+      FilterPattern: '"FAILED:"'
+      MetricTransformations:
+        - MetricName: SilverProcessingFailure
+          MetricNamespace: !Sub 'PredictionData/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+          Unit: Count
+
+  # --- Bronze Layer Alarms ---
 
   # Alarm for error log patterns
   ErrorLogAlarm:
@@ -294,6 +364,77 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # --- Silver Layer Alarms ---
+
+  # Alarm for missing Silver trades runs — zero activity in 1 hour means schedule or ECS is broken
+  SilverTradesMissingRunsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-silver-trades-missing-runs-${Environment}'
+      AlarmDescription: >-
+        Alerts when zero Silver trades runs (success + noop) occur in the expected interval.
+        At 10-min cadence, expect ~6 runs/hour; zero means the EventBridge schedule or ECS is broken.
+      Metrics:
+        - Id: success
+          MetricStat:
+            Metric:
+              Namespace: !Sub 'PredictionData/${Environment}'
+              MetricName: SilverProcessingSuccess
+            Period: !Ref SilverTradesMissingRunIntervalSeconds
+            Stat: Sum
+          ReturnData: false
+        - Id: noop
+          MetricStat:
+            Metric:
+              Namespace: !Sub 'PredictionData/${Environment}'
+              MetricName: SilverNoOp
+            Period: !Ref SilverTradesMissingRunIntervalSeconds
+            Stat: Sum
+          ReturnData: false
+        - Id: total_runs
+          Expression: 'success + noop'
+          Label: 'Total Silver Runs (success + noop)'
+          ReturnData: true
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Alarm for Silver processing errors — sustained failures need investigation
+  SilverProcessingErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'prediction-data-silver-processing-errors-${Environment}'
+      AlarmDescription: >-
+        Alerts when Silver processing failures exceed threshold in a 30-minute window.
+        Occasional failures are expected (transient S3 errors) but sustained failures need investigation.
+      MetricName: SilverProcessingFailure
+      Namespace: !Sub 'PredictionData/${Environment}'
+      Statistic: Sum
+      Period: 1800
+      EvaluationPeriods: 1
+      Threshold: !Ref SilverProcessingFailureThreshold
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlertTopic
+      OKActions:
+        - !Ref AlertTopic
+      Tags:
+        - Key: Project
+          Value: prediction-data
+        - Key: Environment
+          Value: !Ref Environment
+
   # CloudWatch Dashboard for monitoring overview
   MonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -356,14 +497,55 @@ Resources:
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-order-filled-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-trades-${Environment}",
                   "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-polymarket-markets-${Environment}",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-markets-${Environment}"
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-missing-kalshi-markets-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-silver-trades-missing-runs-${Environment}",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:prediction-data-silver-processing-errors-${Environment}"
                 ]
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 9,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Silver Runs by Outcome",
+                "metrics": [
+                  ["PredictionData/${Environment}", "SilverProcessingSuccess", {"label": "Success", "color": "#2ca02c"}],
+                  [".", "SilverNoOp", {"label": "No-Op", "color": "#1f77b4"}],
+                  [".", "SilverConcurrencySkip", {"label": "Concurrency Skip", "color": "#ff7f0e"}],
+                  [".", "SilverProcessingFailure", {"label": "Failure", "color": "#d62728"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": true
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 9,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Silver Concurrency Skip Rate",
+                "metrics": [
+                  ["PredictionData/${Environment}", "SilverConcurrencySkip", {"label": "Concurrency Skips", "color": "#ff7f0e"}]
+                ],
+                "period": 3600,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
               }
             },
             {
               "type": "log",
               "x": 0,
-              "y": 9,
+              "y": 15,
               "width": 24,
               "height": 6,
               "properties": {
@@ -424,6 +606,18 @@ Outputs:
     Value: !GetAtt MissingKalshiMarketsAlarm.Arn
     Export:
       Name: !Sub '${AWS::StackName}-MissingKalshiMarketsAlarmArn'
+
+  SilverTradesMissingRunsAlarmArn:
+    Description: ARN of the Silver trades missing runs alarm
+    Value: !GetAtt SilverTradesMissingRunsAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SilverTradesMissingRunsAlarmArn'
+
+  SilverProcessingErrorsAlarmArn:
+    Description: ARN of the Silver processing errors alarm
+    Value: !GetAtt SilverProcessingErrorsAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SilverProcessingErrorsAlarmArn'
 
   DashboardName:
     Description: Name of the CloudWatch dashboard
