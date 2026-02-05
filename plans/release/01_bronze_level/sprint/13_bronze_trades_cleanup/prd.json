@@ -1,0 +1,69 @@
+[
+    {
+        "category": "remove_polymarket_trades_cli",
+        "description": "Remove the Bronze-level Polymarket trades CLI command and related code",
+        "steps": [
+            "Delete `@ingest_app.command(name='polymarket-trades')` function from src/prediction_data/cli/main.py (lines 72-127)",
+            "Remove polymarket trades case from `_ingest_one()` function in main.py (lines 526-527)",
+            "Remove 'trades' from polymarket entity handling in backfill resolution if it routes to Bronze",
+            "Verify `ingest polymarket-trades` command no longer exists in CLI"
+        ],
+        "passes": false
+    },
+    {
+        "category": "remove_bronze_trades_ingestion",
+        "description": "Remove Bronze ingestion functions for Polymarket trades (keep CLOB API client)",
+        "steps": [
+            "Delete or deprecate `run_ingest_trades()` function from src/prediction_data/bronze/polymarket/ingest.py",
+            "Delete or deprecate `ingest_trades()` async function from ingest.py",
+            "Keep `ingest_trades_clob()` and CLOB client code in clob.py for potential future use",
+            "Remove any Bronze trades-related imports that are no longer needed"
+        ],
+        "passes": false
+    },
+    {
+        "category": "fix_kalshi_trades_schedule",
+        "description": "Fix the broken Kalshi trades EventBridge schedule",
+        "steps": [
+            "Update infrastructure/eventbridge-schedules.yaml KalshiTradesSchedule command",
+            "Change from ['ingest', 'kalshi-trades'] to ['backfill', 'catchup', '--platform', 'kalshi', '--entity', 'trades', '--skip-if-concurrent']",
+            "Deploy updated CloudFormation stack to AWS",
+            "Verify schedule runs successfully in CloudWatch logs"
+        ],
+        "passes": true
+    },
+    {
+        "category": "delete_orphaned_schedule",
+        "description": "Delete the orphaned polymarket-trades-prod AWS schedule",
+        "steps": [
+            "Confirm polymarket-trades-prod schedule exists in prediction-data-prod schedule group",
+            "Delete schedule via AWS CLI: aws scheduler delete-schedule --name polymarket-trades-prod --group-name prediction-data-prod",
+            "Verify schedule no longer appears in aws scheduler list-schedules output",
+            "Confirm no more 'Missing option --dt' errors in CloudWatch logs for polymarket-trades"
+        ],
+        "passes": false
+    },
+    {
+        "category": "update_documentation",
+        "description": "Update documentation to reflect Bronze no longer has Polymarket trades",
+        "steps": [
+            "Update plans/release/01_bronze_level/RELEASE.md entity table (line 48) to remove polymarket trades or mark as N/A",
+            "Update CLAUDE.md Bronze section if it references polymarket trades ingestion",
+            "Update README.md if it has Bronze polymarket trades examples",
+            "Update infrastructure/README.md if needed"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validation",
+        "description": "Validate changes and verify Bronze layer health",
+        "steps": [
+            "Run pytest to ensure no tests break from removed code",
+            "Run mypy to check for type errors from removed imports",
+            "Run prediction-data --help and verify polymarket-trades command is gone",
+            "Run prediction-data status coverage to verify Bronze entities still work",
+            "Verify order_filled, markets, and events ingestion still functions correctly"
+        ],
+        "passes": false
+    }
+]

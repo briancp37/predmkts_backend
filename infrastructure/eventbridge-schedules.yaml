@@ -142,13 +142,13 @@ Resources:
           MaximumEventAgeInSeconds: 300
           MaximumRetryAttempts: 2
 
-  # Kalshi Trades - every 5 minutes
+  # Kalshi Trades - every 5 minutes (catchup with concurrency guard)
   KalshiTradesSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: !Sub 'kalshi-trades-${Environment}'
       GroupName: !Ref ScheduleGroup
-      Description: Ingest Kalshi trades every 5 minutes
+      Description: Catchup Kalshi trades every 5 minutes
       ScheduleExpression: !Ref OrderFilledScheduleExpression
       ScheduleExpressionTimezone: !Ref ScheduleTimezone
       State: !Ref ScheduleState
@@ -171,7 +171,7 @@ Resources:
             "containerOverrides": [
               {
                 "name": "prediction-data",
-                "command": ["ingest", "kalshi-trades"]
+                "command": ["backfill", "catchup", "--platform", "kalshi", "--entity", "trades", "--skip-if-concurrent"]
               }
             ]
           }

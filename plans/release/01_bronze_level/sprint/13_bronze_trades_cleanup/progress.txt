@@ -1,0 +1,27 @@
+# Sprint Progress: Bronze Trades Cleanup
+# Release: 01_bronze_level
+# Created: 2026-02-05
+
+## Status: In Progress
+
+## Completed Tasks
+- [2026-02-05] fix_kalshi_trades_schedule: Fixed broken Kalshi trades EventBridge schedule
+  - Changed KalshiTradesSchedule command from `["ingest", "kalshi-trades"]` to
+    `["backfill", "catchup", "--platform", "kalshi", "--entity", "trades", "--skip-if-concurrent"]`
+  - The old `ingest kalshi-trades` command required a `--dt` parameter which wasn't being passed
+  - New command uses backfill catchup which auto-detects the latest date (like polymarket-order-filled)
+  - Updated test_exit_criteria.py to expect the new command pattern
+  - All tests pass (26/26 in test_exit_criteria.py)
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- This sprint removes Polymarket trades from Bronze level
+- Trades are only constructed in Silver from Bronze order_filled events
+- CLOB API client code is preserved for potential future use
+- Also fixes broken Kalshi trades schedule and deletes orphaned polymarket-trades schedule
+- Deploy to AWS required: `aws cloudformation deploy --template-file infrastructure/eventbridge-schedules.yaml ...`

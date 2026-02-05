@@ -96,9 +96,13 @@ class TestScheduledIngestion:
             '"backfill", "catchup", "--platform", "polymarket", "--entity", "order_filled", "--skip-if-concurrent"'
             in content
         ), "Missing CLI command: backfill catchup order_filled"
+        # Kalshi trades uses backfill catchup with concurrency guard
+        assert (
+            '"backfill", "catchup", "--platform", "kalshi", "--entity", "trades", "--skip-if-concurrent"'
+            in content
+        ), "Missing CLI command: backfill catchup kalshi trades"
         # Remaining schedules still use ingest commands
         for cmd in [
-            "kalshi-trades",
             "polymarket-markets",
             "kalshi-markets",
             "polymarket-events",
