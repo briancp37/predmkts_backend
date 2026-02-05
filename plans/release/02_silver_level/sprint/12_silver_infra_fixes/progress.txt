@@ -2,7 +2,7 @@
 # Release: 02_silver_level
 # Created: 2026-02-05
 
-## Status: In Progress
+## Status: In Progress (Awaiting Human Deployment)
 
 ## Completed Tasks
 - [2026-02-05] fix_iam_policies: Deployed missing IAM policies to ECS task role
@@ -11,17 +11,41 @@
   - Updated CloudFormation stack with SilverBucketArn=arn:aws:s3:::prediction-silver-prod
   - All 5 policies now present: CloudWatchLogsAccess, ECSConcurrencyGuard, GlueCatalogAccess, S3BronzeBucketAccess, S3SilverBucketAccess
 
-## In Progress
-- [2026-02-05] fix_docker_pyarrow: Fixing Docker image missing pyarrow dependency
+- [2026-02-05] fix_docker_pyarrow: Code fix complete (Dockerfile updated)
   - Discovered Silver catchup tasks fail with ModuleNotFoundError: No module named 'pyarrow'
   - Updated Dockerfile to install prediction-data[backfill] which includes pyarrow
-  - PENDING: Rebuild and push Docker image to ECR to complete fix
+  - Commit: 395cc6f - fix: Add pyarrow dependency to Docker image for Silver operations
+
+- [2026-02-05] update_monitoring: CloudWatch YAML complete
+  - Silver metric filters already in cloudwatch-monitoring.yaml (commit 9c1d5cd)
+  - 4 filters: SilverProcessingSuccess, SilverNoOp, SilverConcurrencySkip, SilverProcessingFailure
+  - 2 alarms: SilverTradesMissingRunsAlarm, SilverProcessingErrorsAlarm
+  - 2 dashboard panels: "Silver Runs by Outcome", "Silver Concurrency Skip Rate"
+
+## Human Action Required
+
+### 1. Deploy Docker image to ECR (required for all remaining verification)
+```bash
+./scripts/push_ecr.sh
+```
+This rebuilds the Docker image with pyarrow and pushes to ECR.
+
+### 2. Deploy CloudWatch monitoring (optional - may already be deployed)
+```bash
+./scripts/deploy-silver.sh
+```
+Step 1 updates the monitoring stack with Silver metric filters and alarms.
+
+### 3. Verification tasks (after Docker deploy)
+Once the Docker image is deployed, the remaining PRD tasks can be verified:
+- verify_ecs_concurrency_guard: Check CloudWatch logs for Silver tasks
+- verify_silver_processing: Run silver catchup commands
+- verify_silver_maintenance: Check maintenance schedules
+- validation: Query Silver tables for data freshness
 
 ## Blockers/Issues
-- (RESOLVED) ECS task role missing ECSConcurrencyGuard policy - causes AccessDeniedException for ecs:ListTasks
-- (RESOLVED) ECS task role missing GlueCatalogAccess policy - may affect Iceberg operations
-- (RESOLVED) ECS task role missing S3SilverBucketAccess policy - may affect Silver writes
-- (IN PROGRESS) Docker image missing pyarrow - causes ModuleNotFoundError on Silver catchup, blocks all Silver verification
+- (RESOLVED) ECS task role missing IAM policies
+- (RESOLVED) Dockerfile missing pyarrow - code fix committed, awaiting Docker push
 
 ## Notes
 - IAM policies exist in infrastructure/iam-ecs-roles.yaml template but weren't deployed
@@ -32,4 +56,4 @@
 - [2026-02-05] IAM fix verified working: no AccessDeniedException errors in logs after 18:33 UTC stack update
 - [2026-02-05] Discovered new blocker: Docker image missing pyarrow dependency (only base package installed, not [backfill])
 - [2026-02-05] Dockerfile fix: changed pip install to use prediction_data-*.whl[backfill] to include pyarrow
-- [2026-02-05] Next steps: rebuild Docker image, push to ECR, then verify ECS concurrency guard and Silver processing
+- [2026-02-05] All code fixes complete. Remaining work requires human deployment and AWS verification.

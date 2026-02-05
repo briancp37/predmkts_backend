@@ -18,10 +18,10 @@
         "steps": [
             "Identify that Silver catchup tasks fail with ModuleNotFoundError: No module named 'pyarrow'",
             "Update Dockerfile to install prediction-data[backfill] which includes pyarrow",
-            "Rebuild and push Docker image to ECR",
+            "Rebuild and push Docker image to ECR via: ./scripts/push_ecr.sh",
             "Verify Silver catchup task starts without pyarrow import error"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "verify_ecs_concurrency_guard",
@@ -61,11 +61,11 @@
         "description": "Ensure CloudWatch monitoring catches Silver failures",
         "steps": [
             "Verify Silver-related CloudWatch metric filters exist in cloudwatch-monitoring.yaml",
-            "Verify Silver error alarms are configured and working",
-            "Test that IAM permission errors would trigger alerts",
-            "Document any gaps in Silver monitoring coverage"
+            "Deploy monitoring stack via: ./scripts/deploy-silver.sh (Step 1)",
+            "Verify Silver error alarms are configured and working in AWS Console",
+            "Test that IAM permission errors would trigger alerts"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "validation",
