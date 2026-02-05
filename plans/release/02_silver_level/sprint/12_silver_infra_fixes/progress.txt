@@ -1,0 +1,27 @@
+# Sprint Progress: Silver Infrastructure Fixes
+# Release: 02_silver_level
+# Created: 2026-02-05
+
+## Status: In Progress
+
+## Completed Tasks
+- [2026-02-05] fix_iam_policies: Deployed missing IAM policies to ECS task role
+  - Verified prediction-data-task-prod was missing ECSConcurrencyGuard, GlueCatalogAccess, S3SilverBucketAccess
+  - Stack had never been updated since creation (2026-01-28) - SilverBucketArn parameter was missing
+  - Updated CloudFormation stack with SilverBucketArn=arn:aws:s3:::prediction-silver-prod
+  - All 5 policies now present: CloudWatchLogsAccess, ECSConcurrencyGuard, GlueCatalogAccess, S3BronzeBucketAccess, S3SilverBucketAccess
+
+## In Progress
+
+
+## Blockers/Issues
+- (RESOLVED) ECS task role missing ECSConcurrencyGuard policy - causes AccessDeniedException for ecs:ListTasks
+- (RESOLVED) ECS task role missing GlueCatalogAccess policy - may affect Iceberg operations
+- (RESOLVED) ECS task role missing S3SilverBucketAccess policy - may affect Silver writes
+
+## Notes
+- IAM policies exist in infrastructure/iam-ecs-roles.yaml template but weren't deployed
+- CloudFormation stack prediction-data-iam-roles needs to be updated with SilverBucketArn parameter
+- Silver processing appears to be working despite missing policies (may be using different credentials)
+- Latest Silver trades data: 2026-02-04, markets/events: 2026-02-04
+- [2026-02-05] Stack successfully updated - next step is to verify ECS concurrency guard and Silver processing work correctly

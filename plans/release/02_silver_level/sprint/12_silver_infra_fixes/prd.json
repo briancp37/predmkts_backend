@@ -1,0 +1,71 @@
+[
+    {
+        "category": "fix_iam_policies",
+        "description": "Deploy missing IAM policies to ECS task role that are blocking Silver operations",
+        "steps": [
+            "Verify ECSConcurrencyGuard policy is missing from prediction-data-task-prod role",
+            "Verify GlueCatalogAccess policy is missing from prediction-data-task-prod role",
+            "Verify S3SilverBucketAccess policy is missing from prediction-data-task-prod role",
+            "Update prediction-data-iam-roles CloudFormation stack with correct parameters",
+            "Run: aws cloudformation update-stack --stack-name prediction-data-iam-roles --template-body file://infrastructure/iam-ecs-roles.yaml --parameters ParameterKey=Environment,ParameterValue=prod ParameterKey=BronzeBucketArn,ParameterValue=arn:aws:s3:::prediction-bronze-prod ParameterKey=SilverBucketArn,ParameterValue=arn:aws:s3:::prediction-silver-prod --capabilities CAPABILITY_NAMED_IAM",
+            "Verify all three policies now exist on the role via aws iam list-role-policies"
+        ],
+        "passes": true
+    },
+    {
+        "category": "verify_ecs_concurrency_guard",
+        "description": "Verify ECS concurrency guard works after IAM fix",
+        "steps": [
+            "Trigger a Silver catchup task and check CloudWatch logs",
+            "Confirm no more AccessDeniedException for ecs:ListTasks",
+            "Verify concurrency guard correctly detects running tasks",
+            "Verify --skip-if-concurrent flag works as expected"
+        ],
+        "passes": false
+    },
+    {
+        "category": "verify_silver_processing",
+        "description": "Verify Silver processing pipeline is functioning correctly",
+        "steps": [
+            "Run prediction-data silver catchup --platform polymarket --entity trades --dry-run",
+            "Verify Silver trades table has recent data via Athena or PyIceberg query",
+            "Check Silver markets and events tables are being updated",
+            "Verify no errors in recent Silver processing CloudWatch logs"
+        ],
+        "passes": false
+    },
+    {
+        "category": "verify_silver_maintenance",
+        "description": "Verify Silver maintenance jobs are working",
+        "steps": [
+            "Check silver-maintain-compact-prod schedule is running successfully",
+            "Check silver-maintain-full-prod schedule is running successfully",
+            "Verify compaction is reducing file counts in Iceberg tables",
+            "Verify snapshot expiration is working (check metadata file counts)"
+        ],
+        "passes": false
+    },
+    {
+        "category": "update_monitoring",
+        "description": "Ensure CloudWatch monitoring catches Silver failures",
+        "steps": [
+            "Verify Silver-related CloudWatch metric filters exist in cloudwatch-monitoring.yaml",
+            "Verify Silver error alarms are configured and working",
+            "Test that IAM permission errors would trigger alerts",
+            "Document any gaps in Silver monitoring coverage"
+        ],
+        "passes": false
+    },
+    {
+        "category": "validation",
+        "description": "End-to-end validation of Silver layer health",
+        "steps": [
+            "Query Silver polymarket.trades table and verify data freshness (should be within 1 day)",
+            "Query Silver polymarket.markets table and verify recent updates",
+            "Query Silver polymarket.events table and verify recent updates",
+            "Run prediction-data silver catchup for all entities and verify success",
+            "Document current Silver data coverage and any gaps"
+        ],
+        "passes": false
+    }
+]
