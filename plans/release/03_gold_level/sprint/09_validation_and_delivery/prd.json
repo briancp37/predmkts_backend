@@ -64,6 +64,6 @@
             "Verify exit criteria 13-14: Gold CLI and scheduling",
             "Verify exit criterion 15: No API/frontend code in Gold"
         ],
-        "passes": false
+        "passes": true
     }
 ]

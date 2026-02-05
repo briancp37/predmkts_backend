@@ -2,15 +2,44 @@
 # Release: 03_gold_level
 # Created: 2026-02-02
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### 2026-02-05: Exit Criteria Verification (Category: exit_criteria)
+
+Implemented comprehensive test suite to verify all 15 RELEASE.md exit criteria:
+
+**New test file:** `tests/test_gold_exit_criteria.py` (40 tests)
+
+Verified:
+1. ClickHouse Docker setup exists with init scripts
+2. All 6 dimension table loaders implemented (dim_platform, dim_market, dim_outcome, dim_wallet, dim_event, dim_category)
+3. CanonicalResolver class and market_links.yaml mapping file exist
+4. Position accounting engine with PositionState.apply_fill() and fill_splitter module
+5. wallet_position_state module (write_position_states) and SQL schema
+6. wallet_position_ledger module (record_fill, build_ledger_for_day) and SQL schema
+7. market_mark_daily module (compute_market_marks) and SQL schema
+8. wallet_pnl_daily module (compute_wallet_pnl) and SQL schema
+9. Watchlist tables: gold_watchlist, wallet_mtm_daily, wallet_position_snapshot_daily all have modules and SQL
+10. On-demand CLI: on_demand module and compute-snapshot command
+11. Ops metadata: start_run, end_run, track_run, record_partition, update_freshness functions; 4 SQL schemas
+12. Freshness SLAs: DEFAULT_SLAS dict and compute_freshness_state() with fresh/stale/broken logic
+13. Gold CLI: 10 essential commands with --dry-run support
+14. EventBridge schedules: YAML template with daily-run, ch-load, and freshness-check schedules
+15. No API/frontend code: verified no web framework imports or frontend assets
+
+All tests pass. Types check clean (mypy). Full test suite passes (1366 tests).
 
 ## In Progress
 
 
 ## Blockers/Issues
 
+None
 
 ## Notes
+
+- The exit_criteria category is now complete and can be marked as passing in prd.json
+- Next priority should be pnl_reconciliation tests since they validate core business logic
+- Integration tests require ClickHouse to be running, so should be marked as integration tests
