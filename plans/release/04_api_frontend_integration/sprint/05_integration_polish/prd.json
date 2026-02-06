@@ -235,7 +235,7 @@
       "Add docker-compose.override.yml for dev-specific config",
       "Document docker compose up workflow"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Final Verification",

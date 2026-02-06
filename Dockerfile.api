@@ -1,0 +1,29 @@
+# Dockerfile.api - FastAPI REST API server
+# For containerized API development and production deployments
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+# Install the package with API dependencies
+RUN pip install --no-cache-dir -e ".[dev]"
+
+# Security: run as non-root user
+RUN groupadd --gid 1000 appgroup && \
+    useradd --uid 1000 --gid 1000 --shell /bin/bash appuser && \
+    chown -R appuser:appgroup /app
+USER appuser
+
+# Expose API port
+EXPOSE 8000
+
+# Run uvicorn
+CMD ["uvicorn", "prediction_data.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

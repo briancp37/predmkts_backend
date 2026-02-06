@@ -46,10 +46,16 @@ mypy src/
 # Lint
 ruff check src/ tests/
 
-# Start local ClickHouse (for Gold layer development)
-docker compose up -d clickhouse
+# Start local infrastructure (PostgreSQL + ClickHouse)
+docker compose up -d
+# Verify: docker compose exec postgres pg_isready -U predmkts
 # Verify: docker compose exec clickhouse clickhouse-client --query "SELECT 1"
 # Stop: docker compose down
+
+# Docker Compose profiles (optional services)
+docker compose --profile api up -d      # Include API service (containerized)
+docker compose --profile cache up -d    # Include Redis for caching
+docker compose --profile api --profile cache up -d  # All services
 
 # CLI entry point
 prediction-data --help
@@ -273,13 +279,39 @@ This creates `web/src/lib/api/schema.d.ts` from `openapi.json`.
 
 ## Full Stack Development
 
+### Docker Compose Services
+
+The project uses Docker Compose to manage local infrastructure:
+
+| Service | Description | Default Port | Profile |
+|---|---|---|---|
+| `postgres` | PostgreSQL database for user data | 5432 | (always) |
+| `clickhouse` | ClickHouse for analytics/Gold layer | 8123, 9000 | (always) |
+| `redis` | Redis for distributed caching (optional) | 6379 | `cache` |
+| `api` | FastAPI server (optional, containerized) | 8000 | `api` |
+
+**Profiles** allow optional services to be included:
+```bash
+docker compose up -d                           # postgres + clickhouse only
+docker compose --profile cache up -d           # include Redis
+docker compose --profile api up -d             # include API container
+docker compose --profile api --profile cache up -d  # all services
+```
+
+**Override file**: `docker-compose.override.yml` is automatically loaded and adds:
+- Query logging for postgres (log_statement=all)
+- Hot reload for the API container (mounts `./src` volume)
+- Development-friendly defaults (DEBUG=true, CORS_ORIGINS=*)
+
+For production, skip the override file: `docker compose -f docker-compose.yml up -d`
+
 ### Running Everything Locally
 
 ```bash
 # 1. Start infrastructure (PostgreSQL + ClickHouse)
 docker compose up -d
 
-# 2. Wait for healthy databases
+# 2. Wait for healthy databases (healthchecks should pass automatically)
 docker compose exec postgres pg_isready -U predmkts
 docker compose exec clickhouse clickhouse-client --query "SELECT 1"
 
@@ -292,6 +324,15 @@ uvicorn prediction_data.api.main:app --reload
 cd web && npm run dev
 # Frontend: http://localhost:3000
 # Proxies /api/v1/* to backend automatically
+```
+
+**Alternative: Fully Containerized**
+```bash
+# Run everything in containers (no local Python/Node.js needed)
+docker compose --profile api up -d
+
+# Frontend still runs locally (for hot reload during development)
+cd web && npm run dev
 ```
 
 ### Development Workflow

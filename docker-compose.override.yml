@@ -1,0 +1,41 @@
+# docker-compose.override.yml
+# Development-specific overrides (automatically loaded by docker compose)
+#
+# This file extends docker-compose.yml with development settings.
+# For production, use: docker compose -f docker-compose.yml up
+#
+# Usage:
+#   docker compose up                    # postgres + clickhouse (default)
+#   docker compose --profile api up      # include API service
+#   docker compose --profile cache up    # include Redis
+#   docker compose --profile api --profile cache up  # all services
+
+services:
+  # Development overrides for postgres
+  postgres:
+    # Enable query logging for debugging
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_duration=on
+      -c log_min_duration_statement=100
+
+  # Development overrides for clickhouse
+  clickhouse:
+    # Enable query logging
+    environment:
+      CLICKHOUSE_DB: prediction_gold
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+
+  # API service with hot reload for development
+  api:
+    profiles:
+      - api
+    command: ["uvicorn", "prediction_data.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      # Mount source code for hot reload
+      - ./src:/app/src:ro
+    environment:
+      DEBUG: "true"
+      CORS_ORIGINS: "*"

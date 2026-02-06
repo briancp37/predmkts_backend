@@ -458,6 +458,38 @@
 - TypeScript: Test files pass type check (only pre-existing recharts issues remain)
 - Test coverage: Auth flows, error states, loading states, watchlist operations
 
+### Docker Compose Enhancement (2026-02-05)
+- Enhanced `docker-compose.yml` with additional services and features:
+  - Added `start_period` to healthchecks for postgres and clickhouse for more reliable startup
+  - Added `redis` service with `cache` profile for future distributed rate limiting/caching
+    - Redis 7 Alpine image with persistent AOF storage
+    - Healthcheck using `redis-cli ping`
+    - Mapped to port 6379
+  - Added `api` service with `api` profile for optional containerized API development
+    - Uses new `Dockerfile.api` for FastAPI server
+    - Depends on postgres and clickhouse (service_healthy)
+    - Configured with development-friendly environment variables
+    - Healthcheck via `/health/live` endpoint
+  - Added `redis_data` volume for Redis persistence
+- Created `Dockerfile.api` for FastAPI REST API server:
+  - Based on Python 3.11-slim
+  - Installs curl for healthchecks
+  - Runs as non-root user (appuser)
+  - Exposes port 8000, runs uvicorn
+- Created `docker-compose.override.yml` for dev-specific configuration:
+  - Postgres query logging enabled (log_statement=all, log_duration=on)
+  - API service with hot reload (--reload flag)
+  - Mounts `./src` volume for live code updates
+  - Sets DEBUG=true and CORS_ORIGINS=* for development
+- Updated `CLAUDE.md` documentation:
+  - Added Docker Compose profiles documentation in Quick Reference section
+  - Added comprehensive "Docker Compose Services" table with all services, ports, and profiles
+  - Documented profile usage patterns
+  - Documented override file behavior and production usage
+  - Added "Alternative: Fully Containerized" development option
+- All 82 frontend tests pass
+- TypeScript: Pre-existing recharts type issues remain (2 errors in chart components)
+
 ## In Progress
 
 ## Blockers

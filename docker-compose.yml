@@ -16,6 +16,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 10s
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.3-alpine
@@ -25,6 +26,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./docker/clickhouse/init:/docker-entrypoint-initdb.d
+      - ./docker/clickhouse/users.d:/etc/clickhouse-server/users.d
     environment:
       CLICKHOUSE_DB: prediction_gold
       CLICKHOUSE_USER: default
@@ -34,11 +36,61 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 30s
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
 
+  # Redis for distributed rate limiting and caching (optional)
+  # Enable with: docker compose --profile cache up
+  redis:
+    image: redis:7-alpine
+    profiles:
+      - cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # API service for full containerized development (optional)
+  # Enable with: docker compose --profile api up
+  # Note: For typical development, run uvicorn directly for hot reload
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    profiles:
+      - api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://predmkts:predmkts@postgres:5432/predmkts
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_DATABASE: prediction_gold
+      JWT_SECRET_KEY: dev-secret-key-change-in-production-min-32-chars
+      DEBUG: "true"
+      CORS_ORIGINS: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   postgres_data:
   clickhouse_data:
+  redis_data:
