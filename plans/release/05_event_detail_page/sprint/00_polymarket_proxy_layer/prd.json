@@ -80,7 +80,7 @@
       "Cache with 10s TTL for semi-real-time updates",
       "Fall back to our dim_market data if CLOB unavailable"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "token_id_resolution",

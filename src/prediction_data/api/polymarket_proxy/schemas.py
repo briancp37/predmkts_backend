@@ -355,3 +355,92 @@ class RecentTradesResponse(BaseModel):
         description="Cache status: HIT, MISS, or STALE",
         json_schema_extra={"example": "MISS"},
     )
+
+
+class TokenPrice(BaseModel):
+    """Price information for a single token/outcome."""
+
+    token_id: str = Field(
+        ...,
+        description="Polymarket CLOB token ID",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    outcome: str = Field(
+        ...,
+        description="Outcome label (e.g., 'Yes', 'No', or custom)",
+        json_schema_extra={"example": "Yes"},
+    )
+    price: float = Field(
+        ...,
+        description="Current price (0-1 for probability)",
+        json_schema_extra={"example": 0.65},
+    )
+    winner: bool | None = Field(
+        None,
+        description="Whether this outcome won (None if not resolved)",
+        json_schema_extra={"example": False},
+    )
+
+
+class MarketInfoResponse(BaseModel):
+    """Real-time market information including prices, volume, and liquidity."""
+
+    condition_id: str = Field(
+        ...,
+        description="Polymarket condition ID (market identifier)",
+        json_schema_extra={"example": "0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa"},
+    )
+    question: str | None = Field(
+        None,
+        description="Market question text",
+        json_schema_extra={"example": "Will Bitcoin reach $100k by end of 2024?"},
+    )
+    tokens: list[TokenPrice] = Field(
+        ...,
+        description="Current prices for each outcome token",
+    )
+    active: bool = Field(
+        ...,
+        description="Whether the market is active for trading",
+        json_schema_extra={"example": True},
+    )
+    closed: bool = Field(
+        ...,
+        description="Whether the market has been resolved/closed",
+        json_schema_extra={"example": False},
+    )
+    accepting_orders: bool = Field(
+        ...,
+        description="Whether the market is currently accepting orders",
+        json_schema_extra={"example": True},
+    )
+    volume_24h: float | None = Field(
+        None,
+        description="24-hour trading volume in USD",
+        json_schema_extra={"example": 150000.50},
+    )
+    liquidity: float | None = Field(
+        None,
+        description="Market liquidity metric",
+        json_schema_extra={"example": 75000.00},
+    )
+    minimum_order_size: float = Field(
+        ...,
+        description="Minimum order size for this market",
+        json_schema_extra={"example": 15.0},
+    )
+    minimum_tick_size: float = Field(
+        ...,
+        description="Minimum price increment",
+        json_schema_extra={"example": 0.01},
+    )
+    data_source: str = Field(
+        ...,
+        description="Data source: 'clob' for real-time or 'fallback' for cached dim_market",
+        json_schema_extra={"example": "clob"},
+    )
+    cache_status: str = Field(
+        ...,
+        description="Cache status: HIT, MISS, or STALE",
+        json_schema_extra={"example": "MISS"},
+    )

@@ -25,6 +25,7 @@ from prediction_data.api.polymarket_proxy.exceptions import (
     UpstreamRateLimitError,
 )
 from prediction_data.api.polymarket_proxy.schemas import (
+    MarketInfoResponse,
     MarketTokensResponse,
     OrderBookResponse,
     OrderLevel,
@@ -34,6 +35,7 @@ from prediction_data.api.polymarket_proxy.schemas import (
     ProxyHealthStatus,
     RecentTradesResponse,
     TokenInfo,
+    TokenPrice,
     TokenResolverStats,
     Trade,
 )
@@ -663,3 +665,217 @@ async def get_trades(
         has_more=len(trades) >= limit,
         cache_status=cache_status,
     )
+
+
+# Market info cache TTL - semi-real-time updates
+MARKET_INFO_CACHE_TTL = 10  # 10 seconds
+
+
+@router.get(
+    "/markets/{condition_id}",
+    response_model=MarketInfoResponse,
+    summary="Get real-time market info",
+    description=(
+        "Get current market information including prices, volume, and liquidity. "
+        "Proxies to Polymarket CLOB API for real-time data. "
+        "Falls back to cached dim_market data if CLOB is unavailable."
+    ),
+    responses={
+        404: {
+            "description": "Market not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Market not found",
+                        "code": "NOT_FOUND",
+                        "status": 404,
+                    }
+                }
+            },
+        },
+        502: {
+            "description": "Upstream Polymarket API error (fallback may still return data)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Polymarket API request failed",
+                        "code": "PROXY_ERROR",
+                        "status": 502,
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
+async def get_market_info(
+    request: Request,
+    condition_id: str,
+    client: ProxyClient,
+) -> MarketInfoResponse:
+    """Get real-time market information.
+
+    Proxies to Polymarket CLOB `/markets/{condition_id}` endpoint with caching.
+
+    Returns current prices for each outcome token, market status, and trading
+    parameters. If CLOB is unavailable (circuit breaker open, rate limit,
+    transient error), falls back to our dim_market data from ClickHouse.
+
+    **Response includes:**
+    - `tokens`: Current prices for each outcome (Yes/No or custom outcomes)
+    - `active`, `closed`, `accepting_orders`: Market status flags
+    - `volume_24h`, `liquidity`: Trading metrics (when available)
+    - `data_source`: 'clob' for real-time, 'fallback' for dim_market
+
+    **Cache TTL:** 10 seconds (semi-real-time)
+    """
+    try:
+        data, cache_status = await client.get_clob(
+            f"/markets/{condition_id}",
+            cache_ttl=MARKET_INFO_CACHE_TTL,
+        )
+    except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
+        # Try fallback to dim_market
+        logger.warning(
+            "Market info proxy error, attempting fallback",
+            condition_id=condition_id,
+            error_type=type(e).__name__,
+        )
+        fallback_response = await _get_market_fallback(condition_id)
+        if fallback_response is not None:
+            return fallback_response
+        # No fallback available, re-raise the error
+        raise
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise UpstreamNotFoundError(
+                message="Market not found",
+                resource_type="market",
+                resource_id=condition_id,
+            )
+        logger.error(
+            "Market info proxy HTTP error",
+            condition_id=condition_id,
+            status_code=e.response.status_code,
+        )
+        # Try fallback
+        fallback_response = await _get_market_fallback(condition_id)
+        if fallback_response is not None:
+            return fallback_response
+        raise ProxyError(
+            message="Polymarket CLOB API request failed",
+            upstream_status=e.response.status_code,
+            api="clob",
+            endpoint=f"/markets/{condition_id}",
+        )
+
+    # Transform CLOB response to our schema
+    tokens_data = data.get("tokens", [])
+    tokens = [
+        TokenPrice(
+            token_id=str(t.get("token_id", "")),
+            outcome=str(t.get("outcome", "Unknown")),
+            price=float(t.get("price", 0.0)),
+            winner=t.get("winner"),
+        )
+        for t in tokens_data
+    ]
+
+    return MarketInfoResponse(
+        condition_id=condition_id,
+        question=data.get("question"),
+        tokens=tokens,
+        active=data.get("active", False),
+        closed=data.get("closed", False),
+        accepting_orders=data.get("accepting_orders", False),
+        volume_24h=None,  # CLOB doesn't provide volume; would need market_mark_daily
+        liquidity=None,  # Would need to calculate from order book depth
+        minimum_order_size=float(data.get("minimum_order_size", 15)),
+        minimum_tick_size=float(data.get("minimum_tick_size", 0.01)),
+        data_source="clob",
+        cache_status=cache_status,
+    )
+
+
+async def _get_market_fallback(condition_id: str) -> MarketInfoResponse | None:
+    """Get market info from dim_market as fallback when CLOB is unavailable.
+
+    Args:
+        condition_id: The market condition ID.
+
+    Returns:
+        MarketInfoResponse from dim_market data, or None if not found.
+    """
+    try:
+        from prediction_data.api.clickhouse import execute_query, get_clickhouse_client
+
+        ch_client = get_clickhouse_client()
+
+        # Query dim_market for basic info
+        query = """
+            SELECT
+                m.canonical_market_id,
+                m.question,
+                m.status,
+                m.tokens
+            FROM prediction_gold.dim_market m
+            WHERE m.canonical_market_id = {condition_id:String}
+            LIMIT 1
+        """
+        rows = await execute_query(query, {"condition_id": condition_id}, client=ch_client)
+
+        if not rows:
+            return None
+
+        row = rows[0]
+
+        # Parse tokens JSON to extract outcomes
+        tokens: list[TokenPrice] = []
+        tokens_json = row.get("tokens")
+        if tokens_json:
+            try:
+                import json
+                tokens_data = json.loads(tokens_json)
+                for t in tokens_data:
+                    tokens.append(
+                        TokenPrice(
+                            token_id=str(t.get("token_id", "")),
+                            outcome=str(t.get("outcome", "Unknown")),
+                            price=float(t.get("price", 0.5)),
+                            winner=t.get("winner"),
+                        )
+                    )
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Failed to parse tokens JSON in fallback",
+                    condition_id=condition_id,
+                )
+
+        # Determine status flags from status string
+        status = row.get("status", "")
+        is_closed = status in ("resolved", "closed")
+        is_active = status == "active" or not is_closed
+
+        return MarketInfoResponse(
+            condition_id=condition_id,
+            question=row.get("question"),
+            tokens=tokens,
+            active=is_active,
+            closed=is_closed,
+            accepting_orders=is_active and not is_closed,
+            volume_24h=None,
+            liquidity=None,
+            minimum_order_size=15.0,  # Default
+            minimum_tick_size=0.01,  # Default
+            data_source="fallback",
+            cache_status="MISS",
+        )
+
+    except Exception as e:
+        logger.warning(
+            "Market fallback query failed",
+            condition_id=condition_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None

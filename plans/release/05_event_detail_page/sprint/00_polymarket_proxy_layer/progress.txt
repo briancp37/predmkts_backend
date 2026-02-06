@@ -122,6 +122,27 @@
 - Health check endpoint already existed at `/api/v1/proxy/health`
 - Exported exceptions from `__init__.py` for external use
 
+### market_info_proxy (2026-02-06)
+- Added `GET /api/v1/proxy/markets/{condition_id}` endpoint to `router.py`:
+  - Proxies to Polymarket CLOB `/markets/{condition_id}` endpoint
+  - Returns real-time prices for each outcome token
+  - Includes market status flags: active, closed, accepting_orders
+  - 10s cache TTL for semi-real-time updates
+- Added new schemas to `schemas.py`:
+  - `TokenPrice` - outcome price with token_id, outcome label, price, winner status
+  - `MarketInfoResponse` - full market info with prices, status, and trading params
+- Fallback mechanism when CLOB is unavailable:
+  - Queries `dim_market` in ClickHouse for cached market data
+  - Parses tokens JSON to extract outcome prices
+  - Returns data_source="fallback" to indicate source
+- Response includes:
+  - `tokens`: array of TokenPrice with current prices per outcome
+  - `minimum_order_size`, `minimum_tick_size`: trading parameters
+  - `data_source`: "clob" or "fallback" indicating data freshness
+  - `cache_status`: HIT/MISS/STALE for debugging
+- Note: volume_24h and liquidity fields are null since CLOB doesn't provide them
+  - These would need to be sourced from market_mark_daily if needed
+
 ## In Progress
 
 
