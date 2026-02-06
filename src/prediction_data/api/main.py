@@ -15,6 +15,7 @@ from prediction_data.api.auth.router import router as auth_router
 from prediction_data.api.clob_client import close_clob_client
 from prediction_data.api.events.router import router as events_router
 from prediction_data.api.exceptions import APIError
+from prediction_data.api.health import router as health_router
 from prediction_data.api.markets.router import router as markets_router
 from prediction_data.api.middleware import RequestLoggingMiddleware
 from prediction_data.api.rate_limit import limiter, rate_limit_exceeded_handler
@@ -74,6 +75,7 @@ app.include_router(
 )
 app.include_router(trades_router, prefix="/api/v1/trades", tags=["trades"])
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
+app.include_router(health_router, prefix="/health", tags=["health"])
 
 
 def _get_request_id(request: Request) -> str:
@@ -211,7 +213,3 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}

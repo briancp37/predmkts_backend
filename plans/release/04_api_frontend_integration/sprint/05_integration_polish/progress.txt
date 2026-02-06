@@ -89,6 +89,36 @@
 - Request start logged at DEBUG level (optional verbosity)
 - Request completion logged at INFO/WARNING/ERROR based on status/duration
 
+### Health Check Enhancement (2026-02-05)
+- Created `src/prediction_data/api/health.py` with comprehensive health check module:
+  - `HealthStatus` enum: healthy, degraded, unhealthy
+  - `DependencyStatus` enum: up, down
+  - `DependencyHealth` model: status, latency_ms, error (optional)
+  - `HealthResponse` model: status, version, dependencies dict
+- Implemented dependency health checks:
+  - `check_postgres()` - async PostgreSQL ping via `SELECT 1`
+  - `check_clickhouse()` - async ClickHouse ping (reuses existing `api/clickhouse.py:ping()`)
+  - Both return latency_ms and error details on failure
+- Added `compute_overall_status()` logic:
+  - HEALTHY: all dependencies up
+  - DEGRADED: non-critical dependencies down (e.g., ClickHouse)
+  - UNHEALTHY: critical dependencies down (PostgreSQL)
+- Implemented three health endpoints:
+  - `GET /health` - Full health check with all dependency statuses
+    - Returns 200 for healthy/degraded, 503 for unhealthy
+    - Response: `{status, version, dependencies: {postgres: {...}, clickhouse: {...}}}`
+  - `GET /health/ready` - Kubernetes readiness probe
+    - Checks only PostgreSQL (critical for user operations)
+    - Returns 200 if ready, 503 if not ready with reason
+  - `GET /health/live` - Kubernetes liveness probe
+    - Simple "alive" check, no dependency checks
+    - Returns 200 if process is running (avoids restart loops)
+- Integrated health router in `src/prediction_data/api/main.py`:
+  - Added `from prediction_data.api.health import router as health_router`
+  - Registered router at `/health` prefix
+  - Removed old simple `/health` endpoint stub
+- API version constant `API_VERSION = "0.1.0"` included in health response
+
 ## In Progress
 
 ## Blockers

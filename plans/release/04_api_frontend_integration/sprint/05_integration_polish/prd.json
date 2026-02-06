@@ -72,7 +72,7 @@
       "Add GET /health/live for k8s liveness probe",
       "Include version info in health response"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "API Versioning",
