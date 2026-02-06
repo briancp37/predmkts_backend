@@ -260,6 +260,6 @@
       "Verify no console errors in browser",
       "Verify no unhandled exceptions in API logs"
     ],
-    "passes": false
+    "passes": true
   }
 ]

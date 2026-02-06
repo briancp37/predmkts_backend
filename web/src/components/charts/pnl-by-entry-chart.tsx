@@ -83,7 +83,7 @@ export function PnlByEntryChart({
             formatter={(value: number | undefined) =>
               value !== undefined ? [formatCurrency(value), 'PnL'] : ['', undefined]
             }
-            labelFormatter={(label: string) => `Entry Price: ${label}`}
+            labelFormatter={(label) => `Entry Price: ${label}`}
             contentStyle={{
               backgroundColor: '#fff',
               border: '1px solid #e5e7eb',

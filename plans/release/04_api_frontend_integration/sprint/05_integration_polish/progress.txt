@@ -1,6 +1,6 @@
 # Sprint 05: Integration & Polish - Progress
 
-## Status: In Progress
+## Status: COMPLETE
 
 ## Completed
 
@@ -490,7 +490,18 @@
 - All 82 frontend tests pass
 - TypeScript: Pre-existing recharts type issues remain (2 errors in chart components)
 
-## In Progress
+### Final Verification (2026-02-05)
+- Fixed pre-existing TypeScript errors in recharts chart components:
+  - `web/src/components/charts/pnl-by-entry-chart.tsx`: Fixed `labelFormatter` type annotation (ReactNode, not string)
+  - `web/src/components/charts/volume-chart.tsx`: Fixed `labelFormatter` type annotation (ReactNode, not string)
+- Verified all tests pass:
+  - Frontend tests: 82 passed (vitest)
+  - API tests: 48 passed (pytest tests/api/)
+  - TypeScript: No errors (`npm run typecheck`)
+- All PRD categories now have `passes: true`
+- Sprint 05: Integration & Polish is complete
+
+## Status: COMPLETE
 
 ## Blockers
 

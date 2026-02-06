@@ -73,7 +73,7 @@ export function VolumeChart({
             formatter={(value: number | undefined) =>
               value !== undefined ? [formatCurrency(value), undefined] : ['', undefined]
             }
-            labelFormatter={(label: string) => `Date: ${label}`}
+            labelFormatter={(label) => `Date: ${label}`}
             contentStyle={{
               backgroundColor: '#fff',
               border: '1px solid #e5e7eb',
