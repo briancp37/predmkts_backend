@@ -128,7 +128,7 @@
       "Add optimistic updates for watchlist/tracked traders",
       "Handle refetching states (show stale data with indicator)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend API Client Cleanup",

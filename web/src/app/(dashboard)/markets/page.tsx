@@ -122,60 +122,12 @@ function buildApiParams(
   return params;
 }
 
-/**
- * Skeleton loader for card view with subtle shimmer animation
- */
-function CardSkeleton() {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="h-32 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer bg-[length:200%_100%]" />
-      <div className="p-4 space-y-3">
-        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-16 animate-shimmer bg-[length:200%_100%]" />
-        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-3/4 animate-shimmer bg-[length:200%_100%]" />
-        <div className="grid grid-cols-2 gap-2">
-          <div className="h-12 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-          <div className="h-12 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-        </div>
-        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-1/2 animate-shimmer bg-[length:200%_100%]" />
-        <div className="h-10 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-      </div>
-    </div>
-  );
-}
-
-/**
- * Skeleton loader for table view with subtle shimmer animation
- */
-function TableSkeleton() {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-      <div className="border-b border-gray-200 px-4 py-3 bg-gray-50">
-        <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-full animate-shimmer bg-[length:200%_100%]" />
-      </div>
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div
-          key={i}
-          className="border-b border-gray-100 px-4 py-4 last:border-0"
-          style={{ animationDelay: `${i * 50}ms` }}
-        >
-          <div className="flex items-center gap-4">
-            <div className="h-10 w-10 rounded bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer bg-[length:200%_100%]" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-3/4 animate-shimmer bg-[length:200%_100%]" />
-              <div className="h-3 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-1/2 animate-shimmer bg-[length:200%_100%]" />
-            </div>
-            <div className="hidden sm:flex items-center gap-4">
-              <div className="h-4 w-16 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-              <div className="h-4 w-12 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-              <div className="h-6 w-14 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer bg-[length:200%_100%]" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+// Import skeleton components
+import {
+  MarketCardSkeleton,
+  MarketTableSkeleton,
+  StaleIndicator,
+} from '@/components/loading-skeleton';
 
 export default function MarketsPage() {
   // Authentication state
@@ -197,8 +149,11 @@ export default function MarketsPage() {
 
   // Watchlist hooks
   const { data: watchlistData } = useWatchlist({ enabled: isAuthenticated });
-  const { mutate: addToWatchlist } = useAddToWatchlist();
-  const { mutate: removeFromWatchlist } = useRemoveFromWatchlist();
+  const { mutate: addToWatchlist, isPending: isAddPending, variables: addingMarketId } = useAddToWatchlist();
+  const { mutate: removeFromWatchlist, isPending: isRemovePending, variables: removingMarketId } = useRemoveFromWatchlist();
+
+  // Track pending watchlist operations per market
+  const pendingWatchlistId = isAddPending ? addingMarketId : isRemovePending ? removingMarketId : null;
 
   // Build watchlist IDs set for quick lookup
   const watchlistedIds = useMemo(() => {
@@ -299,9 +254,9 @@ export default function MarketsPage() {
         <div className="flex items-center gap-4">
           <ViewToggle value={viewMode} onChange={setViewMode} />
           {marketsData && !isLoading && (
-            <span className="text-sm text-gray-500">
-              {displayedTotal.toLocaleString()} market{displayedTotal !== 1 ? 's' : ''}
-              {isFetching && <span className="ml-2 text-indigo-600">Updating...</span>}
+            <span className="text-sm text-gray-500 flex items-center gap-2">
+              <span>{displayedTotal.toLocaleString()} market{displayedTotal !== 1 ? 's' : ''}</span>
+              <StaleIndicator isStale={false} isRefetching={isFetching} />
             </span>
           )}
         </div>
@@ -312,11 +267,11 @@ export default function MarketsPage() {
         viewMode === 'card' ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
-              <CardSkeleton key={i} />
+              <MarketCardSkeleton key={i} />
             ))}
           </div>
         ) : (
-          <TableSkeleton />
+          <MarketTableSkeleton rows={10} />
         )
       ) : displayedMarkets.length === 0 ? (
         /* Empty State */
@@ -359,6 +314,7 @@ export default function MarketsPage() {
               key={market.id}
               market={market}
               isWatchlisted={watchlistedIds.has(market.id)}
+              isWatchlistPending={pendingWatchlistId === market.id}
               onWatchlistToggle={isAuthenticated ? handleWatchlistToggle : undefined}
             />
           ))}
@@ -369,6 +325,7 @@ export default function MarketsPage() {
           markets={displayedMarkets}
           loading={isLoading}
           watchlistedIds={watchlistedIds}
+          pendingWatchlistId={pendingWatchlistId}
           onWatchlistToggle={isAuthenticated ? handleWatchlistToggle : undefined}
         />
       )}

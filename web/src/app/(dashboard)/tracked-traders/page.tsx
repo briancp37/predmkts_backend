@@ -43,6 +43,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable, Column } from '@/components/ui/data-table';
+import { TrackedTraderRowSkeleton } from '@/components/loading-skeleton';
 import { formatCurrency, formatPercent, shortenAddress, formatDate, cn } from '@/lib/utils';
 
 // Tier limits for display
@@ -704,8 +705,10 @@ export default function TrackedTradersPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-indigo-600" />
+            <div className="divide-y divide-gray-200">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <TrackedTraderRowSkeleton key={i} index={i} />
+              ))}
             </div>
           ) : error ? (
             <div className="flex items-center justify-center gap-2 py-12 text-red-600">

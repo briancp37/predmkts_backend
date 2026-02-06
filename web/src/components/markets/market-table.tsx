@@ -3,7 +3,7 @@
 import { memo, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Star, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
+import { Star, TrendingUp, TrendingDown, ExternalLink, Loader2 } from 'lucide-react';
 import { cn, formatNumber } from '@/lib/utils';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import type { AdvancedMarket } from '@/hooks/use-markets-advanced';
@@ -15,6 +15,8 @@ export interface MarketTableProps {
   loading?: boolean;
   /** Set of watchlisted market IDs for quick lookup */
   watchlistedIds?: Set<string>;
+  /** Market ID that has a pending watchlist operation */
+  pendingWatchlistId?: string | null;
   /** Callback when watchlist toggle is clicked */
   onWatchlistToggle?: (marketId: string) => void;
   /** Additional CSS classes */
@@ -70,6 +72,7 @@ export const MarketTable = memo(function MarketTable({
   markets,
   loading = false,
   watchlistedIds = new Set(),
+  pendingWatchlistId = null,
   onWatchlistToggle,
   className,
 }: MarketTableProps) {
@@ -210,12 +213,14 @@ export const MarketTable = memo(function MarketTable({
       className: 'w-[120px] text-right',
       render: (_, market) => {
         const isWatchlisted = watchlistedIds.has(market.id);
+        const isPending = pendingWatchlistId === market.id;
         return (
           <div className="flex items-center justify-end gap-2">
             {/* Watchlist star */}
             {onWatchlistToggle && (
               <button
                 type="button"
+                disabled={isPending}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -223,15 +228,20 @@ export const MarketTable = memo(function MarketTable({
                 }}
                 className={cn(
                   'rounded-full p-1.5 transition-colors',
+                  isPending && 'opacity-70 cursor-not-allowed',
                   isWatchlisted
                     ? 'text-yellow-500 hover:text-yellow-600'
                     : 'text-gray-300 hover:text-yellow-500'
                 )}
                 aria-label={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
               >
-                <Star
-                  className={cn('h-4 w-4', isWatchlisted && 'fill-current')}
-                />
+                {isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Star
+                    className={cn('h-4 w-4', isWatchlisted && 'fill-current')}
+                  />
+                )}
               </button>
             )}
             {/* Trade button */}
@@ -253,7 +263,7 @@ export const MarketTable = memo(function MarketTable({
         );
       },
     },
-  ], [watchlistedIds, onWatchlistToggle]);
+  ], [watchlistedIds, pendingWatchlistId, onWatchlistToggle]);
 
   return (
     <DataTable

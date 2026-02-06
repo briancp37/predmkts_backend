@@ -3,7 +3,7 @@
 import { memo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Star, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
+import { Star, TrendingUp, TrendingDown, ExternalLink, Loader2 } from 'lucide-react';
 import { cn, formatNumber, formatDate } from '@/lib/utils';
 import type { AdvancedMarket } from '@/hooks/use-markets-advanced';
 
@@ -12,6 +12,8 @@ export interface MarketCardProps {
   market: AdvancedMarket;
   /** Whether the market is in the user's watchlist */
   isWatchlisted?: boolean;
+  /** Whether watchlist operation is pending */
+  isWatchlistPending?: boolean;
   /** Callback when watchlist toggle is clicked */
   onWatchlistToggle?: (marketId: string) => void;
   /** Callback when card is clicked (navigation) */
@@ -69,6 +71,7 @@ function formatPrice(price: number | null): string {
 export const MarketCard = memo(function MarketCard({
   market,
   isWatchlisted = false,
+  isWatchlistPending = false,
   onWatchlistToggle,
   onClick,
   className,
@@ -150,17 +153,23 @@ export const MarketCard = memo(function MarketCard({
           <button
             type="button"
             onClick={handleWatchlistClick}
+            disabled={isWatchlistPending}
             className={cn(
               'absolute right-2 top-2 rounded-full p-1.5 transition-colors',
+              isWatchlistPending && 'opacity-70 cursor-not-allowed',
               isWatchlisted
                 ? 'bg-yellow-400 text-white hover:bg-yellow-500'
                 : 'bg-white/80 text-gray-400 hover:bg-white hover:text-yellow-500'
             )}
             aria-label={isWatchlisted ? 'Remove from watchlist' : 'Add to watchlist'}
           >
-            <Star
-              className={cn('h-4 w-4', isWatchlisted && 'fill-current')}
-            />
+            {isWatchlistPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Star
+                className={cn('h-4 w-4', isWatchlisted && 'fill-current')}
+              />
+            )}
           </button>
         )}
       </div>

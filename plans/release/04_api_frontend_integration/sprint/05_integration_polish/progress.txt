@@ -198,6 +198,47 @@
 - TypeScript compilation passes (only pre-existing recharts type issues remain)
 - No test files to run (frontend integration tests are a separate PRD item)
 
+### Loading States (2026-02-05)
+- Created `web/src/components/loading-skeleton.tsx` with comprehensive skeleton components:
+  - `Skeleton` - Base skeleton block with shimmer animation
+  - `MarketCardSkeleton` - Matches MarketCard component structure (header, category badge, question, bid/ask, spread, stats, button)
+  - `MarketTableSkeleton` - Table skeleton with configurable row count
+  - `TraderCardSkeleton` - Matches TraderCard component structure (address, score, stats)
+  - `TrackedTraderRowSkeleton` - Row skeleton for tracked traders list
+  - `TableRowSkeleton` - Generic table row skeleton
+  - `ActivityRowSkeleton` - Activity feed row skeleton
+  - `WatchlistItemSkeleton` - Watchlist item skeleton
+  - `LeaderboardRowSkeleton` - Leaderboard row skeleton
+  - `ListSkeleton` - Generic list wrapper component
+  - `Spinner` - Inline spinner for mutations (sm/md/lg sizes)
+  - `RefetchingOverlay` - Overlay for components being refetched
+  - `StaleIndicator` - Badge for stale data with refetching state
+  - `LoadingButton` - Button wrapper with loading state
+- Updated `web/src/components/ui/data-table.tsx`:
+  - Added `skeletonRows` prop (default: 5)
+  - Loading state now shows proper table skeleton with column headers
+  - Uses centralized Skeleton component
+- Updated `web/src/app/(dashboard)/markets/page.tsx`:
+  - Replaced inline CardSkeleton and TableSkeleton with centralized components
+  - Added StaleIndicator for refetching state display
+  - Added watchlist mutation pending state tracking (`pendingWatchlistId`)
+  - Watchlist buttons now show spinner during pending operations
+- Updated `web/src/app/(dashboard)/trader-explorer/page.tsx`:
+  - Replaced inline SkeletonCard with TraderCardSkeleton
+  - Added StaleIndicator for refetching state display
+- Updated `web/src/app/(dashboard)/tracked-traders/page.tsx`:
+  - Replaced spinner-only loading state with TrackedTraderRowSkeleton components
+- Updated `web/src/components/markets/market-card.tsx`:
+  - Added `isWatchlistPending` prop for pending state
+  - Watchlist button shows Loader2 spinner when pending
+  - Button disabled during pending operations
+- Updated `web/src/components/markets/market-table.tsx`:
+  - Added `pendingWatchlistId` prop for tracking pending watchlist operations
+  - Watchlist button shows spinner and is disabled during pending state
+- Hooks already expose `isLoading` and `isFetching` from React Query
+- Optimistic updates already implemented in `use-watchlist.ts` and `use-tracked-traders.ts`
+- TypeScript compilation passes (only pre-existing recharts type issues remain)
+
 ## In Progress
 
 ## Blockers

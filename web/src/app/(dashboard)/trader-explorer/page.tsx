@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { Search, TrendingUp, TrendingDown, Activity, ChevronDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
+import { TraderCardSkeleton, StaleIndicator } from '@/components/loading-skeleton';
 import { formatCurrency, formatPercent, shortenAddress, cn } from '@/lib/utils';
 
 // Sort options for the dropdown
@@ -80,32 +81,6 @@ function getScoreColorClass(score: number | null): string {
   return 'text-red-500';
 }
 
-/**
- * Loading skeleton card component
- */
-function SkeletonCard() {
-  return (
-    <Card className="animate-pulse">
-      <CardContent className="pt-6">
-        {/* Address skeleton */}
-        <div className="h-5 w-32 rounded bg-gray-200" />
-        {/* Username skeleton */}
-        <div className="mt-1 h-4 w-24 rounded bg-gray-100" />
-        {/* Score skeleton */}
-        <div className="mt-4 flex items-baseline gap-2">
-          <div className="h-8 w-16 rounded bg-gray-200" />
-          <div className="h-4 w-12 rounded bg-gray-100" />
-        </div>
-        {/* Stats row skeleton */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="h-4 w-16 rounded bg-gray-100" />
-          <div className="h-4 w-12 rounded bg-gray-100" />
-          <div className="h-4 w-14 rounded bg-gray-100" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 /**
  * Trader card component
@@ -171,7 +146,7 @@ export default function TraderExplorerPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Fetch traders from API
-  const { data, isLoading } = useQuery<TradersResponse>({
+  const { data, isLoading, isFetching } = useQuery<TradersResponse>({
     queryKey: ['traders', search, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -265,14 +240,9 @@ export default function TraderExplorerPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading ? (
           // Loading skeletons
-          <>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </>
+          Array.from({ length: 6 }).map((_, i) => (
+            <TraderCardSkeleton key={i} />
+          ))
         ) : data?.traders && data.traders.length > 0 ? (
           // Trader cards
           data.traders.map((trader) => <TraderCard key={trader.id} trader={trader} />)
@@ -296,8 +266,9 @@ export default function TraderExplorerPage() {
 
       {/* Results count */}
       {data && !isLoading && data.traders.length > 0 && (
-        <div className="text-center text-sm text-gray-500">
-          Showing {data.traders.length} of {data.total} traders
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+          <span>Showing {data.traders.length} of {data.total} traders</span>
+          <StaleIndicator isStale={false} isRefetching={isFetching && !isLoading} />
         </div>
       )}
     </div>

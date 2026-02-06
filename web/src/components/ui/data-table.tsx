@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/loading-skeleton';
 
 export interface Column<T> {
   key: keyof T | string;
@@ -16,6 +17,8 @@ export interface DataTableProps<T> {
   loading?: boolean;
   emptyMessage?: string;
   className?: string;
+  /** Number of skeleton rows to show when loading (default: 5) */
+  skeletonRows?: number;
 }
 
 function getNestedValue(item: unknown, key: string): unknown {
@@ -36,11 +39,45 @@ export function DataTable<T>({
   loading = false,
   emptyMessage = 'No data available',
   className,
+  skeletonRows = 5,
 }: DataTableProps<T>) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-gray-600" />
+      <div className={cn('overflow-hidden rounded-lg border border-gray-200', className)}>
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              {columns.map((column) => (
+                <th
+                  key={String(column.key)}
+                  className={cn(
+                    'px-4 py-3 text-left text-sm font-medium text-gray-700',
+                    column.className
+                  )}
+                >
+                  {column.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {Array.from({ length: skeletonRows }).map((_, rowIndex) => (
+              <tr
+                key={rowIndex}
+                style={{ animationDelay: `${rowIndex * 50}ms` }}
+              >
+                {columns.map((column) => (
+                  <td
+                    key={String(column.key)}
+                    className={cn('px-4 py-3', column.className)}
+                  >
+                    <Skeleton className="h-4 w-full max-w-[120px]" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }
