@@ -114,7 +114,7 @@
       "Handle 500 errors: show generic error with retry option",
       "Add error boundary to layout components"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Loading States",

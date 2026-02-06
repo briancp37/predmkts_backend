@@ -170,6 +170,34 @@
   - Removed unused `newUser` variable in register function
 - TypeScript compilation passes (only pre-existing recharts type issues remain)
 
+### Frontend Error Boundaries (2026-02-05)
+- Created `web/src/components/error-boundary.tsx` with comprehensive error handling:
+  - `ErrorBoundary` class component: React error boundary that catches JavaScript errors
+    - Default fallback UI with "Try Again" and "Refresh Page" buttons
+    - Optional custom fallback prop for specialized error UIs
+    - `onError` callback for error logging/tracking integration
+    - `onReset` callback for cleanup on retry
+  - `ApiErrorDisplay` component: Handles API errors by status code
+    - 401: "Session Expired" message with login button, accepts `onLogin` callback
+    - 403: "Access Restricted" message with upgrade prompt (detects tier limit messages)
+    - 404: "Not Found" message with go back option
+    - 429: "Too Many Requests" with retry time message and retry button
+    - 500+: "Something Went Wrong" with retry button for server errors
+  - `InlineError` component: For inline form validation and minor errors
+    - Red alert box with dismiss button
+    - Suitable for embedding in forms
+- Updated `web/src/components/providers.tsx`:
+  - Added ErrorBoundary import from `@/components/error-boundary`
+  - Wrapped entire app with ErrorBoundary as outermost wrapper
+  - Catches errors at the root level to prevent full app crashes
+- Updated `web/src/app/(dashboard)/layout.tsx`:
+  - Added nested ErrorBoundary wrapping the main content area
+  - Dashboard-specific error boundary for page-level errors
+  - Added `handleError` callback for error logging
+  - Navigation remains visible even when page content errors
+- TypeScript compilation passes (only pre-existing recharts type issues remain)
+- No test files to run (frontend integration tests are a separate PRD item)
+
 ## In Progress
 
 ## Blockers

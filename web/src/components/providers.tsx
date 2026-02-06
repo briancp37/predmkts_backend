@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useSession, useAuth } from '@/lib/api/auth-context';
+import { ErrorBoundary } from '@/components/error-boundary';
 import type { User } from '@/lib/api/auth-context';
 
 // Re-export auth hooks for convenience
@@ -58,9 +59,11 @@ export function Providers({ children }: ProvidersProps) {
   );
 
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
