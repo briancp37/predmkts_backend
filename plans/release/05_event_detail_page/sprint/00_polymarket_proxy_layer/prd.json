@@ -1,0 +1,138 @@
+[
+  {
+    "category": "proxy_architecture",
+    "description": "Set up the proxy layer architecture for Polymarket API calls",
+    "steps": [
+      "Create src/prediction_data/api/polymarket_proxy/ directory",
+      "Create polymarket_client.py with httpx async client",
+      "Add POLYMARKET_CLOB_URL and POLYMARKET_GAMMA_URL to settings",
+      "Implement request retry logic with exponential backoff",
+      "Add rate limiting to stay under Polymarket limits (see CLAUDE.md)",
+      "Create response caching layer with configurable TTL",
+      "Add circuit breaker for Polymarket API failures"
+    ],
+    "passes": true
+  },
+  {
+    "category": "timeseries_proxy",
+    "description": "Proxy the Polymarket CLOB timeseries endpoint",
+    "steps": [
+      "Create GET /api/v1/proxy/markets/{token_id}/timeseries endpoint",
+      "Reference: https://docs.polymarket.com/developers/CLOB/timeseries",
+      "Map query params: interval (1m,5m,15m,1h,6h,1d), fidelity (1-60)",
+      "Proxy to GET https://clob.polymarket.com/prices-history",
+      "Transform response to our PriceHistoryResponse schema",
+      "Cache responses: 1m interval=30s TTL, 1h interval=5m TTL, 1d interval=1h TTL",
+      "Add startTs and endTs param support for date range filtering"
+    ],
+    "passes": false
+  },
+  {
+    "category": "orderbook_proxy",
+    "description": "Proxy the Polymarket CLOB order book endpoint",
+    "steps": [
+      "Create GET /api/v1/proxy/markets/{token_id}/orderbook endpoint",
+      "Reference: https://docs.polymarket.com/developers/CLOB/l2-order-book",
+      "Proxy to GET https://clob.polymarket.com/book",
+      "Return bids and asks arrays with price/size",
+      "Calculate and include spread (best ask - best bid)",
+      "Cache responses with 5s TTL (order book is volatile)",
+      "Add depth parameter to limit levels returned (default 10)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "top_holders_proxy",
+    "description": "Proxy the Polymarket top holders endpoint",
+    "steps": [
+      "Create GET /api/v1/proxy/markets/{token_id}/top-holders endpoint",
+      "Reference: https://docs.polymarket.com/api-reference/core/get-top-holders-for-markets",
+      "Proxy to GET https://data-api.polymarket.com/top-holders",
+      "Pass through token_id and limit params",
+      "Transform response to our TopHoldersResponse schema",
+      "Cache responses with 5m TTL",
+      "Return wallet address, position size, and value"
+    ],
+    "passes": false
+  },
+  {
+    "category": "trades_proxy",
+    "description": "Proxy the Polymarket trades endpoint for activity feed",
+    "steps": [
+      "Create GET /api/v1/proxy/markets/{token_id}/trades endpoint",
+      "Reference: https://docs.polymarket.com/api-reference/core/get-trades-for-a-user-or-markets",
+      "Proxy to GET https://data-api.polymarket.com/trades",
+      "Support params: limit, before (cursor), maker, asset_id",
+      "Transform response to our RecentTradesResponse schema",
+      "Cache responses with 30s TTL",
+      "Include trade id, price, size, side, timestamp, maker address"
+    ],
+    "passes": false
+  },
+  {
+    "category": "market_info_proxy",
+    "description": "Proxy market info for real-time price and volume",
+    "steps": [
+      "Create GET /api/v1/proxy/markets/{condition_id} endpoint",
+      "Reference: https://docs.polymarket.com/developers/CLOB/the-clob-api",
+      "Proxy to GET https://clob.polymarket.com/markets/{condition_id}",
+      "Return current prices, 24h volume, liquidity",
+      "Cache with 10s TTL for semi-real-time updates",
+      "Fall back to our dim_market data if CLOB unavailable"
+    ],
+    "passes": false
+  },
+  {
+    "category": "token_id_resolution",
+    "description": "Handle mapping between our IDs and Polymarket token IDs",
+    "steps": [
+      "Create helper to get token_id from our market_id",
+      "Query dim_outcome for clob_token_id field",
+      "Cache token_id mappings in memory (they don't change)",
+      "Handle both Yes and No token IDs for binary markets",
+      "Add error handling for markets without token IDs",
+      "Create utility endpoint GET /api/v1/markets/{id}/tokens to expose mappings"
+    ],
+    "passes": false
+  },
+  {
+    "category": "error_handling",
+    "description": "Implement robust error handling for proxy layer",
+    "steps": [
+      "Return 502 Bad Gateway on Polymarket API failures",
+      "Return 429 if we hit Polymarket rate limits (with Retry-After)",
+      "Log all proxy errors with request context",
+      "Return cached stale data on transient failures (if available)",
+      "Add health check that pings Polymarket endpoints",
+      "Create ProxyError exception class with upstream details"
+    ],
+    "passes": false
+  },
+  {
+    "category": "caching_layer",
+    "description": "Implement caching for proxied responses",
+    "steps": [
+      "Use Redis if available (docker profile cache), else in-memory",
+      "Create cache key format: polymarket:{endpoint}:{params_hash}",
+      "Implement cache-aside pattern with TTL",
+      "Add cache hit/miss metrics logging",
+      "Support cache invalidation by pattern",
+      "Add X-Cache header to responses (HIT/MISS/STALE)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "frontend_hooks",
+    "description": "Create React hooks for consuming proxy endpoints",
+    "steps": [
+      "Create useTimeseries(tokenId, interval) hook",
+      "Create useOrderbook(tokenId) hook with refetch interval",
+      "Create useTopHolders(tokenId, limit) hook",
+      "Create useMarketTrades(tokenId, limit) hook",
+      "Create useMarketPrice(conditionId) hook for real-time price",
+      "Add proper TypeScript types for all hook responses",
+      "Configure React Query staleTime to match backend cache TTL"
+    ],
+    "passes": false
+  }
+]

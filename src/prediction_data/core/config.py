@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     kalshi_private_key_path: str | None = None
     kalshi_api_base_url: str = "https://api.elections.kalshi.com/trade-api/v2"
 
+    # Polymarket proxy layer settings
+    polymarket_clob_url: str = "https://clob.polymarket.com"
+    polymarket_gamma_url: str = "https://gamma-api.polymarket.com"
+    polymarket_data_url: str = "https://data-api.polymarket.com"
+    polymarket_proxy_cache_ttl: int = 30  # Default cache TTL in seconds
+    polymarket_proxy_timeout: float = 10.0  # Request timeout in seconds
+
     # PostgreSQL settings (for API user data)
     postgres_host: str = "localhost"
     postgres_port: int = 5432

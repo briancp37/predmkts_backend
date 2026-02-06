@@ -1,0 +1,66 @@
+# Sprint Progress: Polymarket Proxy Layer
+# Release: 05_event_detail_page
+# Created: 2026-02-06
+
+## Status: In Progress
+
+## Completed Tasks
+
+### proxy_architecture (2026-02-06)
+- Created `src/prediction_data/api/polymarket_proxy/` module with:
+  - `__init__.py` - exports router
+  - `client.py` - PolymarketProxyClient with full feature set
+  - `schemas.py` - Pydantic models for responses
+  - `router.py` - FastAPI router with health endpoint
+- Added settings to `core/config.py`:
+  - `polymarket_clob_url` (default: https://clob.polymarket.com)
+  - `polymarket_gamma_url` (default: https://gamma-api.polymarket.com)
+  - `polymarket_data_url` (default: https://data-api.polymarket.com)
+  - `polymarket_proxy_cache_ttl` (default: 30s)
+  - `polymarket_proxy_timeout` (default: 10s)
+- Implemented full client features:
+  - httpx AsyncClient with context manager pattern
+  - Exponential backoff retry (3 retries, 0.5s base delay, 10s max)
+  - Rate limiting per API (CLOB: 30 req/s, Data: 10 req/s)
+  - Circuit breaker per API (5 failures threshold, 30s recovery)
+  - In-memory cache with TTL, stale-while-revalidate, and invalidation
+  - Health check endpoint at GET /api/v1/proxy/health
+- Registered router in main.py with shutdown hook for cleanup
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Reference docs:
+- CLOB Timeseries: https://docs.polymarket.com/developers/CLOB/timeseries
+- L2 Order Book: https://docs.polymarket.com/developers/CLOB/l2-order-book
+- Top Holders: https://docs.polymarket.com/api-reference/core/get-top-holders-for-markets
+- Trades: https://docs.polymarket.com/api-reference/core/get-trades-for-a-user-or-markets
+
+Rate limits (from CLAUDE.md):
+- CLOB API: 9,000 req/10s overall
+- Data API: 1,000 req/10s overall, /trades: 200/10s
+
+### Architecture Notes for Next Developer
+
+The proxy client is designed for extensibility. To add a new proxy endpoint:
+
+1. Add endpoint method to `client.py` using `get_clob()`, `get_data()`, or `get_gamma()`
+2. Add response schema to `schemas.py`
+3. Add route to `router.py` with appropriate rate limiting
+
+Cache TTLs should be configured per-endpoint based on data volatility:
+- Order book: 5s (very volatile)
+- Trades: 30s
+- Market info: 10s
+- Timeseries: varies by interval (30s for 1m, 5m for 1h, 1h for 1d)
+- Top holders: 5m (changes slowly)
+
+The circuit breaker will automatically protect against cascading failures.
+When a circuit opens, requests fail fast and return an error to the client.
+After 30s recovery timeout, the circuit enters half-open state to test recovery.
+

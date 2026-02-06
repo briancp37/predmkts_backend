@@ -20,6 +20,8 @@ from prediction_data.api.exceptions import APIError
 from prediction_data.api.health import router as health_router
 from prediction_data.api.markets.router import router as markets_router
 from prediction_data.api.middleware import RequestLoggingMiddleware
+from prediction_data.api.polymarket_proxy import router as polymarket_proxy_router
+from prediction_data.api.polymarket_proxy.client import close_proxy_client
 from prediction_data.api.rate_limit import limiter, rate_limit_exceeded_handler
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
@@ -42,8 +44,9 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: create database tables
     await create_tables()
     yield
-    # Shutdown: cleanup CLOB client
+    # Shutdown: cleanup API clients
     await close_clob_client()
+    await close_proxy_client()
 
 
 API_DESCRIPTION = """
@@ -146,6 +149,12 @@ OPENAPI_TAGS = [
         "description": "Health check endpoints for monitoring and Kubernetes probes. "
         "Not versioned, not rate limited.",
     },
+    {
+        "name": "polymarket-proxy",
+        "description": "Proxy layer for Polymarket APIs (CLOB, Data, Gamma). "
+        "Provides cached access to real-time market data with rate limiting, "
+        "circuit breaker protection, and retry logic. Rate limited to 50 req/min.",
+    },
 ]
 
 app = FastAPI(
@@ -196,6 +205,9 @@ app.include_router(
 )
 app.include_router(trades_router, prefix="/api/v1/trades", tags=["trades"])
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
+app.include_router(
+    polymarket_proxy_router, prefix="/api/v1/proxy", tags=["polymarket-proxy"]
+)
 app.include_router(health_router, prefix="/health", tags=["health"])
 
 
