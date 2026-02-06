@@ -33,6 +33,10 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
+    # Startup: validate security configuration
+    settings = get_settings()
+    settings.validate_jwt_secret()
+
     # Startup: create database tables
     await create_tables()
     yield
@@ -55,14 +59,22 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # so it wraps all other middleware and captures accurate timing
 app.add_middleware(RequestLoggingMiddleware)
 
-# CORS middleware - allow all origins in development
-# In production, restrict to your frontend domain
+# CORS middleware - configurable via CORS_ORIGINS environment variable
+# In production, set CORS_ORIGINS to your frontend domain(s)
+_settings = get_settings()
+_cors_origins = _settings.cors_origin_list
+
+# Note: allow_credentials=True requires explicit origins, not wildcards
+# When using "*", we disable credentials to avoid security issues
+_allow_credentials = "*" not in _cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"],
 )
 
 # Include routers

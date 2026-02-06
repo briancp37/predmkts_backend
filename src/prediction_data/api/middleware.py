@@ -1,4 +1,4 @@
-"""API middleware for request logging and tracing."""
+"""API middleware for request logging, tracing, and security headers."""
 
 import time
 import uuid
@@ -13,6 +13,19 @@ from prediction_data.api.auth.service import decode_token
 from prediction_data.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# Security headers to add to all responses
+# These help prevent common web vulnerabilities
+SECURITY_HEADERS = {
+    # Prevent MIME type sniffing
+    "X-Content-Type-Options": "nosniff",
+    # Prevent clickjacking by disallowing iframe embedding
+    "X-Frame-Options": "DENY",
+    # Control referrer information sent with requests
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # Disable browser features that could be security risks
+    "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+}
 
 # Paths that should have sensitive fields excluded from logging
 SENSITIVE_PATHS = {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"}
@@ -123,8 +136,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         duration_ms = (time.perf_counter() - start_time) * 1000
         status_code = response.status_code
 
-        # Add request ID to response headers
+        # Add request ID and security headers to response
         response.headers["X-Request-ID"] = request_id
+        for header_name, header_value in SECURITY_HEADERS.items():
+            response.headers[header_name] = header_value
 
         # Build log context
         log_context: dict[str, Any] = {

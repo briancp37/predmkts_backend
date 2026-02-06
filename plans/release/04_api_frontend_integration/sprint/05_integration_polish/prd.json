@@ -208,7 +208,7 @@
       "Review rate limiting on auth endpoints",
       "Ensure passwords never logged"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Documentation Update",

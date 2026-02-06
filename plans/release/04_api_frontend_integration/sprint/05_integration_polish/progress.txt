@@ -239,6 +239,38 @@
 - Optimistic updates already implemented in `use-watchlist.ts` and `use-tracked-traders.ts`
 - TypeScript compilation passes (only pre-existing recharts type issues remain)
 
+### Security Hardening (2026-02-05)
+- Updated CORS configuration for production:
+  - Added `CORS_ORIGINS` env var (comma-separated or `*` for development)
+  - Added `cors_origin_list` property to Settings for parsing
+  - CORS credentials now disabled when using wildcard origins (security fix)
+  - Restricted CORS methods to `GET, POST, PUT, DELETE, PATCH, OPTIONS` (was `*`)
+  - Restricted CORS headers to `Authorization, Content-Type, X-Request-ID` (was `*`)
+  - Added `expose_headers` for rate limit and request ID headers
+- Added JWT secret validation on app startup:
+  - `validate_jwt_secret()` method in Settings class
+  - Validates secret is not default value in production
+  - Enforces minimum 32-character length in production
+  - Validation bypassed in debug mode for development
+- Added security headers middleware in `src/prediction_data/api/middleware.py`:
+  - `X-Content-Type-Options: nosniff` — prevents MIME type sniffing
+  - `X-Frame-Options: DENY` — prevents clickjacking via iframe embedding
+  - `Referrer-Policy: strict-origin-when-cross-origin` — controls referrer info
+  - `Permissions-Policy: geolocation=(), microphone=(), camera=()` — disables risky browser APIs
+- Reviewed SQL injection prevention:
+  - PostgreSQL (SQLAlchemy): Uses ORM queries with parameterized conditions
+  - ClickHouse: Uses parameterized queries (`{param:Type}` syntax) via `execute_query()`
+  - All user input is properly parameterized, no raw SQL string concatenation
+- Reviewed XSS prevention:
+  - React's default JSX escaping handles XSS in frontend
+  - API returns JSON (not HTML), no server-side rendering vulnerabilities
+- Reviewed password logging:
+  - Auth endpoints (`/auth/login`, `/auth/register`, `/auth/refresh`) marked as sensitive
+  - `SENSITIVE_PATHS` set in middleware excludes these from detailed logging
+  - Request bodies not logged for any endpoints
+- Rate limiting on auth endpoints already implemented (10 req/min per IP)
+- Updated `.env.example` with `CORS_ORIGINS` configuration example
+
 ## In Progress
 
 ## Blockers

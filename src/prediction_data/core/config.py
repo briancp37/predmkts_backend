@@ -68,6 +68,37 @@ class Settings(BaseSettings):
     # API debug mode (exposes stack traces in error responses)
     debug: bool = False
 
+    # CORS settings (comma-separated list of allowed origins)
+    # Use "*" for development, specific origins for production
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Parse CORS origins from comma-separated string."""
+        if self.cors_origins == "*":
+            return ["*"]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    def validate_jwt_secret(self) -> None:
+        """Validate JWT secret is strong enough for production.
+
+        Raises ValueError if not in debug mode and secret is weak.
+        """
+        if self.debug:
+            return  # Allow weak secrets in debug mode
+
+        if self.jwt_secret == "change-me-in-production":
+            raise ValueError(
+                "JWT_SECRET must be changed from default value in production. "
+                "Use a random string of at least 32 characters."
+            )
+
+        if len(self.jwt_secret) < 32:
+            raise ValueError(
+                "JWT_SECRET must be at least 32 characters in production. "
+                f"Current length: {len(self.jwt_secret)}"
+            )
+
     @property
     def postgres_url(self) -> str:
         """Get async PostgreSQL connection URL."""
