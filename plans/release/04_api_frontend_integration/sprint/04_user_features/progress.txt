@@ -1,6 +1,6 @@
 # Sprint 04: User Features - Progress
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed
 - 2026-02-05: Watchlist API Backend Implementation
@@ -84,6 +84,22 @@
   - Handles 401 errors gracefully (returns empty watchlist for unauthenticated users)
   - Updated hooks/index.ts exports (removed obsolete AddWatchlistResponse, RemoveWatchlistResponse)
   - No new type errors introduced (pre-existing type errors in codebase remain)
+
+- 2026-02-05: Frontend Tracked Traders Integration
+  - Created web/src/hooks/use-tracked-traders.ts with comprehensive React Query hooks
+  - Implemented useTrackedTraders() hook for fetching tracked traders list with stats
+  - Implemented useTrackedTrader(id) hook for fetching single tracked trader details
+  - Implemented useAddTrackedTrader() mutation with optimistic updates
+  - Implemented useRemoveTrackedTrader() mutation with optimistic updates
+  - Implemented useUpdateTrackedTrader() mutation for updating custom names
+  - Implemented useTrackedTradersActivity() hook for activity feed with filters (limit, startDate, endDate)
+  - All hooks use apiRequest() from lib/api/client.ts with Bearer token auth
+  - Handle 401 errors gracefully (return empty data for unauthenticated users)
+  - Include tier limit in TrackedTradersResponse for displaying limit/count in UI
+  - Exported all hooks and types from hooks/index.ts
+  - Types exported: TrackedTrader, TrackedTraderWithStats, TrackedTradersResponse, TrackedTraderActivity, TrackedTraderTrade, AddTrackedTraderRequest, UpdateTrackedTraderRequest, ActivityFilters
+  - No new type errors introduced (pre-existing type errors in codebase remain)
+  - All 1441 backend tests pass
 
 ## In Progress
 

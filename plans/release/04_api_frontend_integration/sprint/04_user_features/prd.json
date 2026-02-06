@@ -250,7 +250,7 @@
       "Show upgrade prompt when limit reached",
       "Remove old Next.js API route calls"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Error Handling for User Features",

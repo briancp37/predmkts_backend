@@ -8,10 +8,11 @@
  * ```tsx
  * import { useMarkets, useMarket, useTrader, useTraderTrades } from '@/hooks';
  * import { useMarketsAdvanced, useWatchlist, useTags } from '@/hooks';
+ * import { useLeaderboard, useSmartTrades, useSmartScores } from '@/hooks';
  * ```
  */
 
-// Market hooks
+// Market hooks - calls FastAPI /api/v1/markets
 export {
   useMarkets,
   useMarket,
@@ -21,7 +22,7 @@ export {
   type UseMarketsParams,
 } from './use-markets';
 
-// Advanced market hooks (PRD #5)
+// Advanced market hooks - calls FastAPI /api/v1/markets/advanced
 export {
   useMarketsAdvanced,
   type AdvancedMarket,
@@ -31,7 +32,6 @@ export {
   type MarketSortBy,
   type SortOrder,
   type TimeFilter,
-  type PaginationMeta,
 } from './use-markets-advanced';
 
 // Watchlist hooks (PRD #5)
@@ -52,20 +52,46 @@ export {
   type UseTagsParams,
 } from './use-tags';
 
-// Trader hooks
+// Trader hooks (Sprint 03 - ClickHouse/FastAPI)
 export {
+  useTraders,
   useTrader,
   useTraderTrades,
   type Trader,
+  type TraderDetail,
   type TraderPosition,
+  type TraderListResponse,
   type Trade,
-  type TraderTradesResponse,
+  type TradeListResponse,
+  type UseTradersParams,
   type UseTraderTradesParams,
-  type PositionMarket,
-  type PositionOutcome,
-  type TradeMarket,
-  type TradeOutcome,
+  type TraderSortBy,
 } from './use-traders';
+
+// Leaderboard hooks (Sprint 03 - ClickHouse/FastAPI)
+export {
+  useLeaderboard,
+  type LeaderboardEntry,
+  type LeaderboardResponse,
+  type LeaderboardPeriod,
+  type UseLeaderboardParams,
+} from './use-leaderboard';
+
+// Smart trades and scores hooks (Sprint 03 - ClickHouse/FastAPI)
+export {
+  useSmartTrades,
+  useWhaleTrades,
+  useSmartScores,
+  type SmartTrade,
+  type WhaleTrade,
+  type SmartScore,
+  type SmartScoreComponents,
+  type SmartScoreListResponse,
+  type SmartScoreTimeWindow,
+  type UseSmartTradesParams,
+  type UseWhaleTradesParams,
+  type UseSmartScoresParams,
+} from './use-smart-trades';
 
 // Notification hooks
 export {
@@ -73,3 +99,21 @@ export {
   type NotificationOptions,
   type UseNotificationsReturn,
 } from './useNotifications';
+
+// Tracked traders hooks (Sprint 04 - User Features)
+export {
+  useTrackedTraders,
+  useTrackedTrader,
+  useAddTrackedTrader,
+  useRemoveTrackedTrader,
+  useUpdateTrackedTrader,
+  useTrackedTradersActivity,
+  type TrackedTrader,
+  type TrackedTraderWithStats,
+  type TrackedTradersResponse,
+  type TrackedTraderActivity,
+  type TrackedTraderTrade,
+  type AddTrackedTraderRequest,
+  type UpdateTrackedTraderRequest,
+  type ActivityFilters,
+} from './use-tracked-traders';
