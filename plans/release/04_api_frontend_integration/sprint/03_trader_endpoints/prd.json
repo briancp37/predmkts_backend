@@ -189,7 +189,7 @@
       "Remove Prisma-based trader data fetching",
       "Update React Query cache keys"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "OpenAPI Spec Update",

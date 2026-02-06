@@ -1,134 +1,126 @@
 /**
- * React Query hooks for trader data fetching
+ * React Query hooks for trader data fetching (ClickHouse/FastAPI)
  *
- * PRD #10 - Create React Query hooks for data fetching
+ * Sprint 03 - Trader Endpoints: Frontend Hooks Update
  *
  * Provides:
+ * - useTraders(params) - Fetch traders with search, sorting, and pagination
  * - useTrader(address) - Fetch single trader by wallet address
  * - useTraderTrades(address, params) - Fetch trader's trades with pagination
+ *
+ * All hooks call the FastAPI backend via /api/v1/traders endpoints.
  */
 
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+
+// =============================================================================
+// Types matching FastAPI schemas (src/prediction_data/api/traders/schemas.py)
+// =============================================================================
 
 /**
- * Position market data (subset of Market)
- */
-export interface PositionMarket {
-  id: string;
-  polymarketId: string;
-  slug: string | null;
-  question: string;
-  category: string | null;
-  resolved: boolean;
-  outcome: string | null;
-}
-
-/**
- * Position outcome data (subset of MarketOutcome)
- */
-export interface PositionOutcome {
-  id: string;
-  tokenId: string;
-  outcomeName: string;
-  currentPrice: number;
-}
-
-/**
- * Trader position type
+ * Current position held by a trader
  */
 export interface TraderPosition {
-  id: string;
-  traderId: string;
   marketId: string;
+  marketQuestion: string;
   outcomeId: string;
+  outcomeName: string;
   quantity: number;
-  avgPrice: number;
-  investedUsd: number;
-  currentValue: number;
-  realizedPnl: number;
+  avgCost: number;
+  currentPrice: number;
   unrealizedPnl: number;
-  market: PositionMarket;
-  outcome: PositionOutcome;
+  realizedPnl: number;
 }
 
 /**
- * Trader type matching API response
+ * Trader summary for list responses
  */
 export interface Trader {
   id: string;
   address: string;
   username: string | null;
   firstSeen: string;
-  smartScore: number | null;
   totalPnl: number;
   realizedPnl: number;
   totalTrades: number;
   winCount: number;
   lossCount: number;
+  smartScore: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Detailed trader response with positions and stats
+ */
+export interface TraderDetail extends Trader {
   positions: TraderPosition[];
   tradeCount: number;
+  winRate: number;
 }
 
 /**
- * Trade market data (subset of Market)
+ * Paginated trader list response
  */
-export interface TradeMarket {
-  id: string;
-  polymarketId: string;
-  slug: string | null;
-  question: string;
-  category: string | null;
-  resolved: boolean;
+export interface TraderListResponse {
+  items: Trader[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 /**
- * Trade outcome data (subset of MarketOutcome)
- */
-export interface TradeOutcome {
-  id: string;
-  tokenId: string;
-  outcomeName: string;
-  currentPrice: number;
-}
-
-/**
- * Trade type matching API response
+ * Trade record for a trader
  */
 export interface Trade {
   id: string;
-  traderId: string;
+  traderAddress: string;
   marketId: string;
+  marketQuestion: string;
   outcomeId: string;
+  outcomeName: string;
   side: 'BUY' | 'SELL';
   price: number;
-  amount: number;
+  quantity: number;
   usdValue: number;
-  feesPaid: number;
-  txHash: string | null;
+  fees: number;
+  realizedPnl: number | null;
   timestamp: string;
-  market: TradeMarket;
-  outcome: TradeOutcome;
 }
 
 /**
- * Response type for /api/traders/[address]/trades endpoint
+ * Paginated trade list response
  */
-export interface TraderTradesResponse {
-  trades: Trade[];
+export interface TradeListResponse {
+  items: Trade[];
   total: number;
+  page: number;
   limit: number;
-  offset: number;
 }
 
+// =============================================================================
+// useTraders - List traders with search and sorting
+// =============================================================================
+
 /**
- * Query parameters for useTraderTrades hook
+ * Sort options for trader list
  */
-export interface UseTraderTradesParams {
-  /** Number of results (default: 20, max: 100) */
+export type TraderSortBy = 'smartScore' | 'totalPnl' | 'totalTrades' | 'winRate';
+export type SortOrder = 'asc' | 'desc';
+
+/**
+ * Query parameters for useTraders hook
+ */
+export interface UseTradersParams {
+  /** Search by wallet address prefix (case-insensitive) */
+  search?: string;
+  /** Sort field (default: totalPnl) */
+  sortBy?: TraderSortBy;
+  /** Sort direction (default: desc) */
+  sortOrder?: SortOrder;
+  /** Number of results (default: 50, max: 500) */
   limit?: number;
   /** Pagination offset (default: 0) */
   offset?: number;
@@ -137,14 +129,94 @@ export interface UseTraderTradesParams {
 }
 
 /**
- * Fetch a single trader from the API
+ * Fetch traders from the FastAPI backend
  */
-async function fetchTrader(address: string): Promise<Trader> {
-  const response = await fetch(`/api/traders/${encodeURIComponent(address)}`);
+async function fetchTraders(
+  params: Omit<UseTradersParams, 'enabled'>
+): Promise<TraderListResponse> {
+  const searchParams = new URLSearchParams();
+
+  if (params.search) {
+    searchParams.set('search', params.search);
+  }
+  if (params.sortBy) {
+    searchParams.set('sortBy', params.sortBy);
+  }
+  if (params.sortOrder) {
+    searchParams.set('sortOrder', params.sortOrder);
+  }
+  if (params.limit !== undefined) {
+    searchParams.set('limit', String(params.limit));
+  }
+  if (params.offset !== undefined) {
+    searchParams.set('offset', String(params.offset));
+  }
+
+  const queryString = searchParams.toString();
+  const url = `/api/v1/traders${queryString ? `?${queryString}` : ''}`;
+
+  const response = await fetch(url);
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `Failed to fetch trader: ${response.status}`);
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Failed to fetch traders: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Hook to fetch traders with search, sorting, and pagination
+ *
+ * @example
+ * ```tsx
+ * // Fetch traders sorted by PnL
+ * const { data, isLoading, error } = useTraders();
+ *
+ * // Search by address and sort by smart score
+ * const { data } = useTraders({
+ *   search: '0x123',
+ *   sortBy: 'smartScore',
+ *   sortOrder: 'desc',
+ * });
+ *
+ * // Paginate
+ * const { data } = useTraders({ limit: 25, offset: 50 });
+ *
+ * // Access trader data
+ * data?.items.forEach(trader => {
+ *   console.log(trader.address, trader.totalPnl, trader.smartScore);
+ * });
+ * ```
+ */
+export function useTraders(params: UseTradersParams = {}) {
+  const { enabled = true, ...queryParams } = params;
+
+  return useQuery({
+    queryKey: ['traders', queryParams],
+    queryFn: () => fetchTraders(queryParams),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+}
+
+// =============================================================================
+// useTrader - Single trader detail
+// =============================================================================
+
+/**
+ * Fetch a single trader from the FastAPI backend
+ */
+async function fetchTrader(address: string): Promise<TraderDetail> {
+  const response = await fetch(`/api/v1/traders/${encodeURIComponent(address)}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Trader not found');
+    }
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Failed to fetch trader: ${response.status}`);
   }
 
   return response.json();
@@ -158,11 +230,12 @@ async function fetchTrader(address: string): Promise<Trader> {
  * // Fetch trader by address
  * const { data, isLoading, error } = useTrader('0x1234...');
  *
- * // Access trader data
+ * // Access trader data with positions
  * if (data) {
- *   console.log(data.smartScore);
- *   console.log(data.totalPnl);
- *   console.log(data.positions);
+ *   console.log(data.totalPnl, data.winRate);
+ *   data.positions.forEach(pos => {
+ *     console.log(pos.marketQuestion, pos.unrealizedPnl);
+ *   });
  * }
  *
  * // Disable query until ready
@@ -176,16 +249,39 @@ export function useTrader(address: string | undefined | null, options?: { enable
     queryKey: ['trader', address?.toLowerCase()],
     queryFn: () => fetchTrader(address!),
     enabled: enabled && !!address,
+    staleTime: 30 * 1000, // 30 seconds
   });
 }
 
+// =============================================================================
+// useTraderTrades - Trader's trade history
+// =============================================================================
+
 /**
- * Fetch trader trades from the API
+ * Query parameters for useTraderTrades hook
+ */
+export interface UseTraderTradesParams {
+  /** Number of results (default: 100, max: 1000) */
+  limit?: number;
+  /** Pagination offset (default: 0) */
+  offset?: number;
+  /** Filter trades on or after this date (YYYY-MM-DD) */
+  startDate?: string;
+  /** Filter trades on or before this date (YYYY-MM-DD) */
+  endDate?: string;
+  /** Filter to a specific market */
+  marketId?: string;
+  /** Enable/disable the query (default: true) */
+  enabled?: boolean;
+}
+
+/**
+ * Fetch trader trades from the FastAPI backend
  */
 async function fetchTraderTrades(
   address: string,
   params: Omit<UseTraderTradesParams, 'enabled'>
-): Promise<TraderTradesResponse> {
+): Promise<TradeListResponse> {
   const searchParams = new URLSearchParams();
 
   if (params.limit !== undefined) {
@@ -194,35 +290,51 @@ async function fetchTraderTrades(
   if (params.offset !== undefined) {
     searchParams.set('offset', String(params.offset));
   }
+  if (params.startDate) {
+    searchParams.set('startDate', params.startDate);
+  }
+  if (params.endDate) {
+    searchParams.set('endDate', params.endDate);
+  }
+  if (params.marketId) {
+    searchParams.set('marketId', params.marketId);
+  }
 
   const queryString = searchParams.toString();
-  const url = `/api/traders/${encodeURIComponent(address)}/trades${queryString ? `?${queryString}` : ''}`;
+  const url = `/api/v1/traders/${encodeURIComponent(address)}/trades${queryString ? `?${queryString}` : ''}`;
 
   const response = await fetch(url);
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `Failed to fetch trader trades: ${response.status}`);
+    if (response.status === 404) {
+      throw new Error('Trader not found');
+    }
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Failed to fetch trader trades: ${response.status}`);
   }
 
   return response.json();
 }
 
 /**
- * Hook to fetch a trader's trades with pagination
+ * Hook to fetch a trader's trades with pagination and filtering
  *
  * @example
  * ```tsx
- * // Fetch trader's trades
+ * // Fetch trader's recent trades
  * const { data, isLoading, error } = useTraderTrades('0x1234...');
  *
- * // With pagination
- * const { data } = useTraderTrades('0x1234...', { limit: 50, offset: 100 });
+ * // With pagination and date filter
+ * const { data } = useTraderTrades('0x1234...', {
+ *   limit: 50,
+ *   offset: 100,
+ *   startDate: '2024-01-01',
+ * });
  *
  * // Access trade data
  * if (data) {
- *   data.trades.forEach(trade => {
- *     console.log(trade.side, trade.usdValue, trade.market.question);
+ *   data.items.forEach(trade => {
+ *     console.log(trade.side, trade.usdValue, trade.marketQuestion);
  *   });
  * }
  *
@@ -240,5 +352,7 @@ export function useTraderTrades(
     queryKey: ['traderTrades', address?.toLowerCase(), queryParams],
     queryFn: () => fetchTraderTrades(address!, queryParams),
     enabled: enabled && !!address,
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000, // 30 seconds
   });
 }

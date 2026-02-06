@@ -201,7 +201,7 @@
       "Remove or deprecate old Prisma-based data fetching in hooks",
       "Update React Query keys to match new endpoint structure"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "OpenAPI Spec Update",

@@ -1,7 +1,7 @@
 /**
  * React Query hooks for Markets page data fetching
  *
- * PRD #5 - Create React Query hooks for Markets page data fetching
+ * Calls FastAPI backend at /api/v1/markets/advanced
  *
  * Provides:
  * - useMarketsAdvanced(params) - Fetch markets with CLOB data and comprehensive filtering
@@ -15,6 +15,8 @@
 'use client';
 
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
+
+const API_BASE = '/api/v1';
 
 /**
  * Market outcome type for advanced API
@@ -57,22 +59,13 @@ export interface AdvancedMarket {
 }
 
 /**
- * Pagination metadata from API response
- */
-export interface PaginationMeta {
-  limit: number;
-  offset: number;
-  page: number;
-  totalPages: number;
-}
-
-/**
- * Response type for /api/markets/advanced endpoint
+ * Response type for /api/v1/markets/advanced endpoint (FastAPI MarketAdvancedListResponse)
  */
 export interface AdvancedMarketsResponse {
-  markets: AdvancedMarket[];
+  items: AdvancedMarket[];
   total: number;
-  pagination: PaginationMeta;
+  page: number;
+  limit: number;
 }
 
 /**
@@ -216,7 +209,7 @@ async function fetchMarketsAdvanced(
   }
 
   const queryString = searchParams.toString();
-  const url = `/api/markets/advanced${queryString ? `?${queryString}` : ''}`;
+  const url = `${API_BASE}/markets/advanced${queryString ? `?${queryString}` : ''}`;
 
   const response = await fetch(url);
 

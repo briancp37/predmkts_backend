@@ -206,6 +206,26 @@
 - Note: Event detail view includes markets but without outcome details to keep response size manageable.
   Full market details including outcomes can be fetched via the markets endpoints.
 
+### 2026-02-05: Frontend Hooks Update
+- Updated `web/src/hooks/use-markets.ts` to call FastAPI backend:
+  - Changed API base from `/api/markets` to `/api/v1/markets`
+  - Updated `MarketsResponse` interface to match FastAPI `MarketListResponse` schema (items instead of markets, page instead of offset)
+  - Updated `Market` interface to match FastAPI `MarketResponse` schema (removed outcome, updatedAt, eventId; added imageUrl)
+  - `useMarket()` hook now calls `/api/v1/markets/{id}` for single market fetching
+- Updated `web/src/hooks/use-markets-advanced.ts` to call FastAPI backend:
+  - Changed API base from `/api/markets/advanced` to `/api/v1/markets/advanced`
+  - Updated `AdvancedMarketsResponse` interface to match FastAPI `MarketAdvancedListResponse` schema
+  - Removed `PaginationMeta` interface (pagination now uses flat fields: page, limit, total)
+- Updated `web/src/hooks/index.ts`:
+  - Removed `PaginationMeta` type export
+  - Updated comments to indicate hooks call FastAPI endpoints
+- Updated consuming pages to use new response shape:
+  - `web/src/app/(dashboard)/markets/page.tsx`: Changed `marketsData.markets` to `marketsData.items`
+  - `web/src/app/(dashboard)/analyze-market/page.tsx`: Changed `searchData.markets` to `searchData.items`
+- All 1441 backend tests pass (pytest)
+- Note: Pre-existing TypeScript errors in Next.js API routes remain (Prisma types, implicit any). These routes
+  are deprecated in favor of FastAPI and will be removed in a future cleanup task.
+
 ## In Progress
 
 ## Blockers
@@ -218,7 +238,8 @@
 - GET /markets/advanced endpoint implemented and working with CLOB enrichment
 - GET /markets/screener endpoint implemented for time-based screening (no CLOB needed)
 - All core markets endpoints now complete
-- Events router and endpoints now complete. Next priority: Tags Router Setup
+- Events router and endpoints now complete
+- Frontend hooks now call FastAPI endpoints. Next priority: Tags Router Setup or OpenAPI Spec Update
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
@@ -232,8 +253,8 @@
 - src/prediction_data/api/clickhouse.py [DONE]
 - src/prediction_data/api/clob_client.py [DONE]
 - src/prediction_data/api/main.py (register new routers)
-- web/src/hooks/useMarkets.ts
-- web/src/hooks/useMarketsAdvanced.ts
+- web/src/hooks/use-markets.ts [DONE]
+- web/src/hooks/use-markets-advanced.ts [DONE]
 
 ## ClickHouse Tables to Query
 - dim_market (market metadata)

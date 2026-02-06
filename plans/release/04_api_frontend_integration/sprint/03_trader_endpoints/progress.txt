@@ -120,6 +120,26 @@
   - Scores computed on-demand from wallet_pnl_daily (no pre-computation yet)
   - All types pass mypy, all 1441 tests pass
 
+- [2026-02-05] Frontend Hooks Update - Updated React hooks to use FastAPI /api/v1 endpoints
+  - Updated web/src/hooks/use-traders.ts with new hooks:
+    - useTraders(params) - List traders with search, sorting, pagination via /api/v1/traders
+    - useTrader(address) - Single trader detail via /api/v1/traders/{address}
+    - useTraderTrades(address, params) - Trader trades via /api/v1/traders/{address}/trades
+  - Created web/src/hooks/use-leaderboard.ts:
+    - useLeaderboard(params) - PnL leaderboard via /api/v1/traders/leaderboard
+  - Created web/src/hooks/use-smart-trades.ts:
+    - useSmartTrades(params) - Smart trades via /api/v1/trades/smart
+    - useWhaleTrades(params) - Whale trades via /api/v1/trades/whales
+    - useSmartScores(params) - Smart scores via /api/v1/traders/smart-scores
+  - Updated web/src/hooks/index.ts to export all new hooks and types
+  - Updated web/src/app/(dashboard)/analyze-user/page.tsx:
+    - Changed to use flat data structure (marketQuestion instead of market.question)
+    - Changed tradesData.trades to tradesData.items
+    - Updated position columns to use avgCost, currentPrice directly
+  - TypeScript types match FastAPI Pydantic schemas exactly
+  - All hooks use React Query with proper caching (staleTime, keepPreviousData)
+  - Next.js already configured to proxy /api/v1/* to FastAPI backend
+
 ## In Progress
 
 ## Blockers

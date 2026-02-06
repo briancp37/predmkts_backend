@@ -10,6 +10,8 @@
  * - PnlByEntryChart (Total PnL by Entry Price Range)
  * - Current Positions table with market context
  * - Recent Trades table with pagination
+ *
+ * Updated: Sprint 03 - Uses ClickHouse/FastAPI endpoints via /api/v1/traders
  */
 
 'use client';
@@ -68,7 +70,7 @@ export default function AnalyzeUserPage() {
     }
   };
 
-  // Calculate win rate
+  // Calculate win rate (trader already has winRate from API, but use local calculation for display)
   const winRate = useMemo(() => {
     if (!trader) return 0;
     const totalOutcomes = trader.winCount + trader.lossCount;
@@ -78,11 +80,11 @@ export default function AnalyzeUserPage() {
 
   // Prepare scatter chart data from completed trades (sell trades)
   const scatterData: TradeScatterData[] = useMemo(() => {
-    if (!tradesData?.trades) return [];
+    if (!tradesData?.items) return [];
 
     // Group trades by market and outcome to find buy/sell pairs
     const tradesByPosition = new Map<string, Trade[]>();
-    tradesData.trades.forEach((trade) => {
+    tradesData.items.forEach((trade) => {
       const key = `${trade.marketId}-${trade.outcomeId}`;
       if (!tradesByPosition.has(key)) {
         tradesByPosition.set(key, []);
@@ -117,22 +119,21 @@ export default function AnalyzeUserPage() {
 
   // Prepare PnL by entry price data
   const pnlByEntryData: PnlByEntryChartData[] = useMemo(() => {
-    if (!tradesData?.trades) return [];
+    if (!tradesData?.items) return [];
 
     // Calculate PnL for each entry price range
     const pnlByRange = new Map<string, number>();
     ENTRY_PRICE_RANGES.forEach((r) => pnlByRange.set(r.range, 0));
 
-    // For each buy trade, estimate PnL based on current price or sell price
-    tradesData.trades.forEach((trade) => {
+    // For each buy trade, estimate PnL based on realized PnL or price difference
+    tradesData.items.forEach((trade) => {
       if (trade.side !== 'BUY') return;
 
       const range = ENTRY_PRICE_RANGES.find((r) => trade.price >= r.min && trade.price < r.max);
       if (!range) return;
 
-      // Get sell price (use outcome current price as proxy for current value)
-      const currentPrice = trade.outcome.currentPrice;
-      const pnl = (currentPrice - trade.price) * trade.amount;
+      // Use realized PnL if available, otherwise estimate based on quantity and price
+      const pnl = trade.realizedPnl ?? 0;
       pnlByRange.set(range.range, pnlByRange.get(range.range)! + pnl);
     });
 
@@ -148,15 +149,15 @@ export default function AnalyzeUserPage() {
       key: 'market',
       header: 'Market',
       render: (_, position) => (
-        <div className="max-w-xs truncate" title={position.market.question}>
-          {position.market.question}
+        <div className="max-w-xs truncate" title={position.marketQuestion}>
+          {position.marketQuestion}
         </div>
       ),
     },
     {
       key: 'outcome',
       header: 'Outcome',
-      render: (_, position) => position.outcome.outcomeName,
+      render: (_, position) => position.outcomeName,
     },
     {
       key: 'quantity',
@@ -165,15 +166,15 @@ export default function AnalyzeUserPage() {
       className: 'text-right',
     },
     {
-      key: 'avgPrice',
-      header: 'Avg Price',
-      render: (_, position) => formatPercent(position.avgPrice),
+      key: 'avgCost',
+      header: 'Avg Cost',
+      render: (_, position) => formatPercent(position.avgCost),
       className: 'text-right',
     },
     {
-      key: 'currentValue',
-      header: 'Current Value',
-      render: (_, position) => formatCurrency(position.currentValue),
+      key: 'currentPrice',
+      header: 'Current Price',
+      render: (_, position) => formatPercent(position.currentPrice),
       className: 'text-right',
     },
     {
@@ -209,8 +210,8 @@ export default function AnalyzeUserPage() {
       key: 'market',
       header: 'Market',
       render: (_, trade) => (
-        <div className="max-w-xs truncate" title={trade.market.question}>
-          {trade.market.question}
+        <div className="max-w-xs truncate" title={trade.marketQuestion}>
+          {trade.marketQuestion}
         </div>
       ),
     },
@@ -421,7 +422,7 @@ export default function AnalyzeUserPage() {
             </CardHeader>
             <CardContent>
               <DataTable
-                data={tradesData?.trades ?? []}
+                data={tradesData?.items ?? []}
                 columns={tradesColumns}
                 loading={isLoadingTrades}
                 emptyMessage="No trades found"

@@ -257,10 +257,10 @@ export default function AnalyzeMarketPage() {
                   <div className="flex items-center justify-center py-4">
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
                   </div>
-                ) : searchData?.markets.length === 0 ? (
+                ) : searchData?.items.length === 0 ? (
                   <div className="px-4 py-3 text-sm text-gray-500">No markets found</div>
                 ) : (
-                  searchData?.markets.map((m) => (
+                  searchData?.items.map((m) => (
                     <button
                       key={m.id}
                       onClick={() => handleSelectMarket(m)}

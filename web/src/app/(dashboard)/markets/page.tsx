@@ -219,10 +219,10 @@ export default function MarketsPage() {
 
   // Filter markets by watchlist if watchlistOnly is enabled
   const displayedMarkets = useMemo(() => {
-    if (!marketsData?.markets) return [];
-    if (!filters.watchlistOnly) return marketsData.markets;
-    return marketsData.markets.filter((market) => watchlistedIds.has(market.id));
-  }, [marketsData?.markets, filters.watchlistOnly, watchlistedIds]);
+    if (!marketsData?.items) return [];
+    if (!filters.watchlistOnly) return marketsData.items;
+    return marketsData.items.filter((market) => watchlistedIds.has(market.id));
+  }, [marketsData?.items, filters.watchlistOnly, watchlistedIds]);
 
   // Adjusted total for watchlist filtering
   const displayedTotal = filters.watchlistOnly

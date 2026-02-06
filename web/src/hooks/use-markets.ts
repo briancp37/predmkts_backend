@@ -1,7 +1,7 @@
 /**
  * React Query hooks for market data fetching
  *
- * PRD #10 - Create React Query hooks for data fetching
+ * Calls FastAPI backend at /api/v1/markets
  *
  * Provides:
  * - useMarkets() - Fetch markets with filtering and pagination
@@ -11,6 +11,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+
+const API_BASE = '/api/v1';
 
 /**
  * Market outcome type (token)
@@ -24,7 +26,7 @@ export interface MarketOutcome {
 }
 
 /**
- * Market type matching API response
+ * Market type matching FastAPI MarketResponse schema
  */
 export interface Market {
   id: string;
@@ -36,23 +38,21 @@ export interface Market {
   category: string | null;
   endDate: string | null;
   resolved: boolean;
-  outcome: string | null;
   totalVolume: number;
   liquidity: number;
-  eventId: string | null;
   createdAt: string;
-  updatedAt: string;
+  imageUrl: string | null;
   outcomes: MarketOutcome[];
 }
 
 /**
- * Response type for /api/markets endpoint
+ * Response type for /api/v1/markets endpoint (FastAPI MarketListResponse)
  */
 export interface MarketsResponse {
-  markets: Market[];
+  items: Market[];
   total: number;
+  page: number;
   limit: number;
-  offset: number;
 }
 
 /**
@@ -96,7 +96,7 @@ async function fetchMarkets(params: Omit<UseMarketsParams, 'enabled'>): Promise<
   }
 
   const queryString = searchParams.toString();
-  const url = `/api/markets${queryString ? `?${queryString}` : ''}`;
+  const url = `${API_BASE}/markets${queryString ? `?${queryString}` : ''}`;
 
   const response = await fetch(url);
 
@@ -139,10 +139,10 @@ export function useMarkets(params: UseMarketsParams = {}) {
 }
 
 /**
- * Fetch a single market from the API
+ * Fetch a single market from the FastAPI backend
  */
 async function fetchMarket(id: string): Promise<Market> {
-  const response = await fetch(`/api/markets/${encodeURIComponent(id)}`);
+  const response = await fetch(`${API_BASE}/markets/${encodeURIComponent(id)}`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
