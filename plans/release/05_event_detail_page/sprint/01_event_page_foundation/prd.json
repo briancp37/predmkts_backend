@@ -49,7 +49,7 @@
       "Create ActivitySkeleton component",
       "Wire up skeletons to display during data fetch"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "error_handling",

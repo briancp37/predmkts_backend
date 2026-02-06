@@ -22,7 +22,7 @@ import Link from 'next/link';
 import { ArrowLeft, Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/loading-skeleton';
+import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
 import { EventDetailLayout, SectionPlaceholder } from '@/components/event/event-detail-layout';
 
 interface EventPageProps {
@@ -56,92 +56,6 @@ function formatCurrency(value: number): string {
     return `$${(value / 1_000).toFixed(1)}K`;
   }
   return `$${value.toFixed(2)}`;
-}
-
-/**
- * Loading skeleton for event detail with two-column layout
- */
-function EventDetailSkeleton() {
-  return (
-    <div className="space-y-4">
-      {/* Breadcrumb skeleton */}
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-4 w-16" />
-        <Skeleton className="h-4 w-4" />
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-4" />
-        <Skeleton className="h-4 w-32" />
-      </div>
-
-      {/* Main grid layout */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Main content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Header skeleton */}
-          <Card>
-            <CardContent className="pt-6 space-y-3">
-              <Skeleton className="h-5 w-24 rounded-full" />
-              <Skeleton className="h-8 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <div className="flex gap-4 pt-2">
-                <Skeleton className="h-5 w-20" />
-                <Skeleton className="h-5 w-24" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Outcomes skeleton */}
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-24" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                  <Skeleton className="h-5 w-20" />
-                  <div className="flex gap-3">
-                    <Skeleton className="h-5 w-14" />
-                    <Skeleton className="h-5 w-16" />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Chart skeleton */}
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-28" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-[300px] w-full" />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sidebar skeleton */}
-        <div className="lg:col-span-1 space-y-6">
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-5 w-28" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -410,7 +324,7 @@ export default function EventDetailPage({ params }: EventPageProps) {
 
   // Loading state
   if (isLoading) {
-    return <EventDetailSkeleton />;
+    return <EventDetailPageSkeleton />;
   }
 
   // Error state

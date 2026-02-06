@@ -60,6 +60,21 @@
 - All TypeScript type checks pass (npm run typecheck)
 - All tests pass (npm run test - 82 tests)
 
+### loading_states (2026-02-06)
+- Created dedicated skeleton components in web/src/components/loading-skeleton.tsx:
+  - EventHeaderSkeleton: category badge, title (2 lines), description, status/metadata row
+  - OutcomeCardsSkeleton: configurable number of markets, each with 2 outcome rows and stats
+  - TradingPanelSkeleton: trade card with placeholder, market info card, related events card
+  - ChartSkeleton: chart header with Y-axis labels, chart body, and X-axis labels
+  - ActivityFeedSkeleton: configurable number of trade rows with timestamp, trader, action, outcome, amount
+  - EventDetailPageSkeleton: combines all above components in two-column layout with breadcrumb skeleton
+- All skeleton components use staggered animation delays for visual polish
+- Updated event detail page to use EventDetailPageSkeleton instead of inline skeleton
+- Removed redundant inline EventDetailSkeleton function from page.tsx
+- Added all new components to default export in loading-skeleton.tsx
+- All TypeScript type checks pass (npm run typecheck)
+- All tests pass (npm run test - 82 tests)
+
 ## In Progress
 
 
@@ -71,5 +86,6 @@
 - Price data comes from market_mark_daily table (VWAP mark prices)
 - Fallback to parsing tokens JSON from dim_market when dim_outcome is empty
 - page_layout feature is complete with two-column responsive layout and breadcrumb navigation
-- Next task should be loading_states to create dedicated skeleton components
+- loading_states feature is complete - skeleton components are modular and reusable
+- Next task should be error_handling to create dedicated error components (EventNotFound, error boundary)
 

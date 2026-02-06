@@ -446,6 +446,241 @@ export function LoadingButton({
   );
 }
 
+/**
+ * Skeleton for event header (matches EventHeader component structure)
+ * Displays category badge, title, description, and status
+ */
+export function EventHeaderSkeleton() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="p-6 space-y-3">
+        {/* Category badge */}
+        <Skeleton className="h-5 w-24 rounded-full" />
+
+        {/* Title */}
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-8 w-1/2" />
+
+        {/* Description */}
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+
+        {/* Status and metadata row */}
+        <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100">
+          <Skeleton className="h-6 w-16 rounded-full" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for outcome cards (matches OutcomesList component structure)
+ * Displays market questions with outcome rows showing price and 24h change
+ */
+export function OutcomeCardsSkeleton({ markets = 2 }: { markets?: number }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: markets }).map((_, marketIndex) => (
+        <div
+          key={marketIndex}
+          className="rounded-lg border border-gray-200 bg-white shadow-sm"
+          style={{ animationDelay: `${marketIndex * 100}ms` }}
+        >
+          {/* Market header */}
+          <div className="p-4 pb-2 flex items-start justify-between gap-4">
+            <Skeleton className="h-5 w-2/3" />
+            <Skeleton className="h-4 w-4" />
+          </div>
+
+          {/* Outcomes */}
+          <div className="px-4 pb-4 space-y-2">
+            {[1, 2].map((outcomeIndex) => (
+              <div
+                key={outcomeIndex}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
+                {/* Outcome name */}
+                <Skeleton className="h-5 w-16" />
+
+                {/* Price and change */}
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-6 w-14" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+              </div>
+            ))}
+
+            {/* Market stats row */}
+            <div className="flex items-center justify-between text-sm pt-3 border-t border-gray-100">
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+              <Skeleton className="h-4 w-24" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton for trading panel sidebar (matches TradingPanelSidebar component structure)
+ * Displays trade card, market info, and related events
+ */
+export function TradingPanelSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* Trade card */}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="p-4 pb-3">
+          <Skeleton className="h-5 w-12" />
+        </div>
+        <div className="px-4 pb-4 space-y-4">
+          {/* Trading panel placeholder */}
+          <Skeleton className="h-[120px] w-full rounded-lg" />
+          {/* Trade button */}
+          <Skeleton className="h-10 w-full rounded-lg" />
+        </div>
+      </div>
+
+      {/* Market info card */}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="p-4 pb-3 flex items-center gap-2">
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-5 w-24" />
+        </div>
+        <div className="px-4 pb-4">
+          <Skeleton className="h-[100px] w-full rounded-lg" />
+        </div>
+      </div>
+
+      {/* Related events card */}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="p-4 pb-3">
+          <Skeleton className="h-5 w-28" />
+        </div>
+        <div className="px-4 pb-4">
+          <Skeleton className="h-[80px] w-full rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for price chart (matches chart placeholder structure)
+ * Displays chart header and chart area
+ */
+export function ChartSkeleton() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="p-4 pb-3">
+        <Skeleton className="h-5 w-28" />
+      </div>
+      <div className="px-4 pb-4">
+        {/* Chart area with mock axis lines */}
+        <div className="relative h-[300px] w-full">
+          {/* Y-axis labels */}
+          <div className="absolute left-0 top-0 bottom-8 flex flex-col justify-between">
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+            <Skeleton className="h-3 w-8" />
+          </div>
+          {/* Chart body */}
+          <div className="ml-10 h-full">
+            <Skeleton className="h-[260px] w-full" />
+            {/* X-axis labels */}
+            <div className="flex justify-between mt-2">
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-3 w-12" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for activity feed (matches activity feed placeholder structure)
+ * Displays activity header and trade rows
+ */
+export function ActivityFeedSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="p-4 pb-3">
+        <Skeleton className="h-5 w-28" />
+      </div>
+      <div className="px-4 pb-4 space-y-3">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div
+            key={index}
+            className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0"
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
+            {/* Timestamp */}
+            <Skeleton className="h-4 w-16 shrink-0" />
+            {/* Trader */}
+            <Skeleton className="h-4 w-20 shrink-0" />
+            {/* Action badge */}
+            <Skeleton className="h-5 w-10 rounded-full shrink-0" />
+            {/* Outcome */}
+            <Skeleton className="h-4 w-12 shrink-0" />
+            {/* Amount */}
+            <Skeleton className="h-4 w-16 shrink-0 ml-auto" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Complete skeleton for event detail page with two-column layout
+ * Combines all event page skeleton components
+ */
+export function EventDetailPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* Breadcrumb skeleton */}
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-4 w-4" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-4" />
+        <Skeleton className="h-4 w-32" />
+      </div>
+
+      {/* Main grid layout */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main content */}
+        <div className="lg:col-span-2 space-y-6">
+          <EventHeaderSkeleton />
+          <OutcomeCardsSkeleton markets={2} />
+          <ChartSkeleton />
+          <ActivityFeedSkeleton rows={5} />
+        </div>
+
+        {/* Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="lg:sticky lg:top-24">
+            <TradingPanelSkeleton />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default {
   Skeleton,
   MarketCardSkeleton,
@@ -460,4 +695,10 @@ export default {
   RefetchingOverlay,
   StaleIndicator,
   LoadingButton,
+  EventHeaderSkeleton,
+  OutcomeCardsSkeleton,
+  TradingPanelSkeleton,
+  ChartSkeleton,
+  ActivityFeedSkeleton,
+  EventDetailPageSkeleton,
 };
