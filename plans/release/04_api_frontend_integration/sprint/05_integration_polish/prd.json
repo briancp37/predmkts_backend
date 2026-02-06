@@ -99,7 +99,7 @@
       "Verify Swagger UI works at /docs",
       "Verify ReDoc works at /redoc"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Error Boundaries",

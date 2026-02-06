@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
@@ -44,11 +45,114 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     await close_clob_client()
 
 
+API_DESCRIPTION = """
+## Overview
+
+REST API for prediction market data and user features. Provides access to market data,
+trader analytics, watchlists, and tracked trader activity from Polymarket.
+
+## Authentication
+
+Most endpoints require JWT Bearer token authentication. To authenticate:
+
+1. Register a new account via `POST /api/v1/auth/register`
+2. Login via `POST /api/v1/auth/login` to receive access and refresh tokens
+3. Include the access token in the `Authorization` header: `Bearer <access_token>`
+4. When the access token expires (30 min), use `POST /api/v1/auth/refresh` with your refresh token
+
+## Rate Limits
+
+Rate limits vary by endpoint category:
+
+| Category | Limit | Description |
+|----------|-------|-------------|
+| Auth endpoints | 10 req/min | Brute force prevention |
+| Public endpoints | 100 req/min | Markets, traders, events |
+| Authenticated endpoints | 200 req/min | Watchlist, tracked traders |
+| CLOB proxy | 50 req/min | Advanced market data (Polymarket proxy) |
+
+Rate limit headers returned with each response:
+- `X-RateLimit-Limit`: Request limit for the endpoint
+- `X-RateLimit-Remaining`: Remaining requests in current window
+- `Retry-After`: Seconds to wait (only on 429 responses)
+
+## Error Handling
+
+All errors return a consistent JSON format:
+
+```json
+{
+  "detail": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "status": 400
+}
+```
+
+Common error codes:
+- `NOT_FOUND` (404): Resource not found
+- `DUPLICATE_ENTRY` (400): Duplicate watchlist/tracker entry
+- `TIER_LIMIT_EXCEEDED` (403): Tracked trader limit reached for your tier
+- `UNAUTHORIZED` (401): Invalid or expired credentials
+- `RATE_LIMIT_EXCEEDED` (429): Too many requests
+- `VALIDATION_ERROR` (422): Invalid request parameters
+
+## Versioning
+
+All API endpoints use URL-based versioning with `/api/v1/` prefix.
+Health check endpoints are not versioned (`/health`, `/health/ready`, `/health/live`).
+"""
+
+OPENAPI_TAGS = [
+    {
+        "name": "auth",
+        "description": "User authentication and account management. Register, login, "
+        "refresh tokens, and manage user profile. Rate limited to 10 req/min per IP.",
+    },
+    {
+        "name": "markets",
+        "description": "Prediction market data and search. Browse markets, view details, "
+        "trades, and price history. Public endpoints rate limited to 100 req/min. "
+        "Advanced endpoints (CLOB data) limited to 50 req/min.",
+    },
+    {
+        "name": "traders",
+        "description": "Trader analytics and leaderboards. View trader profiles, positions, "
+        "trades, smart scores, and leaderboard rankings. Rate limited to 100 req/min.",
+    },
+    {
+        "name": "watchlist",
+        "description": "User market watchlist management. Add, remove, and view watched markets. "
+        "Requires authentication. Rate limited to 200 req/min per user.",
+    },
+    {
+        "name": "tracked-traders",
+        "description": "Tracked trader management and activity feed. Track wallets to monitor "
+        "their trading activity. Tier-based limits apply (free: 5, pro: 50). "
+        "Requires authentication. Rate limited to 200 req/min per user.",
+    },
+    {
+        "name": "trades",
+        "description": "Smart money and whale trade detection. View high-conviction trades "
+        "from smart traders and large whale transactions. Rate limited to 100 req/min.",
+    },
+    {
+        "name": "events",
+        "description": "Event data and associated markets. Browse events and their markets. "
+        "Rate limited to 100 req/min.",
+    },
+    {
+        "name": "health",
+        "description": "Health check endpoints for monitoring and Kubernetes probes. "
+        "Not versioned, not rate limited.",
+    },
+]
+
 app = FastAPI(
     title="Prediction Markets API",
-    description="REST API for prediction market data and user features",
+    description=API_DESCRIPTION,
     version="0.1.0",
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
 )
 
 # Add rate limiter state and exception handler
@@ -224,4 +328,67 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         headers={"X-Request-ID": request_id},
     )
 
+
+def custom_openapi() -> dict[str, Any]:
+    """Generate custom OpenAPI schema with security schemes."""
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+
+    # Add security scheme for JWT Bearer tokens
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT access token obtained from /api/v1/auth/login. "
+            "Tokens expire after 30 minutes. Use /api/v1/auth/refresh to get new tokens.",
+        }
+    }
+
+    # Add common error response schemas
+    openapi_schema["components"]["schemas"]["ErrorResponse"] = {
+        "type": "object",
+        "properties": {
+            "detail": {"type": "string", "description": "Human-readable error message"},
+            "code": {"type": "string", "description": "Machine-readable error code"},
+            "status": {"type": "integer", "description": "HTTP status code"},
+        },
+        "required": ["detail", "code", "status"],
+        "example": {
+            "detail": "Resource not found",
+            "code": "NOT_FOUND",
+            "status": 404,
+        },
+    }
+
+    openapi_schema["components"]["schemas"]["RateLimitResponse"] = {
+        "type": "object",
+        "properties": {
+            "detail": {"type": "string"},
+            "code": {"type": "string", "enum": ["RATE_LIMIT_EXCEEDED"]},
+            "status": {"type": "integer", "enum": [429]},
+            "retry_after": {"type": "integer", "description": "Seconds until rate limit resets"},
+        },
+        "required": ["detail", "code", "status", "retry_after"],
+        "example": {
+            "detail": "Rate limit exceeded",
+            "code": "RATE_LIMIT_EXCEEDED",
+            "status": 429,
+            "retry_after": 60,
+        },
+    }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore[method-assign]
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
 from prediction_data.api.exceptions import DuplicateError, NotFoundError, ValidationError
-from prediction_data.api.rate_limit import limiter, AUTHENTICATED_RATE_LIMIT
+from prediction_data.api.rate_limit import AUTHENTICATED_RATE_LIMIT, limiter
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
 
@@ -35,8 +35,20 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CHClient = Annotated[Client, Depends(get_clickhouse_client)]
 
+# Common error response schemas for OpenAPI documentation
+ERROR_400 = {"description": "Bad request - market already in watchlist or invalid market ID"}
+ERROR_401 = {"description": "Unauthorized - missing or invalid access token"}
+ERROR_404 = {"description": "Not found - market not in watchlist"}
+ERROR_422 = {"description": "Validation error - invalid market ID format"}
+ERROR_429 = {"description": "Rate limit exceeded - max 200 requests/minute"}
 
-@router.get("", response_model=WatchlistResponse)
+
+@router.get(
+    "",
+    response_model=WatchlistResponse,
+    responses={401: ERROR_401, 429: ERROR_429},
+    summary="Get watchlist",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_watchlist(
     request: Request,
@@ -44,10 +56,12 @@ async def get_watchlist(
     ch: CHClient,
     current_user: CurrentUser,
 ) -> WatchlistResponse:
-    """Get user's watchlist with market details.
+    """Get the authenticated user's watchlist.
 
     Returns all markets in the user's watchlist, enriched with current
-    market information including price and 24h change.
+    market information including question, category, price, and 24h change.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     watchlist_items = await get_user_watchlist(db, current_user.id)
 
@@ -80,7 +94,13 @@ async def get_watchlist(
     return WatchlistResponse(items=items, count=len(items))
 
 
-@router.post("", response_model=WatchlistItem, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WatchlistItem,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: ERROR_400, 401: ERROR_401, 422: ERROR_422, 429: ERROR_429},
+    summary="Add to watchlist",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def add_market_to_watchlist(
     request: Request,
@@ -89,9 +109,12 @@ async def add_market_to_watchlist(
     ch: CHClient,
     current_user: CurrentUser,
 ) -> WatchlistItem:
-    """Add a market to user's watchlist.
+    """Add a market to the user's watchlist.
 
-    Returns the created watchlist item. Returns 400 if already in watchlist.
+    The market ID must be a valid Polymarket condition ID (0x + 64 hex chars).
+    Returns 400 if the market is already in the watchlist or doesn't exist.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     # Validate market exists in ClickHouse
     if not await market_exists(ch, body.marketId):
@@ -111,7 +134,12 @@ async def add_market_to_watchlist(
     )
 
 
-@router.delete("/{market_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{market_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={401: ERROR_401, 404: ERROR_404, 429: ERROR_429},
+    summary="Remove from watchlist",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def remove_market_from_watchlist(
     request: Request,
@@ -119,9 +147,12 @@ async def remove_market_from_watchlist(
     db: DbSession,
     current_user: CurrentUser,
 ) -> Response:
-    """Remove a market from user's watchlist.
+    """Remove a market from the user's watchlist.
 
-    Returns 204 No Content on success, 404 if not in watchlist.
+    Returns 204 No Content on success. Returns 404 if the market
+    is not in the user's watchlist.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     deleted = await remove_from_watchlist(db, current_user.id, market_id)
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
 from prediction_data.api.exceptions import DuplicateError, NotFoundError, TierLimitExceededError
-from prediction_data.api.rate_limit import limiter, AUTHENTICATED_RATE_LIMIT
+from prediction_data.api.rate_limit import AUTHENTICATED_RATE_LIMIT, limiter
 from prediction_data.api.traders.schemas import TradeResponse
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
@@ -45,8 +45,21 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CHClient = Annotated[Client, Depends(get_clickhouse_client)]
 
+# Common error response schemas for OpenAPI documentation
+ERROR_400 = {"description": "Bad request - trader already tracked or invalid address"}
+ERROR_401 = {"description": "Unauthorized - missing or invalid access token"}
+ERROR_403 = {"description": "Forbidden - tier limit exceeded for tracked traders"}
+ERROR_404 = {"description": "Not found - tracked trader not found"}
+ERROR_422 = {"description": "Validation error - invalid wallet address format"}
+ERROR_429 = {"description": "Rate limit exceeded - max 200 requests/minute"}
 
-@router.get("", response_model=TrackedTradersListResponse)
+
+@router.get(
+    "",
+    response_model=TrackedTradersListResponse,
+    responses={401: ERROR_401, 429: ERROR_429},
+    summary="List tracked traders",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_tracked_traders(
     request: Request,
@@ -54,10 +67,12 @@ async def get_tracked_traders(
     ch: CHClient,
     current_user: CurrentUser,
 ) -> TrackedTradersListResponse:
-    """Get user's tracked traders with stats.
+    """Get all tracked traders with stats.
 
-    Returns all tracked traders with PnL, recent trade count, and smart score.
-    Includes the user's tier limit for tracked traders.
+    Returns tracked traders with 30-day PnL, recent trade count, and smart score.
+    Also includes the user's tier limit (free: 5, pro: 50, enterprise: unlimited).
+
+    **Rate limit:** 200 requests/minute per user.
     """
     tracked = await get_user_tracked_traders(db, current_user.id)
     tier_limit = get_tier_limit(current_user.tier)
@@ -90,7 +105,13 @@ async def get_tracked_traders(
     return TrackedTradersListResponse(items=items, count=len(items), limit=tier_limit)
 
 
-@router.post("", response_model=TrackedTraderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TrackedTraderResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={400: ERROR_400, 401: ERROR_401, 403: ERROR_403, 422: ERROR_422, 429: ERROR_429},
+    summary="Add tracked trader",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def add_tracked(
     request: Request,
@@ -98,10 +119,13 @@ async def add_tracked(
     db: DbSession,
     current_user: CurrentUser,
 ) -> TrackedTraderResponse:
-    """Add a trader to user's tracked list.
+    """Add a trader to the tracked list.
 
-    Returns 403 if tier limit is exceeded.
-    Returns 400 if trader is already tracked.
+    The wallet address must be a valid Ethereum address (0x + 40 hex chars).
+    Returns 403 if you've reached your tier limit (free: 5, pro: 50).
+    Returns 400 if the trader is already in your tracked list.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     # Check tier limit
     current_count = await get_tracked_count(db, current_user.id)
@@ -135,20 +159,32 @@ async def add_tracked(
     )
 
 
-@router.get("/activity", response_model=list[TrackedTraderActivity])
+@router.get(
+    "/activity",
+    response_model=list[TrackedTraderActivity],
+    responses={401: ERROR_401, 422: ERROR_422, 429: ERROR_429},
+    summary="Get activity feed",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_activity(
     request: Request,
     db: DbSession,
     ch: CHClient,
     current_user: CurrentUser,
-    limit: int = Query(default=50, ge=1, le=200),
-    start_date: str | None = Query(default=None, alias="startDate"),
-    end_date: str | None = Query(default=None, alias="endDate"),
+    limit: int = Query(default=50, ge=1, le=200, description="Maximum activities to return"),
+    start_date: str | None = Query(
+        default=None, alias="startDate", description="Filter from date (YYYY-MM-DD)"
+    ),
+    end_date: str | None = Query(
+        default=None, alias="endDate", description="Filter to date (YYYY-MM-DD)"
+    ),
 ) -> list[TrackedTraderActivity]:
-    """Get activity feed from tracked traders.
+    """Get the activity feed from all tracked traders.
 
-    Returns recent trades from all tracked traders, ordered by timestamp DESC.
+    Returns recent trades from your tracked traders, ordered by timestamp (newest first).
+    Includes trader info, trade details, and can be filtered by date range.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     # Get tracked addresses
     tracked = await get_user_tracked_traders(db, current_user.id)
@@ -208,7 +244,12 @@ async def get_activity(
     return result
 
 
-@router.get("/{tracker_id}", response_model=TrackedTraderWithStats)
+@router.get(
+    "/{tracker_id}",
+    response_model=TrackedTraderWithStats,
+    responses={401: ERROR_401, 404: ERROR_404, 429: ERROR_429},
+    summary="Get tracked trader",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_tracked_trader(
     request: Request,
@@ -219,7 +260,10 @@ async def get_tracked_trader(
 ) -> TrackedTraderWithStats:
     """Get a single tracked trader with detailed stats.
 
-    Returns 404 if not found or not owned by user.
+    Returns the tracked trader with 30-day PnL, recent trade count, and smart score.
+    Returns 404 if not found or not owned by the authenticated user.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     tracker = await get_tracked_trader_by_id(db, current_user.id, tracker_id)
 
@@ -241,7 +285,12 @@ async def get_tracked_trader(
     )
 
 
-@router.delete("/{tracker_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{tracker_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={401: ERROR_401, 404: ERROR_404, 429: ERROR_429},
+    summary="Remove tracked trader",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def delete_tracked_trader(
     request: Request,
@@ -249,9 +298,12 @@ async def delete_tracked_trader(
     db: DbSession,
     current_user: CurrentUser,
 ) -> Response:
-    """Remove a trader from user's tracked list.
+    """Remove a trader from the tracked list.
 
-    Returns 204 No Content on success, 404 if not found.
+    Returns 204 No Content on success. Returns 404 if the tracker
+    is not found or not owned by the authenticated user.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     deleted = await remove_tracked_trader(db, current_user.id, tracker_id)
 
@@ -261,7 +313,12 @@ async def delete_tracked_trader(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.patch("/{tracker_id}", response_model=TrackedTraderResponse)
+@router.patch(
+    "/{tracker_id}",
+    response_model=TrackedTraderResponse,
+    responses={401: ERROR_401, 404: ERROR_404, 422: ERROR_422, 429: ERROR_429},
+    summary="Update tracked trader",
+)
 @limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def patch_tracked_trader(
     request: Request,
@@ -272,7 +329,10 @@ async def patch_tracked_trader(
 ) -> TrackedTraderResponse:
     """Update a tracked trader's custom name.
 
-    Returns 404 if not found or not owned by user.
+    Use this to set or update the custom display name for a tracked trader.
+    Returns 404 if the tracker is not found or not owned by the authenticated user.
+
+    **Rate limit:** 200 requests/minute per user.
     """
     tracker = await update_tracked_trader(
         db, current_user.id, tracker_id, body.customName

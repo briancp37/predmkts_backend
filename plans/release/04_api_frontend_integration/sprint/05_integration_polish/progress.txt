@@ -271,6 +271,31 @@
 - Rate limiting on auth endpoints already implemented (10 req/min per IP)
 - Updated `.env.example` with `CORS_ORIGINS` configuration example
 
+### OpenAPI Documentation Polish (2026-02-05)
+- Enhanced `src/prediction_data/api/main.py` with comprehensive OpenAPI configuration:
+  - Added detailed API description with overview, authentication, rate limits, error handling, and versioning sections
+  - Added OpenAPI tags with descriptions for all 8 endpoint groups (auth, markets, traders, watchlist, tracked-traders, trades, events, health)
+  - Added custom OpenAPI schema generator with JWT Bearer security scheme
+  - Added common error response schemas (ErrorResponse, RateLimitResponse)
+- Added example values and descriptions to all Pydantic schemas:
+  - `src/prediction_data/api/auth/schemas.py`: UserCreate, UserLogin, UserResponse, TokenResponse, TokenRefresh, UserUpdate
+  - `src/prediction_data/api/markets/schemas.py`: MarketOutcome, MarketBase, MarketResponse, MarketAdvancedResponse, TradeResponse, PriceHistoryPoint, MarketFilters, TagResponse
+  - `src/prediction_data/api/traders/schemas.py`: TraderPosition, TraderBase, TraderResponse, SmartScoreComponents, SmartScoreResponse, TradeResponse, LeaderboardEntry, SmartTradeFilters, WhaleTradeFilters
+  - `src/prediction_data/api/watchlist/schemas.py`: WatchlistItem, WatchlistItemWithMarket, WatchlistAddRequest, WatchlistResponse
+  - `src/prediction_data/api/tracked_traders/schemas.py`: TrackedTraderBase, TrackedTraderCreate, TrackedTraderResponse, TrackedTraderWithStats, TrackedTraderActivity, ActivityFilters
+  - `src/prediction_data/api/events/schemas.py`: EventResponse, EventListResponse
+- Added error response documentation to routers:
+  - `src/prediction_data/api/auth/router.py`: Added responses dict with 400, 401, 422, 429 error descriptions, summaries, and rate limit info in docstrings
+  - `src/prediction_data/api/watchlist/router.py`: Added responses dict with 400, 401, 404, 422, 429 error descriptions
+  - `src/prediction_data/api/tracked_traders/router.py`: Added responses dict with 400, 401, 403, 404, 422, 429 error descriptions
+- Verified OpenAPI schema generation works correctly:
+  - All 8 tags present with descriptions
+  - BearerAuth security scheme registered
+  - Example values appear in schema components
+  - Error responses documented for endpoints
+- TypeScript check passes (mypy): 39 source files checked with no issues
+- Core tests pass (1428 passed, 13 failed in Gold layer due to ClickHouse infrastructure dependencies)
+
 ## In Progress
 
 ## Blockers
