@@ -1,0 +1,45 @@
+# Sprint Progress: Supabase Production Database
+# Release: 04_api_frontend_integration
+# Created: 2026-02-05
+
+## Status: Not Started
+
+## Overview
+Migrate PostgreSQL user database from local docker-compose to Supabase free tier for production deployment. This enables $0/month hosting for user data (vs ~$15/month for AWS RDS) while maintaining full compatibility with local development.
+
+## Key Decisions
+- Use Supabase free tier (500MB, sufficient for 100k+ users)
+- Keep docker-compose for local development (DATABASE_MODE=local)
+- Use Supabase pooler (PgBouncer) for production (DATABASE_MODE=supabase)
+- Direct connection (port 5432) only for DDL/migrations
+- Pooled connection (port 6543) for all application queries
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+- Supabase free tier pauses after 1 week of inactivity (~10s cold start on wake)
+- Free tier allows ~60 concurrent connections (pooler helps manage this)
+- Supabase is standard Postgres - no code changes needed, only connection config
+- Consider upgrading to Pro ($25/mo) if usage exceeds free tier limits
+
+## Files to Modify
+- src/prediction_data/core/config.py (add DATABASE_MODE, SUPABASE_* settings)
+- src/prediction_data/db/session.py (pooler compatibility, SSL)
+- .env.example (document new settings)
+- CLAUDE.md (document Supabase setup)
+
+## Testing Checklist
+- [ ] Local dev still works (docker-compose)
+- [ ] Supabase connection successful
+- [ ] All auth endpoints work
+- [ ] All watchlist endpoints work
+- [ ] All tracked-traders endpoints work
+- [ ] Tier limits enforced correctly
+- [ ] Existing test suite passes

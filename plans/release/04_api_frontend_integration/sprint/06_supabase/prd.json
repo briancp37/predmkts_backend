@@ -1,0 +1,160 @@
+[
+  {
+    "category": "supabase_project_setup",
+    "description": "Create Supabase project and gather connection credentials",
+    "steps": [
+      "Create Supabase account at https://supabase.com if not exists",
+      "Create new project named 'predmkts' in desired region (us-east-1 recommended for AWS proximity)",
+      "Wait for project provisioning to complete (~2 minutes)",
+      "Navigate to Project Settings > Database to retrieve connection details",
+      "Copy the 'Connection string' URI from the 'Connection pooling' section (port 6543, uses PgBouncer)",
+      "Copy the direct connection string (port 5432) for migrations and schema changes",
+      "Note the project reference ID (used in connection URLs)",
+      "Retrieve the database password from Project Settings > Database > Database password"
+    ],
+    "passes": false
+  },
+  {
+    "category": "config_supabase_support",
+    "description": "Update Settings class to support both local Postgres and Supabase connection modes",
+    "steps": [
+      "Add SUPABASE_URL optional setting to config.py (full connection URL when using Supabase)",
+      "Add SUPABASE_POOLER_URL optional setting for pooled connections (port 6543)",
+      "Add DATABASE_MODE setting with enum: 'local' | 'supabase' (default: 'local')",
+      "Update postgres_url property to return SUPABASE_POOLER_URL when DATABASE_MODE='supabase', else construct from POSTGRES_* vars",
+      "Add postgres_direct_url property for migrations (uses SUPABASE_URL with port 5432 when in supabase mode)",
+      "Add SSL configuration: when DATABASE_MODE='supabase', append '?sslmode=require' to connection URL",
+      "Add validation: if DATABASE_MODE='supabase' but SUPABASE_POOLER_URL is empty, raise clear error on startup",
+      "Update docstrings to document the two connection modes"
+    ],
+    "passes": false
+  },
+  {
+    "category": "session_pooler_compatibility",
+    "description": "Update SQLAlchemy session management for Supabase PgBouncer compatibility",
+    "steps": [
+      "Research PgBouncer transaction mode limitations (no prepared statements, no session-level state)",
+      "Update create_async_engine() in session.py: add 'prepare_threshold=0' to connect_args when using Supabase (disables prepared statements for PgBouncer compatibility)",
+      "Add connect_args={'ssl': 'require'} when DATABASE_MODE='supabase'",
+      "Consider reducing pool_size for Supabase (free tier has connection limits)",
+      "Add pool_size=5 and max_overflow=10 parameters to engine (Supabase free tier allows ~60 connections, pooler helps)",
+      "Test that async sessions work correctly with pooled connections",
+      "Ensure create_tables() uses direct connection URL (not pooler) since DDL needs direct access"
+    ],
+    "passes": false
+  },
+  {
+    "category": "environment_configuration",
+    "description": "Update environment files and documentation for Supabase settings",
+    "steps": [
+      "Update .env.example with new Supabase settings block (DATABASE_MODE, SUPABASE_URL, SUPABASE_POOLER_URL)",
+      "Add example values showing the Supabase URL format: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres",
+      "Document that POSTGRES_* vars are only used when DATABASE_MODE='local'",
+      "Create .env.supabase.example with production-ready template (DATABASE_MODE=supabase, placeholder URLs)",
+      "Update CLAUDE.md Required Environment Variables table with new settings",
+      "Add note that JWT_SECRET must be changed from default for production"
+    ],
+    "passes": false
+  },
+  {
+    "category": "table_initialization",
+    "description": "Handle table creation in Supabase (schema already exists vs needs creation)",
+    "steps": [
+      "Modify create_tables() to use direct URL (not pooler) for DDL operations",
+      "Add check: if tables already exist, skip creation (idempotent)",
+      "Test create_tables() against fresh Supabase project - verify users, watchlists, tracked_traders tables created",
+      "Verify table schemas match local Postgres exactly (column types, constraints, indexes)",
+      "Document that first API startup will auto-create tables in Supabase",
+      "Consider adding CLI command: 'prediction-data db init' for explicit table creation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "local_dev_preservation",
+    "description": "Ensure local development with docker-compose continues to work unchanged",
+    "steps": [
+      "Verify docker-compose.yml postgres service still works (no changes needed)",
+      "Verify DATABASE_MODE defaults to 'local' so existing workflows unchanged",
+      "Test full local dev cycle: docker compose up -d, uvicorn start, register user, login, CRUD operations",
+      "Document the two modes in a 'Database Configuration' section in README or CLAUDE.md",
+      "Add example commands for switching modes: 'export DATABASE_MODE=supabase' vs 'unset DATABASE_MODE'"
+    ],
+    "passes": false
+  },
+  {
+    "category": "integration_testing",
+    "description": "Verify all API functionality works correctly with Supabase backend",
+    "steps": [
+      "Set DATABASE_MODE=supabase and configure real Supabase credentials in .env",
+      "Start FastAPI with uvicorn and verify startup logs show Supabase connection",
+      "Test POST /api/v1/auth/register - create new user in Supabase",
+      "Verify user record exists in Supabase dashboard (Table Editor > users)",
+      "Test POST /api/v1/auth/login - verify JWT returned",
+      "Test GET /api/v1/auth/me - verify user data returned",
+      "Test PATCH /api/v1/auth/me - verify profile update persists",
+      "Test full watchlist CRUD: POST /watchlist, GET /watchlist, DELETE /watchlist/{id}",
+      "Test full tracked-traders CRUD: POST, GET, PATCH, DELETE operations",
+      "Test tier limits: add 7 tracked traders on FREE tier, verify 403 on 7th",
+      "Test GET /tracked-traders/activity - verify activity feed queries work",
+      "Verify all 1441 existing tests still pass with DATABASE_MODE=local"
+    ],
+    "passes": false
+  },
+  {
+    "category": "error_handling",
+    "description": "Add proper error handling for Supabase-specific failure modes",
+    "steps": [
+      "Handle connection timeout errors (Supabase free tier pauses after 1 week inactivity)",
+      "Add retry logic with exponential backoff for initial connection (handle cold start wake-up)",
+      "Log clear error message if Supabase project is paused: 'Database is waking up, please retry in 10 seconds'",
+      "Handle SSL certificate errors gracefully with actionable error message",
+      "Handle 'too many connections' error (free tier limit) with clear message about connection pooling",
+      "Add health check endpoint enhancement: /health should return database connectivity status"
+    ],
+    "passes": false
+  },
+  {
+    "category": "documentation",
+    "description": "Document Supabase setup and operational procedures",
+    "steps": [
+      "Add 'Production Database (Supabase)' section to CLAUDE.md or create docs/supabase-setup.md",
+      "Document step-by-step Supabase project creation process",
+      "Document how to find and configure connection strings",
+      "Document the difference between pooler URL (6543) and direct URL (5432)",
+      "Document free tier limitations: 500MB storage, pauses after 1 week inactivity, ~60 connections",
+      "Add troubleshooting section: common errors and solutions",
+      "Document upgrade path: how to migrate to Supabase Pro if needed",
+      "Update RELEASE.md Exit Criteria to include 'Supabase production database configured'"
+    ],
+    "passes": false
+  },
+  {
+    "category": "security_review",
+    "description": "Ensure secure configuration for production Supabase deployment",
+    "steps": [
+      "Verify .env is in .gitignore (never commit Supabase credentials)",
+      "Verify SSL is enforced for all Supabase connections (sslmode=require)",
+      "Review Supabase dashboard: disable anonymous sign-ups if using direct DB access only",
+      "Consider enabling Row Level Security (RLS) on tables for defense-in-depth (optional for v1)",
+      "Document that Supabase password should be rotated periodically",
+      "Ensure JWT_SECRET is different from Supabase's JWT secret (we use our own auth)",
+      "Add note: do not expose Supabase service_role key (only anon key if using Supabase Auth, which we're not)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "validation_and_deployment",
+    "description": "Final validation and production deployment checklist",
+    "steps": [
+      "Create production Supabase project (separate from dev/test if desired)",
+      "Configure production .env with Supabase credentials",
+      "Run full test suite to verify no regressions",
+      "Deploy API and verify it connects to Supabase successfully",
+      "Create test user and verify full auth flow in production",
+      "Monitor Supabase dashboard for connection count and database size",
+      "Verify API latency is acceptable (Supabase in same region as other AWS resources)",
+      "Document rollback procedure: how to switch back to local Postgres if needed"
+    ],
+    "passes": false
+  }
+]

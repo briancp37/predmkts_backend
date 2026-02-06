@@ -89,3 +89,8 @@ Thumbs.db
 # Archives / scratch
 archive.tar.xz
 tmp.ipynb
+
+# Next.js / Frontend
+web/.next/
+web/node_modules/
+web/tsconfig.tsbuildinfo
