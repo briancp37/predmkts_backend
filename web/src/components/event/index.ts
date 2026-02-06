@@ -10,3 +10,8 @@ export {
   type BreadcrumbItem,
   type EventDetailLayoutProps,
 } from './event-detail-layout';
+
+export {
+  EventNotFound,
+  EventError,
+} from './event-error-states';

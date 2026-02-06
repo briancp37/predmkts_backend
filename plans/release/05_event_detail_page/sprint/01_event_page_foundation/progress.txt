@@ -75,6 +75,25 @@
 - All TypeScript type checks pass (npm run typecheck)
 - All tests pass (npm run test - 82 tests)
 
+### error_handling (2026-02-06)
+- Created dedicated error state components in web/src/components/event/event-error-states.tsx:
+  - EventNotFound: Polished 404 component with icon, slug display, suggestions list, and navigation
+  - EventError: Generic error component with status-aware styling and retry functionality
+  - User-friendly message transformation (network errors, timeouts, etc.)
+  - Development mode console logging for debugging
+- Created Next.js error boundary at web/src/app/(dashboard)/event/[slug]/error.tsx:
+  - Catches runtime errors in the route segment
+  - Shows error details in development mode (message, digest, stack)
+  - Provides reset and navigation buttons
+  - Logs errors to console in development
+- Updated event detail page to use new components:
+  - 404 errors show dedicated EventNotFound component
+  - Other errors show EventError with retry button (animated spinner during retry)
+  - Removed inline EventError component and unused imports
+- Added exports to web/src/components/event/index.ts
+- All TypeScript type checks pass (npm run typecheck)
+- All tests pass (npm run test - 82 tests)
+
 ## In Progress
 
 
@@ -87,5 +106,6 @@
 - Fallback to parsing tokens JSON from dim_market when dim_outcome is empty
 - page_layout feature is complete with two-column responsive layout and breadcrumb navigation
 - loading_states feature is complete - skeleton components are modular and reusable
-- Next task should be error_handling to create dedicated error components (EventNotFound, error boundary)
+- error_handling feature is complete - dedicated components for 404 and generic errors with retry functionality
+- Next task should be navigation_update to link MarketCard and MarketTable rows to event detail page
 

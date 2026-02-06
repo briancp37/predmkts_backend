@@ -18,12 +18,11 @@
 'use client';
 
 import { use } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
+import { Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
-import { EventDetailLayout, SectionPlaceholder } from '@/components/event/event-detail-layout';
+import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError } from '@/components/event';
 
 interface EventPageProps {
   params: Promise<{ slug: string }>;
@@ -58,44 +57,6 @@ function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-/**
- * Error state component
- */
-function EventError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const isNotFound = message === 'Event not found';
-
-  return (
-    <div className="flex flex-col items-center justify-center py-12">
-      <div className="text-center space-y-4">
-        <h2 className="text-2xl font-semibold text-gray-900">
-          {isNotFound ? 'Event Not Found' : 'Error Loading Event'}
-        </h2>
-        <p className="text-gray-600 max-w-md">
-          {isNotFound
-            ? "The event you're looking for doesn't exist or may have been removed."
-            : message}
-        </p>
-        <div className="flex gap-4 justify-center">
-          <Link
-            href="/markets"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Markets
-          </Link>
-          {!isNotFound && (
-            <button
-              onClick={onRetry}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
-            >
-              Try Again
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Event Header Component
@@ -318,6 +279,7 @@ export default function EventDetailPage({ params }: EventPageProps) {
   const {
     data: event,
     isLoading,
+    isFetching,
     error,
     refetch,
   } = useEvent(slug);
@@ -327,24 +289,29 @@ export default function EventDetailPage({ params }: EventPageProps) {
     return <EventDetailPageSkeleton />;
   }
 
-  // Error state
+  // Error state - check if it's a 404 (Event not found)
   if (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isNotFound = errorMessage.toLowerCase().includes('not found');
+
+    // Use dedicated EventNotFound component for 404s
+    if (isNotFound) {
+      return <EventNotFound slug={slug} />;
+    }
+
+    // Use EventError for other errors
     return (
       <EventError
-        message={error instanceof Error ? error.message : 'Unknown error'}
+        message={errorMessage}
         onRetry={() => refetch()}
+        isRetrying={isFetching}
       />
     );
   }
 
   // No data (shouldn't happen if no error, but handle gracefully)
   if (!event) {
-    return (
-      <EventError
-        message="Event not found"
-        onRetry={() => refetch()}
-      />
-    );
+    return <EventNotFound slug={slug} />;
   }
 
   // Build breadcrumb items

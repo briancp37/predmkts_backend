@@ -61,7 +61,7 @@
       "Add retry button for failed requests",
       "Log errors to console in development mode"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "navigation_update",
