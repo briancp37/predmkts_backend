@@ -39,6 +39,27 @@
 - All TypeScript type checks pass (npm run typecheck)
 - All tests pass (npm run test - 82 tests)
 
+### page_layout (2026-02-06)
+- Created EventDetailLayout component in web/src/components/event/event-detail-layout.tsx
+  - Two-column grid layout: main content (2/3) + sidebar (1/3)
+  - Responsive: single column on mobile (grid-cols-1), two columns on lg+ (lg:grid-cols-3)
+  - Sticky sidebar on desktop using lg:sticky lg:top-24
+  - Breadcrumb navigation component with ChevronRight separators
+  - Links back to Markets page and category filter
+- Created SectionPlaceholder component for component areas under development
+  - Dashed border style to clearly indicate placeholder sections
+  - Used for: Trading Panel, Market Statistics, Related Events, Price Chart, Activity Feed
+- Updated event detail page (web/src/app/(dashboard)/event/[slug]/page.tsx) to use new layout
+  - Refactored into modular components: EventHeader, OutcomesList, TradingPanelSidebar
+  - EventHeader shows category badge, title, description, and status indicator
+  - OutcomesList displays markets with outcomes, prices, and 24h changes
+  - TradingPanelSidebar includes Trade card with Polymarket link, Market Info, Related Events
+  - Updated EventDetailSkeleton to match two-column layout structure
+- Created component index file at web/src/components/event/index.ts
+- Fixed TypeScript types: EventHeader now accepts `string | null` for category/description
+- All TypeScript type checks pass (npm run typecheck)
+- All tests pass (npm run test - 82 tests)
+
 ## In Progress
 
 
@@ -49,6 +70,6 @@
 - The endpoint now returns fully nested markets with outcomes, prices, and 24h changes
 - Price data comes from market_mark_daily table (VWAP mark prices)
 - Fallback to parsing tokens JSON from dim_market when dim_outcome is empty
-- Next task should be page_layout to create the two-column layout structure
-- The event page currently shows markets with outcomes, but doesn't yet have the full two-column layout with sidebar
+- page_layout feature is complete with two-column responsive layout and breadcrumb navigation
+- Next task should be loading_states to create dedicated skeleton components
 

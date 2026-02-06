@@ -36,7 +36,7 @@
       "Add breadcrumb navigation: Markets > Category > Event Title",
       "Verify layout renders correctly at all breakpoints"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "loading_states",

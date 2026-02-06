@@ -2,24 +2,28 @@
  * Event Detail Page
  *
  * Sprint 01 - Event Page Foundation
- * PRD: frontend_routing
+ * PRD: frontend_routing, page_layout
  *
  * Features:
  * - Dynamic route parameter extraction for slug
  * - Fetches event data with nested markets and outcomes
+ * - Two-column layout: main content + sidebar
+ * - Responsive: single column mobile, two columns desktop
+ * - Sticky sidebar on desktop
+ * - Breadcrumb navigation: Markets > Category > Event Title
  * - Loading skeleton while fetching
  * - Error handling for 404 and API errors
- * - Basic event display with markets
  */
 
 'use client';
 
 import { use } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Tag, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowLeft, Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/loading-skeleton';
+import { EventDetailLayout, SectionPlaceholder } from '@/components/event/event-detail-layout';
 
 interface EventPageProps {
   params: Promise<{ slug: string }>;
@@ -55,34 +59,86 @@ function formatCurrency(value: number): string {
 }
 
 /**
- * Loading skeleton for event detail
+ * Loading skeleton for event detail with two-column layout
  */
 function EventDetailSkeleton() {
   return (
-    <div className="space-y-6">
-      {/* Back button skeleton */}
-      <Skeleton className="h-10 w-24" />
-
-      {/* Header skeleton */}
-      <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Breadcrumb skeleton */}
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-4 w-4" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-4" />
         <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-8 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
       </div>
 
-      {/* Markets skeleton */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i}>
+      {/* Main grid layout */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Header skeleton */}
+          <Card>
+            <CardContent className="pt-6 space-y-3">
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <div className="flex gap-4 pt-2">
+                <Skeleton className="h-5 w-20" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Outcomes skeleton */}
+          <Card>
             <CardHeader>
-              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-5 w-24" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                  <Skeleton className="h-5 w-20" />
+                  <div className="flex gap-3">
+                    <Skeleton className="h-5 w-14" />
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Chart skeleton */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-28" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-[300px] w-full" />
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sidebar skeleton */}
+        <div className="lg:col-span-1 space-y-6">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-28" />
             </CardHeader>
             <CardContent className="space-y-3">
               <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-4 w-3/4" />
             </CardContent>
           </Card>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -127,6 +183,220 @@ function EventError({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+/**
+ * Event Header Component
+ */
+function EventHeader({
+  title,
+  description,
+  category,
+  status,
+}: {
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  status: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-3">
+        {/* Category Badge */}
+        {category && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+              <Tag className="h-3 w-3" />
+              {category}
+            </span>
+          </div>
+        )}
+
+        {/* Title */}
+        <h1 className="text-2xl font-bold text-gray-900 md:text-3xl">
+          {title}
+        </h1>
+
+        {/* Description */}
+        {description && (
+          <p className="text-gray-600 leading-relaxed">
+            {description}
+          </p>
+        )}
+
+        {/* Status and Metadata */}
+        <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+              status === 'active'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-100 text-gray-800'
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === 'active' ? 'bg-green-500' : 'bg-gray-500'
+            }`} />
+            {status === 'active' ? 'Active' : status}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Outcomes List Component
+ */
+function OutcomesList({
+  markets,
+}: {
+  markets: Array<{
+    id: string;
+    question: string;
+    totalVolume: number;
+    liquidity: number;
+    volume24h?: number;
+    outcomes?: Array<{
+      id: string;
+      outcomeName: string;
+      currentPrice: number;
+      priceChange24h: number;
+    }>;
+  }>;
+}) {
+  if (!markets || markets.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-gray-500">
+          No markets found for this event.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {markets.map((market) => (
+        <Card key={market.id}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-medium leading-tight flex items-start justify-between gap-4">
+              <span>{market.question}</span>
+              <BarChart2 className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Outcomes */}
+            {market.outcomes && market.outcomes.length > 0 && (
+              <div className="space-y-2">
+                {market.outcomes.map((outcome) => {
+                  const priceChange = formatPriceChange(outcome.priceChange24h);
+                  return (
+                    <div
+                      key={outcome.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="font-medium text-gray-900">
+                        {outcome.outcomeName}
+                      </span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-lg font-semibold text-gray-900">
+                          {formatPrice(outcome.currentPrice)}
+                        </span>
+                        <span
+                          className={`flex items-center gap-1 text-sm font-medium ${
+                            priceChange.isPositive ? 'text-green-600' : 'text-red-600'
+                          }`}
+                        >
+                          {priceChange.isPositive ? (
+                            <TrendingUp className="h-4 w-4" />
+                          ) : (
+                            <TrendingDown className="h-4 w-4" />
+                          )}
+                          {priceChange.text}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Market Stats */}
+            <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t">
+              <div className="flex items-center gap-4">
+                <span>Volume: {formatCurrency(market.totalVolume)}</span>
+                <span>24h: {formatCurrency(market.volume24h ?? 0)}</span>
+              </div>
+              <span>Liquidity: {formatCurrency(market.liquidity)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Trading Panel Sidebar Component (Placeholder)
+ */
+function TradingPanelSidebar({ eventSlug }: { eventSlug: string }) {
+  return (
+    <div className="space-y-4">
+      {/* Quick Trade Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">Trade</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <SectionPlaceholder
+            title="Trading Panel"
+            description="Buy/Sell interface coming soon"
+            minHeight="min-h-[120px]"
+          />
+          <a
+            href={`https://polymarket.com/event/${eventSlug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+          >
+            Trade on Polymarket
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </CardContent>
+      </Card>
+
+      {/* Market Stats Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gray-400" />
+            Market Info
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SectionPlaceholder
+            title="Market Statistics"
+            description="Volume, liquidity, participants"
+            minHeight="min-h-[100px]"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Related Events Card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">Related Events</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SectionPlaceholder
+            title="Related Events"
+            description="Similar markets in this category"
+            minHeight="min-h-[80px]"
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function EventDetailPage({ params }: EventPageProps) {
   // Unwrap the params promise (Next.js 15 pattern)
   const { slug } = use(params);
@@ -163,111 +433,56 @@ export default function EventDetailPage({ params }: EventPageProps) {
     );
   }
 
+  // Build breadcrumb items
+  const breadcrumbs = [
+    { label: 'Markets', href: '/markets' },
+    ...(event.category ? [{ label: event.category, href: `/markets?category=${encodeURIComponent(event.category)}` }] : []),
+    { label: event.title },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Back navigation */}
-      <Link
-        href="/markets"
-        className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Markets
-      </Link>
+    <EventDetailLayout
+      breadcrumbs={breadcrumbs}
+      sidebar={<TradingPanelSidebar eventSlug={slug} />}
+    >
+      {/* Event Header */}
+      <EventHeader
+        title={event.title}
+        description={event.description}
+        category={event.category}
+        status={event.status}
+      />
 
-      {/* Event header */}
-      <div className="space-y-2">
-        {event.category && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <Tag className="h-4 w-4" />
-            <span>{event.category}</span>
-          </div>
-        )}
-        <h1 className="text-2xl font-bold text-gray-900 md:text-3xl">
-          {event.title}
-        </h1>
-        {event.description && (
-          <p className="text-gray-600 max-w-3xl">
-            {event.description}
-          </p>
-        )}
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-            event.status === 'active'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-gray-100 text-gray-800'
-          }`}>
-            {event.status}
-          </span>
-        </div>
-      </div>
+      {/* Outcomes / Markets */}
+      <OutcomesList markets={event.markets ?? []} />
 
-      {/* Markets */}
-      {event.markets && event.markets.length > 0 ? (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Markets ({event.markets.length})
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {event.markets.map((market) => (
-              <Card key={market.id} className="hover:shadow-md transition-shadow">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base font-medium leading-tight">
-                    {market.question}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {/* Outcomes */}
-                  {market.outcomes && market.outcomes.length > 0 && (
-                    <div className="space-y-2">
-                      {market.outcomes.map((outcome) => {
-                        const priceChange = formatPriceChange(outcome.priceChange24h);
-                        return (
-                          <div
-                            key={outcome.id}
-                            className="flex items-center justify-between p-2 bg-gray-50 rounded"
-                          >
-                            <span className="font-medium text-sm">
-                              {outcome.outcomeName}
-                            </span>
-                            <div className="flex items-center gap-3">
-                              <span className="font-semibold">
-                                {formatPrice(outcome.currentPrice)}
-                              </span>
-                              <span className={`flex items-center text-xs ${
-                                priceChange.isPositive ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {priceChange.isPositive ? (
-                                  <TrendingUp className="h-3 w-3 mr-0.5" />
-                                ) : (
-                                  <TrendingDown className="h-3 w-3 mr-0.5" />
-                                )}
-                                {priceChange.text}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+      {/* Price Chart Placeholder */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Price History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SectionPlaceholder
+            title="Price Chart"
+            description="Historical price data and trends"
+            minHeight="min-h-[300px]"
+          />
+        </CardContent>
+      </Card>
 
-                  {/* Market stats */}
-                  <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t">
-                    <span>Volume: {formatCurrency(market.totalVolume)}</span>
-                    <span>24h: {formatCurrency(market.volume24h ?? 0)}</span>
-                    <span>Liquidity: {formatCurrency(market.liquidity)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-500">
-            No markets found for this event.
-          </CardContent>
-        </Card>
-      )}
-    </div>
+      {/* Activity Feed Placeholder */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <SectionPlaceholder
+            title="Activity Feed"
+            description="Recent trades and position changes"
+            minHeight="min-h-[200px]"
+          />
+        </CardContent>
+      </Card>
+    </EventDetailLayout>
   );
 }
