@@ -16,6 +16,7 @@ from prediction_data.api.clob_client import close_clob_client
 from prediction_data.api.events.router import router as events_router
 from prediction_data.api.exceptions import APIError
 from prediction_data.api.markets.router import router as markets_router
+from prediction_data.api.middleware import RequestLoggingMiddleware
 from prediction_data.api.rate_limit import limiter, rate_limit_exceeded_handler
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
@@ -49,6 +50,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+# Request logging middleware - must be added first (outermost)
+# so it wraps all other middleware and captures accurate timing
+app.add_middleware(RequestLoggingMiddleware)
+
 # CORS middleware - allow all origins in development
 # In production, restrict to your frontend domain
 app.add_middleware(
@@ -72,7 +77,15 @@ app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
 
 
 def _get_request_id(request: Request) -> str:
-    """Get or generate a request ID for tracing."""
+    """Get request ID from state (set by middleware) or header, or generate one.
+
+    Prefers request.state.request_id which is set by RequestLoggingMiddleware,
+    ensuring consistency across all logging for a request.
+    """
+    # First check if middleware set it in request state
+    if hasattr(request.state, "request_id"):
+        return str(request.state.request_id)
+    # Fall back to header or generate new one
     return request.headers.get("X-Request-ID", str(uuid.uuid4()))
 
 

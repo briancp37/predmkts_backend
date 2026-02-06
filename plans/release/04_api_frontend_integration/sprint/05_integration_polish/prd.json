@@ -57,7 +57,7 @@
       "Log errors with full context at ERROR level",
       "Exclude sensitive data from logs (passwords, tokens)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Health Check Enhancement",

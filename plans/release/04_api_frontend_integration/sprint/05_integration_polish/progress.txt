@@ -71,6 +71,24 @@
   - Headers: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`
 - Note: Currently uses in-memory storage. For distributed deployments, Redis backend should be considered.
 
+### Request Logging (2026-02-05)
+- Created `src/prediction_data/api/middleware.py` with `RequestLoggingMiddleware`:
+  - Logs every request: method, path, status_code, duration_ms, client_ip
+  - Extracts user_id from JWT token for authenticated requests
+  - Uses structlog for structured JSON logging (production) or colored console output (dev)
+  - Generates/propagates `request_id` for distributed tracing
+  - Adds `X-Request-ID` header to all responses
+  - Logs slow requests (> 1s) at WARNING level
+  - Logs client errors (4xx) at WARNING level, server errors (5xx) at ERROR level
+  - Marks sensitive endpoints (/auth/login, /auth/register, /auth/refresh) in logs
+  - Stores request_id in request.state for use by exception handlers
+- Integrated middleware in `src/prediction_data/api/main.py`:
+  - Added RequestLoggingMiddleware as outermost middleware for accurate timing
+  - Updated `_get_request_id()` to prefer request.state.request_id for consistency
+- Log format includes: timestamp, level, logger name, request context fields
+- Request start logged at DEBUG level (optional verbosity)
+- Request completion logged at INFO/WARNING/ERROR based on status/duration
+
 ## In Progress
 
 ## Blockers
