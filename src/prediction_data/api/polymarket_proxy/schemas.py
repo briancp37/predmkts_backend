@@ -75,3 +75,77 @@ class ProxyErrorResponse(BaseModel):
         None,
         description="Seconds to wait before retrying (for rate limit errors)",
     )
+
+
+class TokenInfo(BaseModel):
+    """Token information for a market outcome."""
+
+    outcome_id: str = Field(
+        ...,
+        description="Internal outcome ID (market_id_index)",
+        json_schema_extra={"example": "0x123abc_0"},
+    )
+    token_id: str = Field(
+        ...,
+        description="Polymarket CLOB token ID for this outcome",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    side: str = Field(
+        ...,
+        description="Token side (token1 = Yes, token2 = No)",
+        json_schema_extra={"example": "token1"},
+    )
+    outcome_label: str = Field(
+        ...,
+        description="Human-readable outcome label",
+        json_schema_extra={"example": "Yes"},
+    )
+
+
+class MarketTokensResponse(BaseModel):
+    """Token ID mappings for a market."""
+
+    market_id: str = Field(
+        ...,
+        description="Our platform_market_id",
+        json_schema_extra={"example": "0x123abc456def"},
+    )
+    tokens: list[TokenInfo] = Field(
+        ...,
+        description="List of token IDs for each outcome",
+    )
+    yes_token_id: str | None = Field(
+        None,
+        description="Token ID for the YES outcome (convenience field)",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    no_token_id: str | None = Field(
+        None,
+        description="Token ID for the NO outcome (convenience field)",
+        json_schema_extra={"example": "48331043779252212594626385532706912750332728571942532289631379312455583286915"},
+    )
+
+
+class TokenResolverStats(BaseModel):
+    """Statistics for the token resolver cache."""
+
+    cache_size: int = Field(
+        ...,
+        description="Number of market mappings cached",
+        json_schema_extra={"example": 1000},
+    )
+    cache_hits: int = Field(
+        ...,
+        description="Number of cache hits",
+        json_schema_extra={"example": 5000},
+    )
+    cache_misses: int = Field(
+        ...,
+        description="Number of cache misses",
+        json_schema_extra={"example": 200},
+    )
+    hit_rate: float = Field(
+        ...,
+        description="Cache hit rate percentage",
+        json_schema_extra={"example": 96.2},
+    )

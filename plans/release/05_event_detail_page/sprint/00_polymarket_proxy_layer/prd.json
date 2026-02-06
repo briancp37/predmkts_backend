@@ -93,7 +93,7 @@
       "Add error handling for markets without token IDs",
       "Create utility endpoint GET /api/v1/markets/{id}/tokens to expose mappings"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "error_handling",

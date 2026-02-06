@@ -27,6 +27,25 @@
   - Health check endpoint at GET /api/v1/proxy/health
 - Registered router in main.py with shutdown hook for cleanup
 
+### token_id_resolution (2026-02-06)
+- Created `token_resolver.py` with TokenResolver class:
+  - `MarketTokens` dataclass with `yes_token_id`, `no_token_id`, `all_token_ids` properties
+  - `TokenResolver` class with in-memory caching (50k entries max)
+  - `get_tokens(market_id)` - get all token IDs for a market
+  - `get_tokens_batch(market_ids)` - efficient batch lookup
+  - `get_token_id(market_id, outcome)` - get specific outcome's token ID
+  - Cache statistics tracking (hits, misses, hit rate)
+- Added new schemas to `schemas.py`:
+  - `TokenInfo` - individual token details (outcome_id, token_id, side, label)
+  - `MarketTokensResponse` - full market token mapping response
+  - `TokenResolverStats` - cache statistics
+- Added two new endpoints to `router.py`:
+  - `GET /api/v1/proxy/markets/{market_id}/tokens` - get token mappings for a market
+  - `GET /api/v1/proxy/tokens/stats` - get cache statistics
+- Queries `dim_outcome` table in ClickHouse for token_id lookups
+- Token mappings are stable (don't change) so caching is aggressive
+- Handles binary markets (Yes/No) and multi-outcome markets
+
 ## In Progress
 
 
