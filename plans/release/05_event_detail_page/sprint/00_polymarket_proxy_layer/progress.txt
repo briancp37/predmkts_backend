@@ -143,6 +143,22 @@
 - Note: volume_24h and liquidity fields are null since CLOB doesn't provide them
   - These would need to be sourced from market_mark_daily if needed
 
+### top_holders_proxy (2026-02-06)
+- Added `GET /api/v1/proxy/markets/{condition_id}/top-holders` endpoint to `router.py`:
+  - Proxies to Polymarket Data API `/holders` endpoint
+  - Queries by market condition_id (same as trades endpoint)
+  - Returns top token holders sorted by balance descending
+  - 5m cache TTL (holder rankings change slowly)
+- Added new schemas to `schemas.py`:
+  - `TopHolder` - single holder with wallet_address, amount, pseudonym, name, profile_image, outcome_index
+  - `TopHoldersResponse` - list of holders with count and cache_status
+- Query parameters supported:
+  - `limit` (1-20, default 20) - max holders to return (Polymarket caps at 20)
+  - `minBalance` (0-999999, default 1) - filter by minimum token balance
+- Handles multi-token markets by flattening holders across all tokens and deduplicating by wallet
+- Respects user privacy: only shows name if `displayUsernamePublic` is true
+- Response includes cache_status (HIT/MISS/STALE) for debugging
+
 ## In Progress
 
 

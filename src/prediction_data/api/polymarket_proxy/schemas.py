@@ -444,3 +444,67 @@ class MarketInfoResponse(BaseModel):
         description="Cache status: HIT, MISS, or STALE",
         json_schema_extra={"example": "MISS"},
     )
+
+
+class TopHolder(BaseModel):
+    """Single holder in the top holders list."""
+
+    wallet_address: str = Field(
+        ...,
+        description="Wallet address of the holder (proxy wallet)",
+        json_schema_extra={"example": "0x1234567890abcdef1234567890abcdef12345678"},
+    )
+    amount: str = Field(
+        ...,
+        description="Token balance held",
+        json_schema_extra={"example": "15000.50"},
+    )
+    pseudonym: str | None = Field(
+        None,
+        description="User pseudonym if available",
+        json_schema_extra={"example": "crypto_whale_99"},
+    )
+    name: str | None = Field(
+        None,
+        description="User display name if public",
+        json_schema_extra={"example": "John Doe"},
+    )
+    profile_image: str | None = Field(
+        None,
+        description="URL to user profile image",
+        json_schema_extra={"example": "https://polymarket.com/images/profile/123.jpg"},
+    )
+    outcome_index: int | None = Field(
+        None,
+        description="Outcome index for this position (0 for Yes, 1 for No)",
+        json_schema_extra={"example": 0},
+    )
+
+
+class TopHoldersResponse(BaseModel):
+    """Response for top holders query."""
+
+    condition_id: str = Field(
+        ...,
+        description="Polymarket market condition ID",
+        json_schema_extra={"example": "0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa"},
+    )
+    token_id: str | None = Field(
+        None,
+        description="Token ID if querying specific outcome (None if querying full market)",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    holders: list[TopHolder] = Field(
+        ...,
+        description="List of top holders sorted by balance descending",
+    )
+    count: int = Field(
+        ...,
+        description="Number of holders returned",
+        json_schema_extra={"example": 20},
+    )
+    cache_status: str = Field(
+        ...,
+        description="Cache status: HIT, MISS, or STALE",
+        json_schema_extra={"example": "MISS"},
+    )

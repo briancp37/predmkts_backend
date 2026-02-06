@@ -45,15 +45,15 @@
     "category": "top_holders_proxy",
     "description": "Proxy the Polymarket top holders endpoint",
     "steps": [
-      "Create GET /api/v1/proxy/markets/{token_id}/top-holders endpoint",
+      "Create GET /api/v1/proxy/markets/{condition_id}/top-holders endpoint",
       "Reference: https://docs.polymarket.com/api-reference/core/get-top-holders-for-markets",
-      "Proxy to GET https://data-api.polymarket.com/top-holders",
-      "Pass through token_id and limit params",
+      "Proxy to GET https://data-api.polymarket.com/holders",
+      "Pass through market (condition_id), limit, and minBalance params",
       "Transform response to our TopHoldersResponse schema",
       "Cache responses with 5m TTL",
-      "Return wallet address, position size, and value"
+      "Return wallet address, position size, pseudonym, name, and profile image"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "trades_proxy",

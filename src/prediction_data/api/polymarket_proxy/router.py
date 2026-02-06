@@ -37,6 +37,8 @@ from prediction_data.api.polymarket_proxy.schemas import (
     TokenInfo,
     TokenPrice,
     TokenResolverStats,
+    TopHolder,
+    TopHoldersResponse,
     Trade,
 )
 from prediction_data.api.polymarket_proxy.token_resolver import (
@@ -663,6 +665,158 @@ async def get_trades(
         trades=trades,
         count=len(trades),
         has_more=len(trades) >= limit,
+        cache_status=cache_status,
+    )
+
+
+# Top holders cache TTL - changes slowly
+TOP_HOLDERS_CACHE_TTL = 300  # 5 minutes
+
+
+@router.get(
+    "/markets/{condition_id}/top-holders",
+    response_model=TopHoldersResponse,
+    summary="Get top holders for a market",
+    description=(
+        "Get the top token holders for a Polymarket market by condition ID. "
+        "Returns wallet addresses, balances, and optional user profile information. "
+        "Results are cached for 5 minutes."
+    ),
+    responses={
+        502: {
+            "description": "Upstream Polymarket API error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Polymarket API request failed",
+                        "code": "PROXY_ERROR",
+                        "status": 502,
+                    }
+                }
+            },
+        },
+        503: {
+            "description": "Circuit breaker open",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Circuit breaker open for data API",
+                        "code": "SERVICE_UNAVAILABLE",
+                        "retry_after": 30,
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
+async def get_top_holders(
+    request: Request,
+    condition_id: str,
+    client: ProxyClient,
+    limit: int = Query(
+        20,
+        ge=1,
+        le=20,
+        description="Maximum number of holders to return (1-20). Polymarket caps at 20.",
+    ),
+    min_balance: int = Query(
+        1,
+        ge=0,
+        le=999999,
+        alias="minBalance",
+        description="Minimum token balance filter (default 1).",
+    ),
+) -> TopHoldersResponse:
+    """Get top holders for a market.
+
+    Proxies to Polymarket Data API `/holders` endpoint with caching.
+
+    Returns the top token holders for the specified market, sorted by balance
+    descending. Includes wallet address, balance, and optional profile information.
+
+    **Query parameters:**
+    - `limit`: Maximum holders to return (default 20, max 20)
+    - `minBalance`: Filter by minimum token balance (default 1)
+
+    **Cache TTL:** 5 minutes (holder rankings change slowly)
+    """
+    # Build query params for upstream
+    params: dict[str, str | int] = {
+        "market": condition_id,
+        "limit": limit,
+        "minBalance": min_balance,
+    }
+
+    try:
+        data, cache_status = await client.get_data(
+            "/holders",
+            params,
+            cache_ttl=TOP_HOLDERS_CACHE_TTL,
+        )
+    except (CircuitOpenError, UpstreamRateLimitError) as e:
+        logger.warning(
+            "Top holders proxy error",
+            condition_id=condition_id,
+            error_type=type(e).__name__,
+        )
+        raise
+    except ProxyError as e:
+        logger.error(
+            "Top holders proxy upstream failure",
+            condition_id=condition_id,
+            error=str(e),
+        )
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Top holders proxy HTTP error",
+            condition_id=condition_id,
+            status_code=e.response.status_code,
+        )
+        raise ProxyError(
+            message="Polymarket Data API request failed",
+            upstream_status=e.response.status_code,
+            api="data",
+            endpoint="/holders",
+        )
+
+    # Data API returns array of {token, holders} objects for each token in the market
+    holders_data: list[dict[str, Any]] = data if isinstance(data, list) else []
+
+    # Flatten all holders from all tokens and deduplicate by wallet
+    all_holders: list[TopHolder] = []
+    seen_wallets: set[str] = set()
+
+    for token_entry in holders_data:
+        token_id = token_entry.get("token")
+        token_holders = token_entry.get("holders", [])
+
+        for h in token_holders:
+            wallet = str(h.get("proxyWallet", ""))
+            if not wallet or wallet in seen_wallets:
+                continue
+            seen_wallets.add(wallet)
+
+            holder = TopHolder(
+                wallet_address=wallet,
+                amount=str(h.get("amount", "0")),
+                pseudonym=h.get("pseudonym"),
+                name=h.get("name") if h.get("displayUsernamePublic") else None,
+                profile_image=h.get("profileImageOptimized") or h.get("profileImage"),
+                outcome_index=int(h["outcomeIndex"]) if h.get("outcomeIndex") is not None else None,
+            )
+            all_holders.append(holder)
+
+    # Sort by balance descending and limit
+    all_holders.sort(key=lambda x: float(x.amount), reverse=True)
+    all_holders = all_holders[:limit]
+
+    return TopHoldersResponse(
+        condition_id=condition_id,
+        token_id=None,  # Querying full market, not specific token
+        holders=all_holders,
+        count=len(all_holders),
         cache_status=cache_status,
     )
 
