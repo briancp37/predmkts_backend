@@ -223,13 +223,21 @@ class MarketsDiagnostics:
                         manifests.append(manifest)
 
             if manifests:
+                # Helper to get snapshot_type from manifest (may be nested in source)
+                def get_snapshot_type(m: dict[str, Any]) -> str:
+                    return m.get("snapshot_type") or m.get("source", {}).get("snapshot_type") or "unknown"
+
                 # Sort by timestamp
-                manifests.sort(key=lambda m: m.get("ingestion_ts", ""), reverse=True)
+                manifests.sort(key=lambda m: m.get("ingestion_ts", m.get("generated_at", "")), reverse=True)
                 latest_manifest = manifests[0]
 
-                ingestion_ts = latest_manifest.get("ingestion_ts", "")
+                # Find latest snapshot manifest (not delta) for record count check
+                snapshot_manifests = [m for m in manifests if get_snapshot_type(m) == "snapshot"]
+                latest_snapshot = snapshot_manifests[0] if snapshot_manifests else None
+
+                ingestion_ts = latest_manifest.get("ingestion_ts", latest_manifest.get("generated_at", ""))
                 record_count = latest_manifest.get("row_count", latest_manifest.get("record_count", 0))
-                snapshot_type = latest_manifest.get("snapshot_type", "unknown")
+                snapshot_type = get_snapshot_type(latest_manifest)
 
                 # Parse timestamp and calculate age
                 if ingestion_ts:
@@ -239,12 +247,12 @@ class MarketsDiagnostics:
                         age_hours = (datetime.now(timezone.utc) - ts).total_seconds() / 3600
 
                         if age_hours < 2:
-                            print_status("Latest Ingestion", "OK", f"{age} ({record_count:,} records)")
+                            print_status("Latest Ingestion", "OK", f"{age} ({record_count:,} records, {snapshot_type})")
                         elif age_hours < 24:
-                            print_status("Latest Ingestion", "WARN", f"{age} ({record_count:,} records)")
+                            print_status("Latest Ingestion", "WARN", f"{age} ({record_count:,} records, {snapshot_type})")
                             self.warnings.append(f"Bronze markets data is {age} old")
                         else:
-                            print_status("Latest Ingestion", "ERROR", f"{age} ({record_count:,} records)")
+                            print_status("Latest Ingestion", "ERROR", f"{age} ({record_count:,} records, {snapshot_type})")
                             self.issues.append(f"Bronze markets data is stale: {age}")
                     except Exception:
                         print_status("Latest Ingestion", "INFO", f"{ingestion_ts} ({record_count:,} records)")
@@ -252,12 +260,20 @@ class MarketsDiagnostics:
                 print_status("Snapshot Type", "INFO", snapshot_type)
                 print_status("Total Runs Today", "INFO", f"{len(manifests)} run(s)")
 
-                # Check record count
-                if record_count < 100000:
-                    print_status("Record Count", "WARN", f"Only {record_count:,} records (expected ~360K)")
-                    self.warnings.append(f"Low record count in Bronze: {record_count:,}")
+                # Check record count - only warn for snapshot manifests, not deltas
+                if latest_snapshot:
+                    snapshot_count = latest_snapshot.get("row_count", latest_snapshot.get("record_count", 0))
+                    if snapshot_count < 100000:
+                        print_status("Snapshot Record Count", "WARN", f"Only {snapshot_count:,} records (expected ~360K)")
+                        self.warnings.append(f"Low record count in Bronze snapshot: {snapshot_count:,}")
+                    else:
+                        print_status("Snapshot Record Count", "OK", f"{snapshot_count:,} records")
+                elif snapshot_type == "delta":
+                    print_status("Record Count", "INFO", f"{record_count:,} records (delta - expected to be small)")
                 else:
-                    print_status("Record Count", "OK", f"{record_count:,} records")
+                    # No snapshot found today, warn
+                    print_status("Snapshot Record Count", "WARN", "No snapshot manifest found today")
+                    self.warnings.append("No snapshot manifest found in Bronze today")
             else:
                 print_status("Manifests", "ERROR", "No manifests found for latest date")
                 self.issues.append(f"No manifests in Bronze for {latest_date}")
