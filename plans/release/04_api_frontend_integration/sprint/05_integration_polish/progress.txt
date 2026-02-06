@@ -342,6 +342,30 @@
   - Auth tests verify 401 for missing auth (not 403)
   - Tier limit tests verify 403 for tier exceeded
 
+### Documentation Update (2026-02-05)
+- Updated `CLAUDE.md` with comprehensive full stack documentation:
+  - Added "Error Response Format" section documenting consistent JSON error structure
+  - Added `CORS_ORIGINS` to API environment variables table
+  - Added new "Frontend (Next.js)" section with:
+    - Running the frontend instructions (npm dev, build, typecheck, test)
+    - Frontend-backend integration explanation (API proxy, client, auth context, types)
+    - Regenerating TypeScript types workflow
+    - Frontend environment variables table (API_URL, NEXT_PUBLIC_API_URL)
+  - Added "Full Stack Development" section with:
+    - Step-by-step instructions for running everything locally
+    - Development workflow (schema changes → type generation → type check → test)
+    - Complete project structure diagram showing API, frontend, and test locations
+- All PRD steps completed:
+  - Update CLAUDE.md with API section ✓ (already existed, enhanced)
+  - Document all new environment variables ✓ (CORS_ORIGINS, frontend vars)
+  - Document API endpoints summary ✓ (existing endpoint structure enhanced)
+  - Document frontend-backend integration ✓ (new section added)
+  - Add API development workflow to CLAUDE.md ✓ (new section added)
+  - Document how to run full stack locally ✓ (new section added)
+  - Document how to regenerate TypeScript types ✓ (new section added)
+- TypeScript check: Pre-existing recharts type issues remain (2 errors in chart components)
+- Tests: No frontend test files exist yet (Frontend Integration Testing is a separate incomplete PRD item)
+
 ## In Progress
 
 ## Blockers

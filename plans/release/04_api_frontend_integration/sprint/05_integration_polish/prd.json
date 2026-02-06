@@ -222,7 +222,7 @@
       "Document how to run full stack locally",
       "Document how to regenerate TypeScript types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Docker Compose Enhancement",

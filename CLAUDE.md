@@ -166,6 +166,25 @@ All API endpoints follow URL-based versioning with `/api/v1/` prefix:
 
 Rate limit headers returned: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` (on 429).
 
+### Error Response Format
+
+All API errors return a consistent JSON structure:
+
+```json
+{
+  "detail": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "status": 400
+}
+```
+
+Common error codes:
+- `VALIDATION_ERROR` (422) — Request validation failed, includes `errors` array with field-level details
+- `AUTHENTICATION_FAILED` (401) — Invalid or expired credentials
+- `AUTHORIZATION_DENIED` (403) — Permission denied (e.g., tier limits exceeded)
+- `NOT_FOUND` (404) — Resource not found
+- `RATE_LIMIT_EXCEEDED` (429) — Rate limit hit, includes `retry_after` field
+
 ### Environment Variables (API)
 
 | Variable | Required | Description |
@@ -176,6 +195,150 @@ Rate limit headers returned: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retr
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token TTL (default: 30) |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token TTL (default: 7) |
 | `DEBUG` | No | Enable debug mode with stack traces (default: false) |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins, or `*` for dev (default: *) |
+
+## Frontend (Next.js)
+
+The frontend is a Next.js application in `web/` that integrates with the FastAPI backend.
+
+### Running the Frontend
+
+```bash
+cd web
+
+# Install dependencies
+npm install
+
+# Start development server (proxies /api/v1/* to FastAPI backend)
+npm run dev
+
+# Build for production
+npm run build
+npm start
+
+# Type checking
+npm run typecheck
+
+# Run tests
+npm run test
+
+# Lint
+npm run lint
+```
+
+### Frontend-Backend Integration
+
+The frontend communicates with the FastAPI backend through:
+
+1. **API Proxy (Development)**: `next.config.ts` proxies `/api/v1/*` requests to `http://localhost:8000` (or `API_URL` env var). This avoids CORS issues in development.
+
+2. **API Client** (`web/src/lib/api/client.ts`):
+   - `apiRequest<T>()` — Generic fetch wrapper with auth handling
+   - Automatic JWT token management (localStorage)
+   - Automatic token refresh on 401 responses
+   - Consistent error handling via `ApiError` class
+
+3. **Auth Context** (`web/src/lib/api/auth-context.tsx`):
+   - React context for authentication state
+   - `login()`, `logout()`, `register()` methods
+   - User state management with automatic token restoration
+
+4. **Generated Types** (`web/src/lib/api/schema.d.ts`):
+   - TypeScript types generated from OpenAPI spec
+   - Ensures frontend/backend type safety
+
+### Regenerating TypeScript Types
+
+When the API schema changes (new endpoints, modified responses), regenerate the frontend types:
+
+```bash
+# Generate OpenAPI spec from FastAPI
+cd /path/to/repo
+uvicorn prediction_data.api.main:app --reload &
+curl http://localhost:8000/openapi.json > openapi.json
+
+# Generate TypeScript types
+cd web
+npm run generate-api
+```
+
+This creates `web/src/lib/api/schema.d.ts` from `openapi.json`.
+
+### Environment Variables (Frontend)
+
+| Variable | Required | Description |
+|---|---|---|
+| `API_URL` | No | Backend API URL for proxy (default: http://localhost:8000) |
+| `NEXT_PUBLIC_API_URL` | No | Client-side API URL if not using proxy |
+
+## Full Stack Development
+
+### Running Everything Locally
+
+```bash
+# 1. Start infrastructure (PostgreSQL + ClickHouse)
+docker compose up -d
+
+# 2. Wait for healthy databases
+docker compose exec postgres pg_isready -U predmkts
+docker compose exec clickhouse clickhouse-client --query "SELECT 1"
+
+# 3. Start FastAPI backend (in one terminal)
+uvicorn prediction_data.api.main:app --reload
+# API: http://localhost:8000
+# Docs: http://localhost:8000/docs
+
+# 4. Start Next.js frontend (in another terminal)
+cd web && npm run dev
+# Frontend: http://localhost:3000
+# Proxies /api/v1/* to backend automatically
+```
+
+### Development Workflow
+
+1. **Schema Changes**: Modify Pydantic schemas in `src/prediction_data/api/*/schemas.py`
+2. **Regenerate Types**: Run `npm run generate-api` in `web/`
+3. **Type Check**: Run `npm run typecheck` to verify frontend compatibility
+4. **Test**: Run `pytest tests/api/` for backend, `npm run test` for frontend
+
+### Project Structure
+
+```
+predmkts_backend/
+├── src/prediction_data/
+│   ├── api/                    # FastAPI REST API
+│   │   ├── main.py             # App entry point, middleware
+│   │   ├── auth/               # Authentication endpoints
+│   │   ├── markets/            # Market data endpoints
+│   │   ├── traders/            # Trader data endpoints
+│   │   ├── watchlist/          # User watchlist endpoints
+│   │   ├── tracked_traders/    # Tracked traders endpoints
+│   │   ├── trades/             # Trade data endpoints
+│   │   ├── events/             # Event data endpoints
+│   │   ├── health.py           # Health check endpoints
+│   │   ├── exceptions.py       # Custom exception classes
+│   │   ├── middleware.py       # Request logging, security headers
+│   │   ├── rate_limit.py       # Rate limiting configuration
+│   │   └── validators.py       # Reusable Pydantic validators
+│   ├── bronze/                 # Bronze layer ingestion
+│   ├── silver/                 # Silver layer processing
+│   ├── gold/                   # Gold layer aggregations
+│   └── core/                   # Shared configuration
+├── web/                        # Next.js frontend
+│   ├── src/
+│   │   ├── app/                # Next.js app router pages
+│   │   ├── components/         # React components
+│   │   ├── hooks/              # Custom React hooks
+│   │   └── lib/
+│   │       └── api/            # API client and types
+│   └── next.config.ts          # Next.js config with API proxy
+├── tests/
+│   ├── api/                    # API integration tests
+│   └── ...                     # Other test modules
+├── docker-compose.yml          # Local infrastructure
+├── openapi.json                # Generated OpenAPI spec
+└── CLAUDE.md                   # This file
+```
 
 ## Backfill CLI
 
