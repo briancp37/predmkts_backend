@@ -177,7 +177,7 @@
       "Test loading state rendering",
       "Add to existing vitest setup"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Performance Optimization",

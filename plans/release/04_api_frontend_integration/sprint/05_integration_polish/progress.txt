@@ -400,6 +400,64 @@
 - TypeScript check: Passes for API code (only pre-existing recharts issues in frontend)
 - API tests: All 48 tests pass
 
+### Frontend Integration Testing (2026-02-05)
+- Installed MSW (Mock Service Worker) v2 for API mocking in tests
+- Created `web/vitest.config.ts` with:
+  - jsdom environment for browser-like testing
+  - Path alias resolution (`@/` -> `src/`)
+  - Coverage configuration (v8 provider)
+  - Global test APIs enabled
+- Created `web/tests/setup.ts` with test infrastructure:
+  - jest-dom matchers for DOM assertions
+  - MSW server setup/teardown lifecycle
+  - localStorage cleanup between tests
+  - Mocks for browser APIs: matchMedia, ResizeObserver, IntersectionObserver
+  - next/navigation mocks for router testing
+- Created `web/tests/mocks/handlers.ts` with MSW request handlers:
+  - Auth endpoints: register, login, me, refresh
+  - Markets endpoints: list, detail, tags
+  - Watchlist endpoints: list, add, remove
+  - Error simulation endpoints for 500 and 429 testing
+  - Mock data: mockUser, mockTokens, mockMarkets, mockWatchlistItem
+- Created `web/tests/mocks/server.ts` - MSW server instance for Node.js
+- Created `web/tests/utils.tsx` with custom render function:
+  - TestProviders wrapper with QueryClient and AuthProvider
+  - createTestQueryClient factory for isolated queries
+  - Re-exports testing-library utilities
+- Created `web/tests/login.test.tsx` with 11 tests:
+  - Form rendering, submission with valid credentials
+  - Loading state during submission
+  - Error display on failed login
+  - Error clearing on user input
+  - Disabled inputs during loading
+  - API integration tests with MSW
+  - Rate limit error handling
+- Created `web/tests/register.test.tsx` with 13 tests:
+  - Form rendering, submission with valid data
+  - Optional name field handling
+  - Loading state display
+  - Error message display
+  - Input disabled states
+  - API integration: success, duplicate email, weak password, server error
+- Created `web/tests/error-boundary.test.tsx` with 18 tests:
+  - ApiErrorDisplay: 401 (login button), 403 (upgrade prompt), 404, 429, 500+
+  - InlineError: message display, dismiss button
+  - ErrorBoundary: children rendering, fallback UI, custom fallback
+  - Error callbacks: onError, onReset
+- Created `web/tests/loading-skeleton.test.tsx` with 27 tests:
+  - Base Skeleton component with shimmer animation
+  - Specialized skeletons: MarketCard, MarketTable, TraderCard, etc.
+  - Spinner component with size variants
+  - RefetchingOverlay, StaleIndicator, LoadingButton
+- Created `web/tests/watchlist.test.tsx` with 13 tests:
+  - useWatchlist: fetching, unauthenticated state, marketIds lookup
+  - useAddToWatchlist: success, duplicate error, auth error
+  - useRemoveFromWatchlist: success, not found error, auth error
+  - Mutation pending states for optimistic UI
+- All 82 frontend tests pass
+- TypeScript: Test files pass type check (only pre-existing recharts issues remain)
+- Test coverage: Auth flows, error states, loading states, watchlist operations
+
 ## In Progress
 
 ## Blockers
