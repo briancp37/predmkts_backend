@@ -211,6 +211,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/markets/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description List all available tags (categories) for filtering markets.
+         *
+         *     Returns a list of categories with their market counts, ordered by the number
+         *     of markets in each category (highest first). These can be used to populate
+         *     filter dropdowns in the frontend.
+         *
+         *     **Response fields:**
+         *     - `id`: Unique identifier for the tag (slug-based)
+         *     - `name`: Display name of the category
+         *     - `slug`: URL-friendly version of the name
+         *     - `marketCount`: Number of markets in this category
+         */
+        get: operations["list_tags_api_v1_markets_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/markets/{market_id}": {
         parameters: {
             query?: never;
@@ -1094,6 +1124,20 @@ export interface components {
             smartScore: number;
         };
         /**
+         * TagResponse
+         * @description Tag (category) information for filtering markets.
+         */
+        TagResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Marketcount */
+            marketCount: number;
+        };
+        /**
          * TokenRefresh
          * @description Schema for token refresh request.
          */
@@ -1913,6 +1957,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tags_api_v1_markets_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagResponse"][];
                 };
             };
         };

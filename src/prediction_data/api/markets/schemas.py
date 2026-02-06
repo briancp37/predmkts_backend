@@ -121,3 +121,12 @@ class PriceHistoryResponse(BaseModel):
     interval: str
     startDate: str | None = None
     endDate: str | None = None
+
+
+class TagResponse(BaseModel):
+    """Tag (category) information for filtering markets."""
+
+    id: str
+    name: str
+    slug: str
+    marketCount: int

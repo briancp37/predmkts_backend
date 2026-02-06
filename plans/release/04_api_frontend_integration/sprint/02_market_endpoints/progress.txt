@@ -1,6 +1,6 @@
 # Sprint 02: Market Endpoints - Progress
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed
 
@@ -244,9 +244,28 @@
 - All 1441 backend tests pass (pytest)
 - Note: Pre-existing TypeScript errors remain in deprecated Prisma-based Next.js API routes.
   These routes will be removed in a future cleanup task. No new errors introduced.
-- Note: Tags endpoint not yet in OpenAPI spec since Tags Router Setup is not complete.
-  This is expected - the PRD step mentions "all market, event, and tag endpoints" but tags
-  implementation was deprioritized due to no tags data in dim_market schema.
+
+### 2026-02-05: Tags Router Setup (GET /markets/tags)
+- Added `TagResponse` schema to `src/prediction_data/api/markets/schemas.py`:
+  - Fields: id (str), name (str), slug (str), marketCount (int)
+- Implemented `get_tags()` service function in `src/prediction_data/api/markets/service.py`:
+  - Queries distinct categories from dim_event joined with dim_market
+  - Counts markets per category using GROUP BY with COUNT(DISTINCT market_id)
+  - Generates slug from category name (lowercase, hyphens for spaces)
+  - Returns list ordered by marketCount DESC
+- Implemented `GET /markets/tags` endpoint in `src/prediction_data/api/markets/router.py`:
+  - Added to markets router (not separate tags router) for simplicity
+  - Route placed before `/{market_id}` to avoid path parameter conflicts
+  - Returns list of TagResponse for populating filter dropdowns
+  - Full OpenAPI documentation with descriptions
+- Regenerated OpenAPI spec and TypeScript types:
+  - openapi.json now includes TagResponse schema and /markets/tags endpoint
+  - web/src/lib/api/schema.d.ts updated with TagResponse type
+- All type checks pass (mypy)
+- All 1441 backend tests pass (pytest)
+- Note: Uses category data from dim_event as the source for "tags" since dim_market
+  does not have a dedicated tags field. This provides the same functionality for
+  populating category filter dropdowns in the frontend.
 
 ## In Progress
 
@@ -262,7 +281,9 @@
 - All core markets endpoints now complete
 - Events router and endpoints now complete
 - Frontend hooks now call FastAPI endpoints
-- OpenAPI spec regenerated and TypeScript types updated. Only remaining task: Tags Router Setup
+- OpenAPI spec regenerated and TypeScript types updated
+- Tags endpoint implemented and available at /api/v1/markets/tags
+- All PRD categories are now complete - sprint finished
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
@@ -272,7 +293,7 @@
 - src/prediction_data/api/events/service.py [DONE]
 - src/prediction_data/api/events/schemas.py [DONE]
 - src/prediction_data/api/events/__init__.py [DONE]
-- src/prediction_data/api/tags/router.py (or add to markets)
+- src/prediction_data/api/markets/router.py (tags endpoint added here) [DONE]
 - src/prediction_data/api/clickhouse.py [DONE]
 - src/prediction_data/api/clob_client.py [DONE]
 - src/prediction_data/api/main.py (register new routers)

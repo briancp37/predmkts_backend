@@ -1169,3 +1169,58 @@ def _parse_tokens_to_outcomes(
         )
 
     return outcomes
+
+
+async def get_tags(
+    client: Client,
+) -> list[dict[str, Any]]:
+    """Fetch available tags (categories) from ClickHouse.
+
+    Returns a list of categories with their market counts, ordered by market count
+    descending. Categories are extracted from dim_event and joined with dim_market
+    to count actual markets per category.
+
+    Args:
+        client: ClickHouse client.
+
+    Returns:
+        List of tag dicts formatted for TagResponse (id, name, slug, marketCount).
+    """
+    # Query categories from dim_event joined with dim_market to get actual market counts
+    # This gives us categories that have associated markets
+    query = """
+        SELECT
+            e.category AS name,
+            COUNT(DISTINCT m.platform_market_id) AS market_count
+        FROM prediction_gold.dim_event e
+        INNER JOIN prediction_gold.dim_market m
+            ON m.platform = e.platform AND m.event_id = e.platform_event_id
+        WHERE e.category IS NOT NULL AND e.category != ''
+        GROUP BY e.category
+        ORDER BY market_count DESC
+    """
+
+    rows = await execute_query(query, {}, client=client)
+
+    # Convert to TagResponse format
+    # Generate slug from category name (lowercase, hyphens for spaces)
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        name = row.get("name") or ""
+        if not name:
+            continue
+        # Generate slug: lowercase, replace spaces with hyphens, remove special chars
+        slug = name.lower().replace(" ", "-").replace("&", "and")
+        # Remove any remaining non-alphanumeric characters except hyphens
+        slug = "".join(c for c in slug if c.isalnum() or c == "-")
+
+        results.append(
+            {
+                "id": slug,  # Use slug as ID since we don't have a separate ID
+                "name": name,
+                "slug": slug,
+                "marketCount": int(row.get("market_count", 0)),
+            }
+        )
+
+    return results

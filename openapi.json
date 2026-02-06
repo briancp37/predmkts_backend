@@ -886,6 +886,32 @@
         }
       }
     },
+    "/api/v1/markets/tags": {
+      "get": {
+        "tags": [
+          "markets"
+        ],
+        "summary": "List Tags",
+        "description": "List all available tags (categories) for filtering markets.\n\nReturns a list of categories with their market counts, ordered by the number\nof markets in each category (highest first). These can be used to populate\nfilter dropdowns in the frontend.\n\n**Response fields:**\n- `id`: Unique identifier for the tag (slug-based)\n- `name`: Display name of the category\n- `slug`: URL-friendly version of the name\n- `marketCount`: Number of markets in this category",
+        "operationId": "list_tags_api_v1_markets_tags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Tags Api V1 Markets Tags Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/markets/{market_id}": {
       "get": {
         "tags": [
@@ -3264,6 +3290,35 @@
         ],
         "title": "SmartTradeResponse",
         "description": "Trade response with smart score of the trader."
+      },
+      "TagResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "marketCount": {
+            "type": "integer",
+            "title": "Marketcount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "marketCount"
+        ],
+        "title": "TagResponse",
+        "description": "Tag (category) information for filtering markets."
       },
       "TokenRefresh": {
         "properties": {

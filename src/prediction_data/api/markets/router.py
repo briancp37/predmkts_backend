@@ -14,6 +14,7 @@ from prediction_data.api.markets.schemas import (
     MarketResponse,
     PriceHistoryPoint,
     PriceHistoryResponse,
+    TagResponse,
     TradeListResponse,
     TradeResponse,
 )
@@ -24,6 +25,7 @@ from prediction_data.api.markets.service import (
     get_markets,
     get_markets_advanced,
     get_markets_screener,
+    get_tags,
 )
 
 router = APIRouter()
@@ -255,6 +257,26 @@ async def list_markets_screener(
         page=page,
         limit=limit,
     )
+
+
+@router.get("/tags", response_model=list[TagResponse])
+async def list_tags(
+    client: Client = Depends(get_clickhouse_client),
+) -> list[TagResponse]:
+    """List all available tags (categories) for filtering markets.
+
+    Returns a list of categories with their market counts, ordered by the number
+    of markets in each category (highest first). These can be used to populate
+    filter dropdowns in the frontend.
+
+    **Response fields:**
+    - `id`: Unique identifier for the tag (slug-based)
+    - `name`: Display name of the category
+    - `slug`: URL-friendly version of the name
+    - `marketCount`: Number of markets in this category
+    """
+    tags = await get_tags(client)
+    return [TagResponse.model_validate(t) for t in tags]
 
 
 @router.get("/{market_id}", response_model=MarketResponse)

@@ -161,7 +161,7 @@
       "Query distinct tags from markets (may need to extract from market metadata)",
       "Return list of TagResponse ordered by marketCount DESC"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "ClickHouse Query Utilities",
