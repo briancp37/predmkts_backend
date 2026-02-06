@@ -1,7 +1,7 @@
 # Dockerfile for prediction-data ingestion container
 # Runs on ECS Fargate for scheduled Bronze layer data ingestion
 
-FROM --platform=linux/amd64 python:3.11-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
@@ -16,7 +16,7 @@ COPY src/ ./src/
 RUN pip wheel --no-deps --wheel-dir /build/wheels .
 
 
-FROM --platform=linux/amd64 python:3.11-slim
+FROM python:3.11-slim
 
 # Security: run as non-root user
 RUN groupadd --gid 1000 appgroup && \

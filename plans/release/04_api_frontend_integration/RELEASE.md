@@ -46,6 +46,7 @@ Add a FastAPI REST API layer to serve the Next.js frontend, unifying the codebas
 | API Framework | FastAPI | Auto-generates OpenAPI, async, Pydantic |
 | Auth Strategy | Backend-issued JWT | Single source of truth |
 | User Database | PostgreSQL | OLTP workload, separate from ClickHouse |
+| Production DB Hosting | Supabase (free tier) | $0/mo vs $15/mo AWS RDS, sufficient for 100k+ users |
 | Contract Sync | OpenAPI → TypeScript | Generated types ensure consistency |
 | Deployment | Same domain via proxy | No CORS complexity |
 
@@ -74,6 +75,7 @@ Add a FastAPI REST API layer to serve the Next.js frontend, unifying the codebas
 | 03 | trader_endpoints | Trader data API endpoints |
 | 04 | user_features | Watchlist, tracked traders |
 | 05 | integration_polish | Error handling, testing, cleanup |
+| 06 | supabase | Production database migration to Supabase |
 
 ## Exit Criteria
 
@@ -85,6 +87,7 @@ Add a FastAPI REST API layer to serve the Next.js frontend, unifying the codebas
 - [ ] Tier limits enforced (FREE: 6 traders, PRO: 50)
 - [ ] docker-compose starts all services (Postgres, ClickHouse)
 - [ ] No regressions in existing CLI/pipeline functionality
+- [ ] Supabase production database configured and tested
 
 ## Deferred
 

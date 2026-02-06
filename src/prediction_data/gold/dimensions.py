@@ -207,9 +207,12 @@ def load_dim_market(
 
     # Insert into ClickHouse.
     ch = clickhouse_client or get_client()
+    # Convert to list of lists for insert (pylist returns dicts which need column_names removed)
+    rows = dim_table.to_pylist()
+    data = [[row[col] for col in DIM_MARKET_COLUMNS] for row in rows]
     ch.insert(
         "dim_market",
-        data=dim_table.to_pylist(),
+        data=data,
         column_names=DIM_MARKET_COLUMNS,
     )
 
@@ -326,9 +329,11 @@ def load_dim_outcome(
 
     # Insert into ClickHouse.
     ch = clickhouse_client or get_client()
+    rows = dim_table.to_pylist()
+    data = [[row[col] for col in DIM_OUTCOME_COLUMNS] for row in rows]
     ch.insert(
         "dim_outcome",
-        data=dim_table.to_pylist(),
+        data=data,
         column_names=DIM_OUTCOME_COLUMNS,
     )
 
@@ -455,9 +460,11 @@ def load_dim_wallet(
 
     # Insert into ClickHouse.
     ch = clickhouse_client or get_client()
+    rows = dim_table.to_pylist()
+    data = [[row[col] for col in DIM_WALLET_COLUMNS] for row in rows]
     ch.insert(
         "dim_wallet",
-        data=dim_table.to_pylist(),
+        data=data,
         column_names=DIM_WALLET_COLUMNS,
     )
 
@@ -571,9 +578,11 @@ def load_dim_event(
 
     # Insert into ClickHouse.
     ch = clickhouse_client or get_client()
+    rows = dim_table.to_pylist()
+    data = [[row[col] for col in DIM_EVENT_COLUMNS] for row in rows]
     ch.insert(
         "dim_event",
-        data=dim_table.to_pylist(),
+        data=data,
         column_names=DIM_EVENT_COLUMNS,
     )
 
@@ -669,9 +678,11 @@ def load_dim_category(
 
     # Insert into ClickHouse.
     ch = clickhouse_client or get_client()
+    rows = dim_table.to_pylist()
+    data = [[row[col] for col in DIM_CATEGORY_COLUMNS] for row in rows]
     ch.insert(
         "dim_category",
-        data=dim_table.to_pylist(),
+        data=data,
         column_names=DIM_CATEGORY_COLUMNS,
     )
 

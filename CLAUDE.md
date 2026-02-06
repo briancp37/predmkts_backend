@@ -626,6 +626,56 @@ Freshness states: `fresh` (within SLA), `stale` (SLA < lag <= 2×SLA), `broken` 
 
 See [`docs/gold-operations-runbook.md`](docs/gold-operations-runbook.md) for full operational procedures.
 
+## Pipeline Diagnostics
+
+The `scripts/diagnose_markets.py` script provides comprehensive diagnostics for the markets data pipeline, tracing data from external APIs through Bronze, Silver, Gold layers to the REST API.
+
+```bash
+# Run full diagnostics
+python scripts/diagnose_markets.py
+```
+
+**What it checks:**
+
+| Layer | Checks |
+|-------|--------|
+| External API | Polymarket Gamma API connectivity and schema validation |
+| Bronze | S3 manifests, record counts, ingestion freshness |
+| Silver | Iceberg table snapshots, row counts, staleness |
+| Gold | ClickHouse table row counts (dim_market, dim_outcome, dim_event, market_mark_daily) |
+| REST API | Endpoint response, market data completeness, outcome population |
+| Infrastructure | EventBridge schedule status (enabled/disabled) |
+
+**Output includes:**
+- Color-coded status indicators (OK/WARN/ERROR)
+- Natural language explanations for each pipeline stage
+- Data freshness with human-readable ages ("2h ago", "1d ago")
+- Recommended fixes for common issues
+- Summary of all issues and warnings
+
+**Common issues detected:**
+- Empty dimension tables (e.g., `dim_outcome` empty causes blank API responses)
+- Stale data at any layer (Bronze not ingesting, Silver not processing)
+- Missing manifests or snapshots
+- API returning incomplete market data
+
+**Example output:**
+```
+================================================================================
+  4. GOLD LAYER (ClickHouse)
+================================================================================
+  [OK] dim_market: 386,588 rows
+  [ERROR] dim_outcome: 0 rows - EMPTY - This is why API returns blank data!
+  [OK] dim_event: 181,756 rows
+  [WARN] market_mark_daily: Latest: 2026-02-04 (2d old)
+
+================================================================================
+  RECOMMENDED FIXES
+================================================================================
+  1. Load dim_outcome table:
+     Run: prediction-data gold load-dims --table dim_outcome
+```
+
 ## S3 Key Structure
 
 **Bronze:**

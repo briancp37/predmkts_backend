@@ -18,12 +18,15 @@ def get_client(settings: Settings | None = None) -> Client:
         A connected ``clickhouse_connect`` client.
     """
     cfg = settings or get_settings()
+    # Use secure connection for ports 443 or 8443 (ClickHouse Cloud)
+    secure = cfg.clickhouse_port in (443, 8443)
     return clickhouse_connect.get_client(
         host=cfg.clickhouse_host,
         port=cfg.clickhouse_port,
         username=cfg.clickhouse_user,
         password=cfg.clickhouse_password,
         database=cfg.clickhouse_database,
+        secure=secure,
     )
 
 

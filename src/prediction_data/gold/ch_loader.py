@@ -152,9 +152,12 @@ def load_gold_table_to_clickhouse(
         tbl = _read_gold_parquet_for_day(gold_bucket, table_name, str(day), s3_client=s3_client)
         if tbl is None or tbl.num_rows == 0:
             continue
+        # Convert to list of tuples (clickhouse_connect format)
+        data_dicts = tbl.to_pylist()
+        data_tuples = [tuple(d[c] for c in columns) for d in data_dicts]
         clickhouse_client.insert(
             table_name,
-            data=tbl.to_pylist(),
+            data=data_tuples,
             column_names=columns,
         )
         total_rows += tbl.num_rows

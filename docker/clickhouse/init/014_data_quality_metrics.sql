@@ -10,4 +10,4 @@ CREATE TABLE IF NOT EXISTS prediction_gold.data_quality_metrics
     checked_at          DateTime64(3, 'UTC')
 )
 ENGINE = MergeTree
-ORDER BY (dataset, partition, run_id);
+ORDER BY (dataset, partition, check_name);

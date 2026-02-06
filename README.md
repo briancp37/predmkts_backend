@@ -32,8 +32,27 @@ prediction-data ingest kalshi-markets --dt 2024-01-28
 | `prediction-data ingest kalshi-markets --dt DATE` | Ingest Kalshi markets |
 | `prediction-data ingest kalshi-events --dt DATE` | Ingest Kalshi events |
 
+## Pipeline Diagnostics
+
+Diagnose data pipeline issues across all layers (Bronze → Silver → Gold → API):
+
+```bash
+# Run full markets diagnostics
+python scripts/diagnose_markets.py
+```
+
+The script checks:
+- **External API** — Polymarket Gamma API connectivity
+- **Bronze Layer** — S3 manifests and ingestion freshness
+- **Silver Layer** — Iceberg table snapshots and row counts
+- **Gold Layer** — ClickHouse dimension tables (dim_market, dim_outcome, etc.)
+- **REST API** — Endpoint responses and data completeness
+- **Infrastructure** — EventBridge schedule status
+
+Outputs color-coded status, natural language explanations, and recommended fixes.
+
 ## Documentation
 
 - [OPERATIONS.md](OPERATIONS.md) — Operational runbook (backfills, troubleshooting, monitoring)
 - [infrastructure/README.md](infrastructure/README.md) — AWS deployment guide
-- [CLAUD.md](CLAUD.md) — AI context and API reference
+- [CLAUDE.md](CLAUDE.md) — AI context and API reference

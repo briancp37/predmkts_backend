@@ -21,7 +21,90 @@ LOADABLE_DIMS = ("dim_platform", "dim_market", "dim_outcome", "dim_wallet", "dim
 def status() -> None:
     """Show Gold layer status and table info."""
     typer.echo("Gold layer status: not yet configured.")
-    typer.echo("Run 'prediction-data gold init-tables' after ClickHouse setup.")
+    typer.echo("Run 'prediction-data gold init-schema' after ClickHouse setup.")
+
+
+@app.command(name="init-schema")
+def init_schema(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview DDL without executing."),
+) -> None:
+    """Initialize ClickHouse schema by running all DDL files.
+
+    Reads SQL files from docker/clickhouse/init/ and executes them against
+    the configured ClickHouse instance. Use this to set up ClickHouse Cloud
+    or any remote ClickHouse server.
+    """
+    from pathlib import Path
+
+    from prediction_data.gold.clickhouse import get_client, ping
+
+    # Find DDL files
+    project_root = Path(__file__).parent.parent.parent.parent
+    init_dir = project_root / "docker" / "clickhouse" / "init"
+
+    if not init_dir.exists():
+        typer.echo(f"Error: DDL directory not found: {init_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    ddl_files = sorted(init_dir.glob("*.sql"))
+    if not ddl_files:
+        typer.echo(f"Error: No .sql files found in {init_dir}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Found {len(ddl_files)} DDL files in {init_dir}")
+
+    if dry_run:
+        typer.echo("\n[dry-run] Would execute the following DDL files:")
+        for ddl_file in ddl_files:
+            typer.echo(f"  {ddl_file.name}")
+        return
+
+    # Connect to ClickHouse
+    typer.echo("\nConnecting to ClickHouse...")
+    try:
+        ch = get_client()
+        if not ping(ch):
+            typer.echo("Error: ClickHouse connection failed", err=True)
+            raise typer.Exit(code=1)
+        typer.echo("Connected successfully.")
+    except Exception as exc:
+        typer.echo(f"Error: Failed to connect to ClickHouse: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    # Execute each DDL file
+    failures: list[str] = []
+    for ddl_file in ddl_files:
+        typer.echo(f"  Executing {ddl_file.name}...")
+        try:
+            sql = ddl_file.read_text()
+            # Split on semicolons to handle multiple statements
+            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            for stmt in statements:
+                # Strip leading comment lines from statement
+                lines = stmt.split("\n")
+                non_comment_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    # Keep non-empty, non-comment lines
+                    if stripped and not stripped.startswith("--"):
+                        non_comment_lines.append(line)
+                    elif non_comment_lines:
+                        # Keep comment lines that appear after SQL starts
+                        non_comment_lines.append(line)
+                clean_stmt = "\n".join(non_comment_lines).strip()
+                if clean_stmt:
+                    ch.command(clean_stmt)
+            typer.echo(f"    OK")
+        except Exception as exc:
+            failures.append(f"{ddl_file.name}: {exc}")
+            typer.echo(f"    FAILED: {exc}", err=True)
+
+    typer.echo(f"\nSchema initialization complete: {len(ddl_files) - len(failures)}/{len(ddl_files)} files succeeded.")
+    if failures:
+        typer.echo("Failures:", err=True)
+        for failure in failures:
+            typer.echo(f"  {failure}", err=True)
+        raise typer.Exit(code=1)
 
 
 @app.command(name="load-dims")
