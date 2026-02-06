@@ -366,6 +366,40 @@
 - TypeScript check: Pre-existing recharts type issues remain (2 errors in chart components)
 - Tests: No frontend test files exist yet (Frontend Integration Testing is a separate incomplete PRD item)
 
+### Performance Optimization (2026-02-05)
+- Created `src/prediction_data/api/cache.py` with caching utilities:
+  - `CacheHeaderMiddleware` — adds Cache-Control, ETag, and Vary headers based on endpoint type
+  - `generate_etag()` — generates weak ETags from response content using MD5
+  - `check_etag_match()` — validates If-None-Match headers for 304 responses
+  - Public cache paths configured with appropriate TTLs:
+    - Markets, traders, events: 60 seconds
+    - Tags: 300 seconds (relatively static)
+    - Leaderboards: 120 seconds
+  - Stale-while-revalidate pattern for better cache behavior
+  - ETag support for smaller responses (< 1MB)
+  - Conditional request handling with 304 Not Modified responses
+- Integrated `CacheHeaderMiddleware` in `src/prediction_data/api/main.py`
+- Enhanced `src/prediction_data/api/clickhouse.py` with performance improvements:
+  - Increased `ThreadPoolExecutor` max_workers from 4 to 10 for higher concurrency
+  - Added query timing/metrics logging to `execute_query()` and `execute_query_count()`
+  - Slow query threshold set to 500ms — queries exceeding this logged at WARNING level
+  - Query preview logged with slow queries for identification
+  - Debug-level logging for normal queries to avoid log noise
+- Pagination limits already properly enforced in all routers:
+  - Markets: limit 1-500 (default 50)
+  - Trades: limit 1-1000 (default 100)
+  - Traders: limit 1-500 (default 50)
+  - Events: limit 1-500 (default 50)
+- Cache header behavior by endpoint:
+  - Public read endpoints: `public, max-age=60, stale-while-revalidate=30`
+  - Static data (tags): `public, max-age=300, stale-while-revalidate=150`
+  - Authenticated endpoints: `private, no-cache, no-store`
+  - Auth endpoints: `private, no-cache, no-store`
+  - Error responses: `no-store`
+- Redis cache consideration documented as future enhancement (not implemented)
+- TypeScript check: Passes for API code (only pre-existing recharts issues in frontend)
+- API tests: All 48 tests pass
+
 ## In Progress
 
 ## Blockers

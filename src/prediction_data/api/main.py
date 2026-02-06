@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from prediction_data.api.auth.router import router as auth_router
+from prediction_data.api.cache import CacheHeaderMiddleware
 from prediction_data.api.clob_client import close_clob_client
 from prediction_data.api.events.router import router as events_router
 from prediction_data.api.exceptions import APIError
@@ -162,6 +163,10 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # Request logging middleware - must be added first (outermost)
 # so it wraps all other middleware and captures accurate timing
 app.add_middleware(RequestLoggingMiddleware)
+
+# Cache header middleware - adds Cache-Control, ETag, and Vary headers
+# to public endpoints for better client and CDN caching
+app.add_middleware(CacheHeaderMiddleware)
 
 # CORS middleware - configurable via CORS_ORIGINS environment variable
 # In production, set CORS_ORIGINS to your frontend domain(s)

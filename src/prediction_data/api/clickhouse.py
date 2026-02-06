@@ -7,6 +7,7 @@ query builders for common patterns, and Pydantic model conversion helpers.
 from __future__ import annotations
 
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache
@@ -17,15 +18,22 @@ from clickhouse_connect.driver.client import Client
 from pydantic import BaseModel
 
 from prediction_data.core.config import get_settings
+from prediction_data.core.logging import get_logger
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
 
+logger = get_logger(__name__)
+
 # Default query timeout in seconds
 DEFAULT_QUERY_TIMEOUT = 10
 
+# Slow query threshold in seconds - queries exceeding this are logged at WARNING level
+SLOW_QUERY_THRESHOLD = 0.5
+
 # Thread pool for running sync ClickHouse operations
-_executor = ThreadPoolExecutor(max_workers=4)
+# Increased from 4 to 10 to handle higher concurrent request load
+_executor = ThreadPoolExecutor(max_workers=10)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -87,6 +95,7 @@ async def execute_query(
     """Execute a ClickHouse query asynchronously and return results as dicts.
 
     Runs the query in a thread pool to avoid blocking the event loop.
+    Logs query execution time and warns for slow queries.
 
     Args:
         query: SQL query string.
@@ -99,7 +108,8 @@ async def execute_query(
     """
     ch = client or get_clickhouse_client()
 
-    def _run_query() -> list[dict[str, Any]]:
+    def _run_query() -> tuple[list[dict[str, Any]], float, int]:
+        start_time = time.perf_counter()
         settings = {"max_execution_time": timeout}
         result = ch.query(query, parameters=parameters, settings=settings)
         # Convert to list of dicts with column names as keys
@@ -107,10 +117,31 @@ async def execute_query(
         rows = []
         for row in result.result_rows:
             rows.append(dict(zip(columns, row)))
-        return rows
+        elapsed = time.perf_counter() - start_time
+        return rows, elapsed, len(rows)
 
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(_executor, _run_query)
+    rows, elapsed, row_count = await loop.run_in_executor(_executor, _run_query)
+
+    # Log query execution
+    # Extract table name from query for identification (simple heuristic)
+    query_preview = query.strip()[:100].replace("\n", " ")
+
+    if elapsed >= SLOW_QUERY_THRESHOLD:
+        logger.warning(
+            "Slow ClickHouse query",
+            duration_ms=round(elapsed * 1000, 2),
+            row_count=row_count,
+            query_preview=query_preview,
+        )
+    else:
+        logger.debug(
+            "ClickHouse query executed",
+            duration_ms=round(elapsed * 1000, 2),
+            row_count=row_count,
+        )
+
+    return rows
 
 
 async def execute_query_count(
@@ -121,6 +152,8 @@ async def execute_query_count(
     timeout: int = DEFAULT_QUERY_TIMEOUT,
 ) -> int:
     """Execute a COUNT query and return the count value.
+
+    Logs query execution time and warns for slow queries.
 
     Args:
         query: SQL query that returns a single count value.
@@ -133,15 +166,35 @@ async def execute_query_count(
     """
     ch = client or get_clickhouse_client()
 
-    def _run_query() -> int:
+    def _run_query() -> tuple[int, float]:
+        start_time = time.perf_counter()
         settings = {"max_execution_time": timeout}
         result = ch.query(query, parameters=parameters, settings=settings)
+        elapsed = time.perf_counter() - start_time
         if result.result_rows:
-            return int(result.first_row[0])
-        return 0
+            return int(result.first_row[0]), elapsed
+        return 0, elapsed
 
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(_executor, _run_query)
+    count, elapsed = await loop.run_in_executor(_executor, _run_query)
+
+    # Log query execution
+    if elapsed >= SLOW_QUERY_THRESHOLD:
+        query_preview = query.strip()[:100].replace("\n", " ")
+        logger.warning(
+            "Slow ClickHouse count query",
+            duration_ms=round(elapsed * 1000, 2),
+            count=count,
+            query_preview=query_preview,
+        )
+    else:
+        logger.debug(
+            "ClickHouse count query executed",
+            duration_ms=round(elapsed * 1000, 2),
+            count=count,
+        )
+
+    return count
 
 
 def build_where_clause(

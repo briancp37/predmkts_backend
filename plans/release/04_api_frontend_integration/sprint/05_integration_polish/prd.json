@@ -191,7 +191,7 @@
       "Profile slow endpoints and optimize",
       "Add pagination limits to prevent large result sets"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Security Hardening",
