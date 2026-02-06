@@ -643,7 +643,8 @@ async def get_markets_advanced(
     fetch_limit = min(limit * 3, 500)  # Fetch up to 3x the limit, max 500
 
     # Get markets with volume data from market_mark_daily
-    # We aggregate the latest mark data per market
+    # We aggregate both total historical volume and recent (last day) volume
+    # Uses the latest available date in case data is stale
     markets_query = f"""
         SELECT
             m.platform_market_id AS id,
@@ -656,24 +657,32 @@ async def get_markets_advanced(
             m.status,
             m.tokens,
             m.updated_at AS updatedAt,
-            mark.volume_24h,
-            mark.price_change_24h
+            mark_recent.volume_24h,
+            mark_recent.price_change_24h,
+            mark_total.total_volume
         FROM prediction_gold.dim_market m
         LEFT JOIN prediction_gold.dim_event e
             ON m.platform = e.platform AND m.event_id = e.platform_event_id
         LEFT JOIN (
+            -- Recent volume: use the latest available day's data
             SELECT
                 market_id,
                 sum(volume_usd_24h) AS volume_24h,
-                -- Calculate price change from earliest to latest price in last 24h
-                -- This is an approximation using the latest mark
                 0.0 AS price_change_24h
             FROM prediction_gold.market_mark_daily
-            WHERE day_utc >= today() - 1
+            WHERE day_utc >= (SELECT MAX(day_utc) FROM prediction_gold.market_mark_daily)
             GROUP BY market_id
-        ) mark ON mark.market_id = m.platform_market_id
+        ) mark_recent ON mark_recent.market_id = m.platform_market_id
+        LEFT JOIN (
+            -- Total historical volume: sum across all available days
+            SELECT
+                market_id,
+                sum(volume_usd_24h) AS total_volume
+            FROM prediction_gold.market_mark_daily
+            GROUP BY market_id
+        ) mark_total ON mark_total.market_id = m.platform_market_id
         WHERE {where_clause}
-        ORDER BY COALESCE(mark.volume_24h, 0) DESC
+        ORDER BY COALESCE(mark_total.total_volume, 0) DESC
         LIMIT {fetch_limit}
     """
     market_rows = await execute_query(markets_query, params, client=client)
@@ -776,6 +785,7 @@ async def get_markets_advanced(
 
         # Get volume and price change from the query
         volume_24h = float(row.get("volume_24h") or 0.0)
+        total_volume = float(row.get("total_volume") or 0.0)
         price_change_24h = float(row.get("price_change_24h") or 0.0)
 
         # Apply advanced filters
@@ -824,7 +834,7 @@ async def get_markets_advanced(
                 "category": row.get("category"),
                 "endDate": None,  # Not in current schema
                 "resolved": row.get("status") == "resolved",
-                "totalVolume": volume_24h,  # Using 24h volume as total for now
+                "totalVolume": total_volume,  # Sum of all available daily volumes
                 "liquidity": liquidity,
                 "createdAt": created_at_str,
                 "imageUrl": None,  # Not in current schema
@@ -843,14 +853,14 @@ async def get_markets_advanced(
     # Sort results based on sort_by
     def sort_key(m: dict[str, Any]) -> Any:
         if sort_by == "volume":
-            return m.get("volume24h", 0.0) or 0.0
+            return m.get("totalVolume", 0.0) or 0.0
         elif sort_by == "liquidity":
             return m.get("liquidity", 0.0) or 0.0
         elif sort_by == "spread":
             return m.get("spreadCents", float("inf")) or float("inf")
         elif sort_by == "priceChange":
             return abs(m.get("priceChange24h", 0.0) or 0.0)
-        return m.get("volume24h", 0.0) or 0.0
+        return m.get("totalVolume", 0.0) or 0.0
 
     results.sort(key=sort_key, reverse=(sort_order == "desc"))
 
