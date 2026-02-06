@@ -296,6 +296,52 @@
 - TypeScript check passes (mypy): 39 source files checked with no issues
 - Core tests pass (1428 passed, 13 failed in Gold layer due to ClickHouse infrastructure dependencies)
 
+### End-to-End Testing (2026-02-05)
+- Created `tests/api/` directory with comprehensive API integration tests
+- Created `tests/api/__init__.py` module init
+- Created `tests/api/conftest.py` with test fixtures:
+  - `test_engine` - SQLite in-memory database engine using aiosqlite
+  - `test_session_factory` - Async session factory for test isolation
+  - `mock_clickhouse_client` - MagicMock for ClickHouse queries
+  - `client` - httpx AsyncClient with ASGI transport for testing FastAPI app
+  - `test_user`, `test_user_pro` - Fixtures to register test users
+  - `auth_headers`, `auth_headers_pro`, `auth_headers_with_refresh` - JWT auth headers
+  - Helper functions: `register_test_user()`, `login_test_user()`, `make_mock_ch_response()`
+  - Test constants: `TEST_MARKET_ID`, `TEST_TRADER_ADDRESS`
+  - Rate limiting disabled during tests via `limiter.enabled = False`
+- Created `tests/api/test_auth.py` with 17 tests:
+  - `TestRegister`: register success, without name, duplicate email, invalid email, weak password
+  - `TestLogin`: login success, wrong password, nonexistent user
+  - `TestGetCurrentUser`: authenticated, no token, invalid token
+  - `TestRefreshToken`: success, invalid, access token as refresh fails
+  - `TestUpdateUser`: update name, no auth
+  - `TestFullAuthFlow`: complete register -> login -> access -> refresh flow
+- Created `tests/api/test_watchlist.py` with 12 tests:
+  - `TestAddToWatchlist`: success, no auth, market not found, duplicate, invalid ID
+  - `TestGetWatchlist`: empty, with items, no auth
+  - `TestRemoveFromWatchlist`: success, not found, no auth
+  - `TestWatchlistFlow`: add -> list -> remove integration test
+- Created `tests/api/test_tracked_traders.py` with 19 tests:
+  - `TestAddTrackedTrader`: success, with custom name, no auth, duplicate, invalid address
+  - `TestTrackedTraderTierLimits`: FREE tier limit (6 traders) enforcement
+  - `TestGetTrackedTraders`: empty, with items, no auth
+  - `TestRemoveTrackedTrader`: success, not found, no auth
+  - `TestUpdateTrackedTrader`: update name, clear name
+  - `TestTrackedTraderActivity`: empty, with traders, no auth
+  - `TestTrackedTradersFlow`: add -> list -> update -> remove integration test
+  - `test_tier_limit_then_remove_then_add_again`: limit enforcement and recovery
+- Added dev dependencies to `pyproject.toml`:
+  - `aiosqlite>=0.19.0` - SQLite async driver for test database
+  - `httpx>=0.27.0` - (already listed, confirmed available for test client)
+- All 48 API tests pass: `pytest tests/api/ -v` completes in ~16s
+- Test architecture notes:
+  - Uses `pytest_asyncio` fixtures with `scope="function"` for proper isolation
+  - Uses `httpx.AsyncClient` with `ASGITransport` (not deprecated TestClient)
+  - Database created/dropped per test function for clean isolation
+  - ClickHouse mocked to avoid external dependencies
+  - Auth tests verify 401 for missing auth (not 403)
+  - Tier limit tests verify 403 for tier exceeded
+
 ## In Progress
 
 ## Blockers

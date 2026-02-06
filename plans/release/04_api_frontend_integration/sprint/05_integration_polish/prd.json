@@ -162,7 +162,7 @@
       "Test leaderboard endpoint",
       "Add GitHub Actions workflow for API tests"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Integration Testing",
