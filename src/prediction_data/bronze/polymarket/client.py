@@ -1,5 +1,6 @@
 """Polymarket API client with pagination support."""
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -161,27 +162,25 @@ class PolymarketClient:
 
         return markets
 
-    async def fetch_all_markets(
+    async def stream_markets(
         self,
         *,
         include_closed: bool = True,
-    ) -> list[dict[str, Any]]:
-        """Fetch all markets with automatic pagination.
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Stream markets page by page for memory-efficient processing.
 
-        Paginates through all available markets until no more results
-        are returned.
+        Yields each page of markets as it's fetched, avoiding loading
+        all records into memory at once.
 
         Args:
             include_closed: Whether to include closed/resolved markets.
 
-        Returns:
-            List of all market records.
+        Yields:
+            Each page of market records as a list.
         """
-        gamma_client, _ = self._ensure_clients()
-        all_markets: list[dict[str, Any]] = []
         state = PaginationState(limit=self._page_size)
 
-        self._logger.info("Starting markets fetch", include_closed=include_closed)
+        self._logger.info("Starting markets stream", include_closed=include_closed)
 
         while not state.is_complete:
             markets = await self.fetch_markets_page(
@@ -193,12 +192,11 @@ class PolymarketClient:
             if not markets:
                 state.is_complete = True
                 self._logger.info(
-                    "Markets fetch complete (empty page)",
+                    "Markets stream complete (empty page)",
                     total_fetched=state.total_fetched,
                 )
                 break
 
-            all_markets.extend(markets)
             state.total_fetched += len(markets)
             state.offset += state.limit
 
@@ -209,14 +207,34 @@ class PolymarketClient:
                 total_fetched=state.total_fetched,
             )
 
+            yield markets
+
             # If we received fewer records than the limit, we've reached the end
             if len(markets) < state.limit:
                 state.is_complete = True
                 self._logger.info(
-                    "Markets fetch complete (partial page)",
+                    "Markets stream complete (partial page)",
                     total_fetched=state.total_fetched,
                 )
 
+    async def fetch_all_markets(
+        self,
+        *,
+        include_closed: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Fetch all markets with automatic pagination.
+
+        NOTE: For large datasets, prefer stream_markets() to avoid OOM.
+
+        Args:
+            include_closed: Whether to include closed/resolved markets.
+
+        Returns:
+            List of all market records.
+        """
+        all_markets: list[dict[str, Any]] = []
+        async for page in self.stream_markets(include_closed=include_closed):
+            all_markets.extend(page)
         return all_markets
 
     async def fetch_events_page(
@@ -263,27 +281,25 @@ class PolymarketClient:
 
         return events
 
-    async def fetch_all_events(
+    async def stream_events(
         self,
         *,
         include_closed: bool = True,
-    ) -> list[dict[str, Any]]:
-        """Fetch all events with automatic pagination.
+    ) -> AsyncIterator[list[dict[str, Any]]]:
+        """Stream events page by page for memory-efficient processing.
 
-        Paginates through all available events until no more results
-        are returned.
+        Yields each page of events as it's fetched, avoiding loading
+        all records into memory at once.
 
         Args:
             include_closed: Whether to include closed/resolved events.
 
-        Returns:
-            List of all event records.
+        Yields:
+            Each page of event records as a list.
         """
-        gamma_client, _ = self._ensure_clients()
-        all_events: list[dict[str, Any]] = []
         state = PaginationState(limit=self._page_size)
 
-        self._logger.info("Starting events fetch", include_closed=include_closed)
+        self._logger.info("Starting events stream", include_closed=include_closed)
 
         while not state.is_complete:
             events = await self.fetch_events_page(
@@ -295,12 +311,11 @@ class PolymarketClient:
             if not events:
                 state.is_complete = True
                 self._logger.info(
-                    "Events fetch complete (empty page)",
+                    "Events stream complete (empty page)",
                     total_fetched=state.total_fetched,
                 )
                 break
 
-            all_events.extend(events)
             state.total_fetched += len(events)
             state.offset += state.limit
 
@@ -311,14 +326,33 @@ class PolymarketClient:
                 total_fetched=state.total_fetched,
             )
 
-            # If we received fewer records than the limit, we've reached the end
+            yield events
+
             if len(events) < state.limit:
                 state.is_complete = True
                 self._logger.info(
-                    "Events fetch complete (partial page)",
+                    "Events stream complete (partial page)",
                     total_fetched=state.total_fetched,
                 )
 
+    async def fetch_all_events(
+        self,
+        *,
+        include_closed: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Fetch all events with automatic pagination.
+
+        NOTE: For large datasets, prefer stream_events() to avoid OOM.
+
+        Args:
+            include_closed: Whether to include closed/resolved events.
+
+        Returns:
+            List of all event records.
+        """
+        all_events: list[dict[str, Any]] = []
+        async for page in self.stream_events(include_closed=include_closed):
+            all_events.extend(page)
         return all_events
 
     async def fetch_markets_incremental(

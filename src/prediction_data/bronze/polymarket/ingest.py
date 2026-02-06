@@ -3,7 +3,7 @@
 import asyncio
 import calendar
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 import structlog
 
@@ -15,7 +15,12 @@ from prediction_data.bronze.polymarket.client import (
 from prediction_data.core.config import get_settings
 from prediction_data.core.logging import get_logger
 from prediction_data.core.run import RunContext
-from prediction_data.storage.manifest import create_manifest
+from prediction_data.storage.manifest import (
+    FileReference,
+    Manifest,
+    Source,
+    create_manifest,
+)
 from prediction_data.storage.s3 import S3Client
 
 
@@ -154,12 +159,13 @@ async def ingest_markets(
     bucket: str | None = None,
     include_closed: bool = True,
     since_updated_at: str | None = None,
+    batch_size: int = 10000,
 ) -> str:
     """Ingest Polymarket markets for a given date.
 
     When ``since_updated_at`` is provided, uses incremental mode — fetches only
     markets updated after the cutoff and stores as a delta partition. Otherwise
-    fetches a full snapshot.
+    fetches a full snapshot using streaming to avoid OOM.
 
     Args:
         dt: Data partition date in YYYY-MM-DD format.
@@ -167,6 +173,8 @@ async def ingest_markets(
         include_closed: Whether to include closed/resolved markets.
         since_updated_at: ISO 8601 cutoff for incremental fetch. When provided,
             only records with updatedAt > this value are fetched.
+        batch_size: Number of records to accumulate before writing to S3.
+            Keeps memory usage low for large full snapshots.
 
     Returns:
         The run_id for this ingestion run.
@@ -190,79 +198,149 @@ async def ingest_markets(
         include_closed=include_closed,
         incremental=incremental,
         since_updated_at=since_updated_at,
+        batch_size=batch_size,
     )
 
-    # Fetch markets from API
-    max_updated_at: str | None = None
-    async with PolymarketClient() as client:
-        if incremental:
+    # For incremental mode, use the existing non-streaming approach (small datasets)
+    if incremental:
+        async with PolymarketClient() as client:
             assert since_updated_at is not None
             markets, max_updated_at = await client.fetch_markets_incremental(
                 since_updated_at=since_updated_at,
                 include_closed=include_closed,
             )
-        else:
-            markets = await client.fetch_all_markets(include_closed=include_closed)
-            # Extract max updatedAt from full snapshot for cursor tracking
-            # so subsequent catchup runs can use incremental mode.
-            if markets:
-                updated_values = [m.get("updatedAt", "") for m in markets]
-                max_val = max((v for v in updated_values if v), default=None)
-                if max_val:
-                    max_updated_at = max_val
-
-    logger.info(
-        "Fetched markets from API",
-        record_count=len(markets),
-        incremental=incremental,
-        max_updated_at=max_updated_at,
-    )
-
-    # Compute latest_timestamp for manifest (epoch seconds)
-    latest_timestamp: int | None = None
-    if max_updated_at is not None and max_updated_at != since_updated_at:
-        latest_timestamp = _iso_to_epoch(max_updated_at)
-    elif since_updated_at is not None and not markets:
-        # Zero-change incremental: preserve the original cursor
-        latest_timestamp = _iso_to_epoch(since_updated_at)
-
-    # Upload to S3
-    async with S3Client(bucket=bucket) as s3_client:
-        # Upload JSONL data
-        data_key, row_count = await s3_client.upload_jsonl(
-            records=markets,
-            platform="polymarket",
-            entity="markets",
-            dt=dt,
-            run_id=run_ctx.run_id,
-        )
 
         logger.info(
-            "Uploaded markets data to S3",
-            key=data_key,
-            row_count=row_count,
+            "Fetched markets from API (incremental)",
+            record_count=len(markets),
+            max_updated_at=max_updated_at,
         )
 
-        # Create and upload manifest
-        manifest = create_manifest(
+        latest_timestamp: int | None = None
+        if max_updated_at is not None and max_updated_at != since_updated_at:
+            latest_timestamp = _iso_to_epoch(max_updated_at)
+        elif not markets:
+            latest_timestamp = _iso_to_epoch(since_updated_at)
+
+        async with S3Client(bucket=bucket) as s3_client:
+            data_key, row_count = await s3_client.upload_jsonl(
+                records=markets,
+                platform="polymarket",
+                entity="markets",
+                dt=dt,
+                run_id=run_ctx.run_id,
+            )
+
+            manifest = create_manifest(
+                run_id=run_ctx.run_id,
+                platform="polymarket",
+                entity="markets",
+                dt=dt,
+                bucket=bucket,
+                key=data_key,
+                row_count=row_count,
+                api_base_url=GAMMA_API_BASE_URL,
+                pagination="offset",
+                cursor=None,
+                snapshot_type=snapshot_type,
+                latest_timestamp=latest_timestamp,
+            )
+            await s3_client.upload_manifest(manifest)
+
+        run_ctx.mark_complete()
+        run_ctx.log_end(logger)
+        return run_ctx.run_id
+
+    # Full snapshot: use streaming with batched writes to avoid OOM
+    max_updated_at: str | None = None
+    total_row_count = 0
+    part_number = 0
+    batch: list[dict[str, Any]] = []
+    data_keys: list[str] = []
+
+    async with S3Client(bucket=bucket) as s3_client:
+        async with PolymarketClient() as client:
+            async for page in client.stream_markets(include_closed=include_closed):
+                # Track max updatedAt across all pages
+                for market in page:
+                    updated = market.get("updatedAt", "")
+                    if updated and (max_updated_at is None or updated > max_updated_at):
+                        max_updated_at = updated
+
+                batch.extend(page)
+
+                # Write batch when it reaches the threshold
+                if len(batch) >= batch_size:
+                    data_key, row_count = await s3_client.upload_jsonl(
+                        records=batch,
+                        platform="polymarket",
+                        entity="markets",
+                        dt=dt,
+                        run_id=run_ctx.run_id,
+                        part_number=part_number,
+                    )
+                    data_keys.append(data_key)
+                    total_row_count += row_count
+                    logger.info(
+                        "Uploaded markets batch to S3",
+                        part_number=part_number,
+                        batch_rows=row_count,
+                        total_rows=total_row_count,
+                    )
+                    part_number += 1
+                    batch = []
+
+        # Write any remaining records
+        if batch:
+            data_key, row_count = await s3_client.upload_jsonl(
+                records=batch,
+                platform="polymarket",
+                entity="markets",
+                dt=dt,
+                run_id=run_ctx.run_id,
+                part_number=part_number,
+            )
+            data_keys.append(data_key)
+            total_row_count += row_count
+            logger.info(
+                "Uploaded final markets batch to S3",
+                part_number=part_number,
+                batch_rows=row_count,
+                total_rows=total_row_count,
+            )
+
+        logger.info(
+            "Completed streaming markets ingestion",
+            total_rows=total_row_count,
+            parts_written=len(data_keys),
+            max_updated_at=max_updated_at,
+        )
+
+        # Compute latest_timestamp for manifest
+        latest_timestamp = None
+        if max_updated_at is not None:
+            latest_timestamp = _iso_to_epoch(max_updated_at)
+
+        # Create manifest with all data files
+        manifest = Manifest(
             run_id=run_ctx.run_id,
             platform="polymarket",
             entity="markets",
             dt=dt,
-            bucket=bucket,
-            key=data_key,
-            row_count=row_count,
-            api_base_url=GAMMA_API_BASE_URL,
-            pagination="offset",
-            cursor=None,
-            snapshot_type=snapshot_type,
-            latest_timestamp=latest_timestamp,
+            generated_at=datetime.now(UTC),
+            files=[FileReference(bucket=bucket, key=key) for key in data_keys],
+            row_count=total_row_count,
+            source=Source(
+                api_base_url=GAMMA_API_BASE_URL,
+                pagination="offset",
+                cursor=None,
+                latest_timestamp=latest_timestamp,
+                snapshot_type=snapshot_type,
+            ),
         )
-
         manifest_key = await s3_client.upload_manifest(manifest)
         logger.info("Uploaded manifest to S3", key=manifest_key)
 
-    # Mark run complete
     run_ctx.mark_complete()
     run_ctx.log_end(logger)
 
@@ -275,12 +353,13 @@ async def ingest_events(
     bucket: str | None = None,
     include_closed: bool = True,
     since_updated_at: str | None = None,
+    batch_size: int = 10000,
 ) -> str:
     """Ingest Polymarket events for a given date.
 
     When ``since_updated_at`` is provided, uses incremental mode — fetches only
     events updated after the cutoff and stores as a delta partition. Otherwise
-    fetches a full snapshot.
+    fetches a full snapshot using streaming to avoid OOM.
 
     Args:
         dt: Data partition date in YYYY-MM-DD format.
@@ -288,6 +367,7 @@ async def ingest_events(
         include_closed: Whether to include closed/resolved events.
         since_updated_at: ISO 8601 cutoff for incremental fetch. When provided,
             only records with updatedAt > this value are fetched.
+        batch_size: Number of records to accumulate before writing to S3.
 
     Returns:
         The run_id for this ingestion run.
@@ -311,79 +391,149 @@ async def ingest_events(
         include_closed=include_closed,
         incremental=incremental,
         since_updated_at=since_updated_at,
+        batch_size=batch_size,
     )
 
-    # Fetch events from API
-    max_updated_at: str | None = None
-    async with PolymarketClient() as client:
-        if incremental:
+    # For incremental mode, use the existing non-streaming approach (small datasets)
+    if incremental:
+        async with PolymarketClient() as client:
             assert since_updated_at is not None
             events, max_updated_at = await client.fetch_events_incremental(
                 since_updated_at=since_updated_at,
                 include_closed=include_closed,
             )
-        else:
-            events = await client.fetch_all_events(include_closed=include_closed)
-            # Extract max updatedAt from full snapshot for cursor tracking
-            # so subsequent catchup runs can use incremental mode.
-            if events:
-                updated_values = [e.get("updatedAt", "") for e in events]
-                max_val = max((v for v in updated_values if v), default=None)
-                if max_val:
-                    max_updated_at = max_val
-
-    logger.info(
-        "Fetched events from API",
-        record_count=len(events),
-        incremental=incremental,
-        max_updated_at=max_updated_at,
-    )
-
-    # Compute latest_timestamp for manifest (epoch seconds)
-    latest_timestamp: int | None = None
-    if max_updated_at is not None and max_updated_at != since_updated_at:
-        latest_timestamp = _iso_to_epoch(max_updated_at)
-    elif since_updated_at is not None and not events:
-        # Zero-change incremental: preserve the original cursor
-        latest_timestamp = _iso_to_epoch(since_updated_at)
-
-    # Upload to S3
-    async with S3Client(bucket=bucket) as s3_client:
-        # Upload JSONL data
-        data_key, row_count = await s3_client.upload_jsonl(
-            records=events,
-            platform="polymarket",
-            entity="events",
-            dt=dt,
-            run_id=run_ctx.run_id,
-        )
 
         logger.info(
-            "Uploaded events data to S3",
-            key=data_key,
-            row_count=row_count,
+            "Fetched events from API (incremental)",
+            record_count=len(events),
+            max_updated_at=max_updated_at,
         )
 
-        # Create and upload manifest
-        manifest = create_manifest(
+        latest_timestamp: int | None = None
+        if max_updated_at is not None and max_updated_at != since_updated_at:
+            latest_timestamp = _iso_to_epoch(max_updated_at)
+        elif not events:
+            latest_timestamp = _iso_to_epoch(since_updated_at)
+
+        async with S3Client(bucket=bucket) as s3_client:
+            data_key, row_count = await s3_client.upload_jsonl(
+                records=events,
+                platform="polymarket",
+                entity="events",
+                dt=dt,
+                run_id=run_ctx.run_id,
+            )
+
+            manifest = create_manifest(
+                run_id=run_ctx.run_id,
+                platform="polymarket",
+                entity="events",
+                dt=dt,
+                bucket=bucket,
+                key=data_key,
+                row_count=row_count,
+                api_base_url=GAMMA_API_BASE_URL,
+                pagination="offset",
+                cursor=None,
+                snapshot_type=snapshot_type,
+                latest_timestamp=latest_timestamp,
+            )
+            await s3_client.upload_manifest(manifest)
+
+        run_ctx.mark_complete()
+        run_ctx.log_end(logger)
+        return run_ctx.run_id
+
+    # Full snapshot: use streaming with batched writes to avoid OOM
+    max_updated_at: str | None = None
+    total_row_count = 0
+    part_number = 0
+    batch: list[dict[str, Any]] = []
+    data_keys: list[str] = []
+
+    async with S3Client(bucket=bucket) as s3_client:
+        async with PolymarketClient() as client:
+            async for page in client.stream_events(include_closed=include_closed):
+                # Track max updatedAt across all pages
+                for event in page:
+                    updated = event.get("updatedAt", "")
+                    if updated and (max_updated_at is None or updated > max_updated_at):
+                        max_updated_at = updated
+
+                batch.extend(page)
+
+                # Write batch when it reaches the threshold
+                if len(batch) >= batch_size:
+                    data_key, row_count = await s3_client.upload_jsonl(
+                        records=batch,
+                        platform="polymarket",
+                        entity="events",
+                        dt=dt,
+                        run_id=run_ctx.run_id,
+                        part_number=part_number,
+                    )
+                    data_keys.append(data_key)
+                    total_row_count += row_count
+                    logger.info(
+                        "Uploaded events batch to S3",
+                        part_number=part_number,
+                        batch_rows=row_count,
+                        total_rows=total_row_count,
+                    )
+                    part_number += 1
+                    batch = []
+
+        # Write any remaining records
+        if batch:
+            data_key, row_count = await s3_client.upload_jsonl(
+                records=batch,
+                platform="polymarket",
+                entity="events",
+                dt=dt,
+                run_id=run_ctx.run_id,
+                part_number=part_number,
+            )
+            data_keys.append(data_key)
+            total_row_count += row_count
+            logger.info(
+                "Uploaded final events batch to S3",
+                part_number=part_number,
+                batch_rows=row_count,
+                total_rows=total_row_count,
+            )
+
+        logger.info(
+            "Completed streaming events ingestion",
+            total_rows=total_row_count,
+            parts_written=len(data_keys),
+            max_updated_at=max_updated_at,
+        )
+
+        # Compute latest_timestamp for manifest
+        latest_timestamp = None
+        if max_updated_at is not None:
+            latest_timestamp = _iso_to_epoch(max_updated_at)
+
+        # Create manifest with all data files
+        manifest = Manifest(
             run_id=run_ctx.run_id,
             platform="polymarket",
             entity="events",
             dt=dt,
-            bucket=bucket,
-            key=data_key,
-            row_count=row_count,
-            api_base_url=GAMMA_API_BASE_URL,
-            pagination="offset",
-            cursor=None,
-            snapshot_type=snapshot_type,
-            latest_timestamp=latest_timestamp,
+            generated_at=datetime.now(UTC),
+            files=[FileReference(bucket=bucket, key=key) for key in data_keys],
+            row_count=total_row_count,
+            source=Source(
+                api_base_url=GAMMA_API_BASE_URL,
+                pagination="offset",
+                cursor=None,
+                latest_timestamp=latest_timestamp,
+                snapshot_type=snapshot_type,
+            ),
         )
-
         manifest_key = await s3_client.upload_manifest(manifest)
         logger.info("Uploaded manifest to S3", key=manifest_key)
 
-    # Mark run complete
     run_ctx.mark_complete()
     run_ctx.log_end(logger)
 
