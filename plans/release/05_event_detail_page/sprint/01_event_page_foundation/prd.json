@@ -10,7 +10,7 @@
       "Add price_change_24h calculation from market_mark_daily",
       "Test endpoint returns complete event with markets and outcomes"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend_routing",

@@ -2,10 +2,22 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### api_event_detail_endpoint (2026-02-06)
+- Created EventMarketOutcome schema extending MarketOutcome with priceChange24h field
+- Created EventMarketResponse schema extending MarketBase with outcomes and volume24h
+- Updated EventResponse.markets to use EventMarketResponse instead of MarketBase
+- Enhanced get_event_by_id service to:
+  - Query dim_outcome for all outcomes of markets in the event
+  - Query market_mark_daily for current prices and 24h price changes
+  - Calculate price_change_24h as absolute difference between latest and previous day mark_price
+  - Aggregate volume24h per market from all outcomes
+  - Include fallback to tokens JSON parsing when dim_outcome is empty
+- All type checks pass (mypy)
+- All linting passes (ruff)
 
 ## In Progress
 
@@ -14,4 +26,8 @@
 
 
 ## Notes
+- The endpoint now returns fully nested markets with outcomes, prices, and 24h changes
+- Price data comes from market_mark_daily table (VWAP mark prices)
+- Fallback to parsing tokens JSON from dim_market when dim_outcome is empty
+- Next task should be frontend_routing to wire up the Next.js page
 

@@ -2,7 +2,31 @@
 
 from pydantic import BaseModel, Field
 
-from prediction_data.api.markets.schemas import MarketBase
+from prediction_data.api.markets.schemas import MarketBase, MarketOutcome
+
+
+class EventMarketOutcome(MarketOutcome):
+    """Outcome with price change data for event detail view."""
+
+    priceChange24h: float = Field(
+        default=0.0,
+        description="Price change in last 24 hours (absolute, e.g., 0.05 = 5 cents)",
+        json_schema_extra={"example": 0.05},
+    )
+
+
+class EventMarketResponse(MarketBase):
+    """Market response with outcomes and price changes for event detail view."""
+
+    outcomes: list[EventMarketOutcome] = Field(
+        default_factory=list,
+        description="List of outcomes with current prices and 24h price changes",
+    )
+    volume24h: float = Field(
+        default=0.0,
+        description="Total trading volume across all outcomes in last 24 hours (USD)",
+        json_schema_extra={"example": 15000.00},
+    )
 
 
 class EventResponse(BaseModel):
@@ -42,9 +66,9 @@ class EventResponse(BaseModel):
         description="Event category",
         json_schema_extra={"example": "Politics"},
     )
-    markets: list[MarketBase] = Field(
+    markets: list[EventMarketResponse] = Field(
         default_factory=list,
-        description="Markets associated with this event",
+        description="Markets associated with this event, with outcomes and price data",
     )
 
 
