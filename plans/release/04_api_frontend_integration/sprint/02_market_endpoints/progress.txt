@@ -226,6 +226,28 @@
 - Note: Pre-existing TypeScript errors in Next.js API routes remain (Prisma types, implicit any). These routes
   are deprecated in favor of FastAPI and will be removed in a future cleanup task.
 
+### 2026-02-05: OpenAPI Spec Update
+- Regenerated OpenAPI spec by running `python scripts/export_openapi.py`
+- Verified `openapi.json` includes all market and event endpoints:
+  - GET /api/v1/markets
+  - GET /api/v1/markets/advanced
+  - GET /api/v1/markets/screener
+  - GET /api/v1/markets/{market_id}
+  - GET /api/v1/markets/{market_id}/trades
+  - GET /api/v1/markets/{market_id}/price-history
+  - GET /api/v1/events
+  - GET /api/v1/events/{event_id}
+- Verified all schemas are documented: MarketResponse, MarketAdvancedResponse, MarketListResponse,
+  TradeResponse, PriceHistoryPoint, PriceHistoryResponse, EventResponse, EventListResponse, etc.
+- Regenerated TypeScript types by running `npm run generate-api` in web/
+- Verified generated types in `web/src/lib/api/schema.d.ts` match expected frontend interfaces
+- All 1441 backend tests pass (pytest)
+- Note: Pre-existing TypeScript errors remain in deprecated Prisma-based Next.js API routes.
+  These routes will be removed in a future cleanup task. No new errors introduced.
+- Note: Tags endpoint not yet in OpenAPI spec since Tags Router Setup is not complete.
+  This is expected - the PRD step mentions "all market, event, and tag endpoints" but tags
+  implementation was deprioritized due to no tags data in dim_market schema.
+
 ## In Progress
 
 ## Blockers
@@ -239,7 +261,8 @@
 - GET /markets/screener endpoint implemented for time-based screening (no CLOB needed)
 - All core markets endpoints now complete
 - Events router and endpoints now complete
-- Frontend hooks now call FastAPI endpoints. Next priority: Tags Router Setup or OpenAPI Spec Update
+- Frontend hooks now call FastAPI endpoints
+- OpenAPI spec regenerated and TypeScript types updated. Only remaining task: Tags Router Setup
 
 ## Key Files to Create/Modify
 - src/prediction_data/api/markets/router.py
@@ -255,6 +278,8 @@
 - src/prediction_data/api/main.py (register new routers)
 - web/src/hooks/use-markets.ts [DONE]
 - web/src/hooks/use-markets-advanced.ts [DONE]
+- openapi.json [DONE]
+- web/src/lib/api/schema.d.ts [DONE]
 
 ## ClickHouse Tables to Query
 - dim_market (market metadata)

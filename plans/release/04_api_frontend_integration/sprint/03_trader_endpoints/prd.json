@@ -200,6 +200,6 @@
       "Run npm run generate-api in web/",
       "Verify TypeScript types for trader-related schemas"
     ],
-    "passes": false
+    "passes": true
   }
 ]

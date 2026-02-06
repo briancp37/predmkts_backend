@@ -1,6 +1,6 @@
 # Sprint 03: Trader Endpoints - Progress
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed
 - [2026-02-05] Traders Router Setup - Created directory structure and registered router
@@ -140,7 +140,22 @@
   - All hooks use React Query with proper caching (staleTime, keepPreviousData)
   - Next.js already configured to proxy /api/v1/* to FastAPI backend
 
+- [2026-02-05] OpenAPI Spec Update - Regenerated OpenAPI spec with all trader endpoints
+  - Ran python scripts/export_openapi.py to export OpenAPI spec to openapi.json
+  - Verified all trader endpoints documented: /api/v1/traders, /api/v1/traders/smart-scores,
+    /api/v1/traders/leaderboard, /api/v1/traders/{address}, /api/v1/traders/{address}/trades
+  - Verified all trades endpoints documented: /api/v1/trades/smart, /api/v1/trades/whales
+  - Ran npm run generate-api in web/ to regenerate TypeScript types
+  - Verified TypeScript types generated for: TraderResponse, TraderDetailResponse, TraderListResponse,
+    TraderPosition, SmartScoreResponse, SmartScoreComponents, SmartScoreListResponse,
+    LeaderboardEntry, LeaderboardResponse, WhaleTradeResponse
+  - All 1441 Python tests pass
+  - Note: Pre-existing TypeScript errors in Prisma-related files (unrelated to this sprint)
+
+## Status: COMPLETE
+
 ## In Progress
+None
 
 ## Blockers
 

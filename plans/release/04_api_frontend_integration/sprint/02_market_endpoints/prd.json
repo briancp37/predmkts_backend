@@ -213,6 +213,6 @@
       "Run npm run generate-api in web/ to regenerate TypeScript types",
       "Verify generated types match expected frontend interfaces"
     ],
-    "passes": false
+    "passes": true
   }
 ]

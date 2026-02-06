@@ -319,6 +319,573 @@
         }
       }
     },
+    "/api/v1/markets/advanced": {
+      "get": {
+        "tags": [
+          "markets"
+        ],
+        "summary": "List Markets Advanced",
+        "description": "List markets with real-time CLOB bid/ask data.\n\nReturns a paginated list of markets enriched with order book data from\nthe Polymarket CLOB API. This endpoint is suitable for advanced filtering\nand screening use cases.\n\n**Sort options:**\n- `volume`: Sort by 24-hour trading volume (default)\n- `liquidity`: Sort by estimated liquidity\n- `spread`: Sort by bid-ask spread\n- `priceChange`: Sort by 24-hour price change magnitude\n\n**Advanced filters:**\n- Volume range filters (minVolume, maxVolume)\n- Liquidity range filters (minLiquidity, maxLiquidity)\n- Spread range filters in cents (minSpread, maxSpread)\n- Price change filters (minChange, maxChange)\n\n**CLOB data fields:**\n- `bid`: Best bid price (0-1)\n- `ask`: Best ask price (0-1)\n- `spread`: Absolute spread (ask - bid)\n- `spreadPercent`: Spread as percentage of midpoint\n- `spreadCents`: Spread in cents\n- `volume24h`: 24-hour trading volume in USD\n- `priceChange24h`: 24-hour price change\n\nNote: CLOB data is cached for 30 seconds to reduce API calls.",
+        "operationId": "list_markets_advanced_api_v1_markets_advanced_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category (exact match)",
+              "title": "Category"
+            },
+            "description": "Filter by category (exact match)"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search in question and description",
+              "title": "Search"
+            },
+            "description": "Search in question and description"
+          },
+          {
+            "name": "resolved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resolved status",
+              "title": "Resolved"
+            },
+            "description": "Filter by resolved status"
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "volume",
+                "liquidity",
+                "spread",
+                "priceChange"
+              ],
+              "type": "string",
+              "description": "Sort field",
+              "default": "volume",
+              "title": "Sortby"
+            },
+            "description": "Sort field"
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "description": "Sort direction",
+              "default": "desc",
+              "title": "Sortorder"
+            },
+            "description": "Sort direction"
+          },
+          {
+            "name": "minVolume",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum 24h volume in USD",
+              "title": "Minvolume"
+            },
+            "description": "Minimum 24h volume in USD"
+          },
+          {
+            "name": "maxVolume",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum 24h volume in USD",
+              "title": "Maxvolume"
+            },
+            "description": "Maximum 24h volume in USD"
+          },
+          {
+            "name": "minLiquidity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum liquidity",
+              "title": "Minliquidity"
+            },
+            "description": "Minimum liquidity"
+          },
+          {
+            "name": "maxLiquidity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum liquidity",
+              "title": "Maxliquidity"
+            },
+            "description": "Maximum liquidity"
+          },
+          {
+            "name": "minSpread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum spread in cents",
+              "title": "Minspread"
+            },
+            "description": "Minimum spread in cents"
+          },
+          {
+            "name": "maxSpread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum spread in cents",
+              "title": "Maxspread"
+            },
+            "description": "Maximum spread in cents"
+          },
+          {
+            "name": "minChange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum 24h price change",
+              "title": "Minchange"
+            },
+            "description": "Minimum 24h price change"
+          },
+          {
+            "name": "maxChange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum 24h price change",
+              "title": "Maxchange"
+            },
+            "description": "Maximum 24h price change"
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated tags to filter by",
+              "title": "Tags"
+            },
+            "description": "Comma-separated tags to filter by"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum results to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum results to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of results to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of results to skip"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Page number (alternative to offset)",
+              "title": "Page"
+            },
+            "description": "Page number (alternative to offset)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketAdvancedListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/markets/screener": {
+      "get": {
+        "tags": [
+          "markets"
+        ],
+        "summary": "List Markets Screener",
+        "description": "Market screener with time-based filtering.\n\nReturns markets with aggregated price change and volume metrics calculated\nover a specified time window. This endpoint is optimized for screening\nmarkets based on recent performance.\n\n**Time windows:**\n- `6h`: Last 6 hours (uses daily data - hourly not yet available)\n- `12h`: Last 12 hours (uses daily data - hourly not yet available)\n- `24h`: Last 24 hours\n- `7d`: Last 7 days\n\n**Sort options:**\n- `volume`: Sort by trading volume over the time window\n- `priceChange`: Sort by absolute price change magnitude\n\n**Filters:**\n- Volume range filters (minVolume, maxVolume)\n- Price change filters as decimals (minPriceChange, maxPriceChange)\n  - Use -0.1 for -10% and 0.1 for +10%\n\n**Response fields:**\n- `volume24h`: Volume over the selected time window (not necessarily 24h)\n- `priceChange24h`: Price change over the selected time window\n\nNote: Sub-daily time windows (6h, 12h) currently return daily data\nsince hourly price marks are not yet available. This will be enhanced\nwhen hourly data is computed from Silver trades.",
+        "operationId": "list_markets_screener_api_v1_markets_screener_get",
+        "parameters": [
+          {
+            "name": "timeWindow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "6h",
+                "12h",
+                "24h",
+                "7d"
+              ],
+              "type": "string",
+              "description": "Time window for volume and price change calculations",
+              "default": "24h",
+              "title": "Timewindow"
+            },
+            "description": "Time window for volume and price change calculations"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category (exact match)",
+              "title": "Category"
+            },
+            "description": "Filter by category (exact match)"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search in question and description",
+              "title": "Search"
+            },
+            "description": "Search in question and description"
+          },
+          {
+            "name": "resolved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by resolved status",
+              "title": "Resolved"
+            },
+            "description": "Filter by resolved status"
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "volume",
+                "priceChange"
+              ],
+              "type": "string",
+              "description": "Sort field (volume or priceChange)",
+              "default": "volume",
+              "title": "Sortby"
+            },
+            "description": "Sort field (volume or priceChange)"
+          },
+          {
+            "name": "sortOrder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "description": "Sort direction",
+              "default": "desc",
+              "title": "Sortorder"
+            },
+            "description": "Sort direction"
+          },
+          {
+            "name": "minVolume",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum volume in USD over the time window",
+              "title": "Minvolume"
+            },
+            "description": "Minimum volume in USD over the time window"
+          },
+          {
+            "name": "maxVolume",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum volume in USD over the time window",
+              "title": "Maxvolume"
+            },
+            "description": "Maximum volume in USD over the time window"
+          },
+          {
+            "name": "minPriceChange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum price change (e.g., -0.1 for -10%)",
+              "title": "Minpricechange"
+            },
+            "description": "Minimum price change (e.g., -0.1 for -10%)"
+          },
+          {
+            "name": "maxPriceChange",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Maximum price change (e.g., 0.1 for +10%)",
+              "title": "Maxpricechange"
+            },
+            "description": "Maximum price change (e.g., 0.1 for +10%)"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum results to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum results to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of results to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of results to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketAdvancedListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/markets/{market_id}": {
       "get": {
         "tags": [
@@ -680,6 +1247,86 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TraderListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/traders/smart-scores": {
+      "get": {
+        "tags": [
+          "traders"
+        ],
+        "summary": "Get Smart Scores",
+        "description": "Get smart trader scores and rankings.\n\nComputes smart scores for traders based on their trading performance\nover the specified time window. Scores range from 0-100 and are based\non four weighted components:\n\n- **Accuracy (30%)**: Win rate on closed positions\n- **Consistency (25%)**: Trading regularity over the time period\n- **Sizing (25%)**: Volume traded (log scale)\n- **Timing (20%)**: ROI efficiency (return relative to volume)\n\nQuery Parameters:\n- **minScore**: Minimum smart score to include (0-100, default 0)\n- **limit**: Maximum number of traders to return (1-500, default 100)\n- **timeWindow**: Time period for calculation\n  - `7d`: Last 7 days\n  - `30d`: Last 30 days (default)\n  - `90d`: Last 90 days\n  - `all`: All-time\n\nTraders must have at least 5 trades in the time window to receive a score.",
+        "operationId": "get_smart_scores_api_v1_traders_smart_scores_get",
+        "parameters": [
+          {
+            "name": "minScore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 100,
+              "minimum": 0,
+              "description": "Minimum smart score to include",
+              "default": 0,
+              "title": "Minscore"
+            },
+            "description": "Minimum smart score to include"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum entries to return",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum entries to return"
+          },
+          {
+            "name": "timeWindow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "7d",
+                "30d",
+                "90d",
+                "all"
+              ],
+              "type": "string",
+              "description": "Time window for score calculation",
+              "default": "30d",
+              "title": "Timewindow"
+            },
+            "description": "Time window for score calculation"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartScoreListResponse"
                 }
               }
             }
@@ -1354,6 +2001,316 @@
         }
       }
     },
+    "/api/v1/trades/smart": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "List Smart Trades",
+        "description": "Get recent trades from smart traders.\n\nReturns recent trades from traders with high smart scores (based on\nhistorical performance). Smart score is computed from PnL performance,\nwith top traders scoring closer to 100.\n\n- **minScore**: Minimum smart score threshold (0-100, default 70)\n- **minAmount**: Optional minimum USD value filter\n- **limit**: Maximum number of trades to return (1-200, default 50)\n\nEach trade includes the trader's smart score in addition to trade details.",
+        "operationId": "list_smart_trades_api_v1_trades_smart_get",
+        "parameters": [
+          {
+            "name": "minScore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 100,
+              "minimum": 0,
+              "description": "Minimum smart score (0-100)",
+              "default": 70.0,
+              "title": "Minscore"
+            },
+            "description": "Minimum smart score (0-100)"
+          },
+          {
+            "name": "minAmount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Minimum USD value of trade",
+              "title": "Minamount"
+            },
+            "description": "Minimum USD value of trade"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Maximum results to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum results to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SmartTradeResponse"
+                  },
+                  "title": "Response List Smart Trades Api V1 Trades Smart Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/trades/whales": {
+      "get": {
+        "tags": [
+          "trades"
+        ],
+        "summary": "List Whale Trades",
+        "description": "Get recent large trades (whale trades).\n\nReturns recent trades with USD value at or above the minimum amount,\nordered by timestamp descending (newest first).\n\n- **minAmount**: Minimum USD value threshold (default $10,000)\n- **limit**: Maximum number of trades to return (1-200, default 50)\n\nEach trade includes the trader's total portfolio value when available.",
+        "operationId": "list_whale_trades_api_v1_trades_whales_get",
+        "parameters": [
+          {
+            "name": "minAmount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Minimum USD value of trade",
+              "default": 10000.0,
+              "title": "Minamount"
+            },
+            "description": "Minimum USD value of trade"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Maximum results to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum results to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WhaleTradeResponse"
+                  },
+                  "title": "Response List Whale Trades Api V1 Trades Whales Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List Events",
+        "description": "List events with optional filtering and pagination.\n\nReturns a paginated list of events. Events are ordered by last update time\n(most recent first).\n\n- **category**: Filter by event category (exact match)\n- **search**: Search text in event title and description (case-insensitive)\n- **status**: Filter by event status (e.g., 'active', 'resolved')\n- **limit**: Maximum number of events to return (1-500, default 50)\n- **offset**: Number of events to skip for pagination",
+        "operationId": "list_events_api_v1_events_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by category (exact match)",
+              "title": "Category"
+            },
+            "description": "Filter by category (exact match)"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search in title and description",
+              "title": "Search"
+            },
+            "description": "Search in title and description"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status (e.g., 'active', 'resolved')",
+              "title": "Status"
+            },
+            "description": "Filter by status (e.g., 'active', 'resolved')"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum results to return",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Maximum results to return"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of results to skip",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Number of results to skip"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{event_id}": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Event",
+        "description": "Get a single event by ID with associated markets.\n\nThe event_id can be any of:\n- Platform event ID (platform_event_id)\n- Event slug (URL-friendly identifier)\n\nReturns the event with all its associated markets.",
+        "operationId": "get_event_api_v1_events__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Event identifier (can be platform_event_id or slug)",
+              "title": "Event Id"
+            },
+            "description": "Event identifier (can be platform_event_id or slug)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health Check",
@@ -1380,6 +2337,101 @@
   },
   "components": {
     "schemas": {
+      "EventListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EventResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "title": "EventListResponse",
+        "description": "Paginated event list response."
+      },
+      "EventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "polymarketEventId": {
+            "type": "string",
+            "title": "Polymarketeventid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/MarketBase"
+            },
+            "type": "array",
+            "title": "Markets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "polymarketEventId",
+          "title",
+          "slug",
+          "status"
+        ],
+        "title": "EventResponse",
+        "description": "Event response with associated markets."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1453,6 +2505,330 @@
         ],
         "title": "LeaderboardResponse",
         "description": "Leaderboard response with entries."
+      },
+      "MarketAdvancedListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MarketAdvancedResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "title": "MarketAdvancedListResponse",
+        "description": "Paginated advanced market list response."
+      },
+      "MarketAdvancedResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "polymarketId": {
+            "type": "string",
+            "title": "Polymarketid"
+          },
+          "conditionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditionid"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "endDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enddate"
+          },
+          "resolved": {
+            "type": "boolean",
+            "title": "Resolved"
+          },
+          "totalVolume": {
+            "type": "number",
+            "title": "Totalvolume"
+          },
+          "liquidity": {
+            "type": "number",
+            "title": "Liquidity"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageurl"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/MarketOutcome"
+            },
+            "type": "array",
+            "title": "Outcomes"
+          },
+          "bid": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bid"
+          },
+          "ask": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask"
+          },
+          "spread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spread"
+          },
+          "spreadPercent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spreadpercent"
+          },
+          "spreadCents": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spreadcents"
+          },
+          "volume24h": {
+            "type": "number",
+            "title": "Volume24H",
+            "default": 0.0
+          },
+          "priceChange24h": {
+            "type": "number",
+            "title": "Pricechange24H",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "polymarketId",
+          "question",
+          "resolved",
+          "totalVolume",
+          "liquidity",
+          "createdAt"
+        ],
+        "title": "MarketAdvancedResponse",
+        "description": "Market response with CLOB bid/ask data."
+      },
+      "MarketBase": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "polymarketId": {
+            "type": "string",
+            "title": "Polymarketid"
+          },
+          "conditionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditionid"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "endDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enddate"
+          },
+          "resolved": {
+            "type": "boolean",
+            "title": "Resolved"
+          },
+          "totalVolume": {
+            "type": "number",
+            "title": "Totalvolume"
+          },
+          "liquidity": {
+            "type": "number",
+            "title": "Liquidity"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imageurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "polymarketId",
+          "question",
+          "resolved",
+          "totalVolume",
+          "liquidity",
+          "createdAt"
+        ],
+        "title": "MarketBase",
+        "description": "Base market information."
       },
       "MarketListResponse": {
         "properties": {
@@ -1721,6 +3097,174 @@
         "title": "PriceHistoryResponse",
         "description": "Response for price history endpoint."
       },
+      "SmartScoreComponents": {
+        "properties": {
+          "accuracy": {
+            "type": "number",
+            "title": "Accuracy"
+          },
+          "consistency": {
+            "type": "number",
+            "title": "Consistency"
+          },
+          "sizing": {
+            "type": "number",
+            "title": "Sizing"
+          },
+          "timing": {
+            "type": "number",
+            "title": "Timing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accuracy",
+          "consistency",
+          "sizing",
+          "timing"
+        ],
+        "title": "SmartScoreComponents",
+        "description": "Components that make up a smart score."
+      },
+      "SmartScoreListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SmartScoreResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "timeWindow": {
+            "type": "string",
+            "title": "Timewindow"
+          },
+          "generatedAt": {
+            "type": "string",
+            "title": "Generatedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "timeWindow",
+          "generatedAt"
+        ],
+        "title": "SmartScoreListResponse",
+        "description": "List of smart scores."
+      },
+      "SmartScoreResponse": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "smartScore": {
+            "type": "number",
+            "title": "Smartscore"
+          },
+          "components": {
+            "$ref": "#/components/schemas/SmartScoreComponents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "smartScore",
+          "components"
+        ],
+        "title": "SmartScoreResponse",
+        "description": "Smart score response for a trader."
+      },
+      "SmartTradeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "traderAddress": {
+            "type": "string",
+            "title": "Traderaddress"
+          },
+          "marketId": {
+            "type": "string",
+            "title": "Marketid"
+          },
+          "marketQuestion": {
+            "type": "string",
+            "title": "Marketquestion"
+          },
+          "outcomeId": {
+            "type": "string",
+            "title": "Outcomeid"
+          },
+          "outcomeName": {
+            "type": "string",
+            "title": "Outcomename"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "usdValue": {
+            "type": "number",
+            "title": "Usdvalue"
+          },
+          "fees": {
+            "type": "number",
+            "title": "Fees"
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "smartScore": {
+            "type": "number",
+            "title": "Smartscore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "traderAddress",
+          "marketId",
+          "marketQuestion",
+          "outcomeId",
+          "outcomeName",
+          "side",
+          "price",
+          "quantity",
+          "usdValue",
+          "fees",
+          "timestamp",
+          "smartScore"
+        ],
+        "title": "SmartTradeResponse",
+        "description": "Trade response with smart score of the trader."
+      },
       "TokenRefresh": {
         "properties": {
           "refresh_token": {
@@ -1782,7 +3326,7 @@
             "title": "Customname"
           },
           "trade": {
-            "$ref": "#/components/schemas/TradeResponse"
+            "$ref": "#/components/schemas/prediction_data__api__traders__schemas__TradeResponse"
           },
           "timestamp": {
             "type": "string",
@@ -1970,7 +3514,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/TradeResponse"
+              "$ref": "#/components/schemas/prediction_data__api__traders__schemas__TradeResponse"
             },
             "type": "array",
             "title": "Items"
@@ -2012,10 +3556,6 @@
             "type": "string",
             "title": "Marketid"
           },
-          "marketQuestion": {
-            "type": "string",
-            "title": "Marketquestion"
-          },
           "outcomeId": {
             "type": "string",
             "title": "Outcomeid"
@@ -2036,28 +3576,24 @@
             "type": "number",
             "title": "Price"
           },
-          "quantity": {
+          "amount": {
             "type": "number",
-            "title": "Quantity"
+            "title": "Amount"
           },
           "usdValue": {
             "type": "number",
             "title": "Usdvalue"
           },
-          "fees": {
-            "type": "number",
-            "title": "Fees"
-          },
-          "realizedPnl": {
+          "txHash": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Realizedpnl"
+            "title": "Txhash"
           },
           "timestamp": {
             "type": "string",
@@ -2069,18 +3605,16 @@
           "id",
           "traderAddress",
           "marketId",
-          "marketQuestion",
           "outcomeId",
           "outcomeName",
           "side",
           "price",
-          "quantity",
+          "amount",
           "usdValue",
-          "fees",
           "timestamp"
         ],
         "title": "TradeResponse",
-        "description": "Trade record for a trader."
+        "description": "Trade record for a market."
       },
       "TraderDetailResponse": {
         "properties": {
@@ -2496,13 +4030,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",
@@ -2632,11 +4159,100 @@
         "title": "WatchlistResponse",
         "description": "Response for watchlist listing."
       },
+      "WhaleTradeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "traderAddress": {
+            "type": "string",
+            "title": "Traderaddress"
+          },
+          "marketId": {
+            "type": "string",
+            "title": "Marketid"
+          },
+          "marketQuestion": {
+            "type": "string",
+            "title": "Marketquestion"
+          },
+          "outcomeId": {
+            "type": "string",
+            "title": "Outcomeid"
+          },
+          "outcomeName": {
+            "type": "string",
+            "title": "Outcomename"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price"
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity"
+          },
+          "usdValue": {
+            "type": "number",
+            "title": "Usdvalue"
+          },
+          "fees": {
+            "type": "number",
+            "title": "Fees"
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "totalWalletValue": {
+            "type": "number",
+            "title": "Totalwalletvalue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "traderAddress",
+          "marketId",
+          "marketQuestion",
+          "outcomeId",
+          "outcomeName",
+          "side",
+          "price",
+          "quantity",
+          "usdValue",
+          "fees",
+          "timestamp",
+          "totalWalletValue"
+        ],
+        "title": "WhaleTradeResponse",
+        "description": "Trade response with whale metadata."
+      },
       "prediction_data__api__markets__schemas__TradeListResponse": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/prediction_data__api__markets__schemas__TradeResponse"
+              "$ref": "#/components/schemas/TradeResponse"
             },
             "type": "array",
             "title": "Items"
@@ -2664,7 +4280,7 @@
         "title": "TradeListResponse",
         "description": "Paginated trade list response."
       },
-      "prediction_data__api__markets__schemas__TradeResponse": {
+      "prediction_data__api__traders__schemas__TradeResponse": {
         "properties": {
           "id": {
             "type": "string",
@@ -2677,6 +4293,10 @@
           "marketId": {
             "type": "string",
             "title": "Marketid"
+          },
+          "marketQuestion": {
+            "type": "string",
+            "title": "Marketquestion"
           },
           "outcomeId": {
             "type": "string",
@@ -2698,24 +4318,28 @@
             "type": "number",
             "title": "Price"
           },
-          "amount": {
+          "quantity": {
             "type": "number",
-            "title": "Amount"
+            "title": "Quantity"
           },
           "usdValue": {
             "type": "number",
             "title": "Usdvalue"
           },
-          "txHash": {
+          "fees": {
+            "type": "number",
+            "title": "Fees"
+          },
+          "realizedPnl": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "number"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Txhash"
+            "title": "Realizedpnl"
           },
           "timestamp": {
             "type": "string",
@@ -2727,16 +4351,18 @@
           "id",
           "traderAddress",
           "marketId",
+          "marketQuestion",
           "outcomeId",
           "outcomeName",
           "side",
           "price",
-          "amount",
+          "quantity",
           "usdValue",
+          "fees",
           "timestamp"
         ],
         "title": "TradeResponse",
-        "description": "Trade record for a market."
+        "description": "Trade record for a trader."
       }
     },
     "securitySchemes": {
