@@ -18,6 +18,8 @@ from prediction_data.api.polymarket_proxy.client import (
 )
 from prediction_data.api.polymarket_proxy.schemas import (
     MarketTokensResponse,
+    OrderBookResponse,
+    OrderLevel,
     PriceHistoryResponse,
     PricePoint,
     ProxyHealthResponse,
@@ -237,6 +239,174 @@ async def get_timeseries(
         start_ts=start_ts,
         end_ts=end_ts,
         history=history,
+        cache_status=cache_status,
+    )
+
+
+# Order book cache TTL - very short since order book is volatile
+ORDERBOOK_CACHE_TTL = 5  # 5 seconds
+
+
+@router.get(
+    "/markets/{token_id}/orderbook",
+    response_model=OrderBookResponse,
+    summary="Get L2 order book for a token",
+    description=(
+        "Get the current order book (L2) for a Polymarket CLOB token. "
+        "Returns bid and ask levels with aggregated sizes. "
+        "Order book data is volatile so cache TTL is short (5s)."
+    ),
+    responses={
+        404: {
+            "description": "Token not found or no order book exists",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "No orderbook exists for the requested token id",
+                        "code": "NOT_FOUND",
+                        "status": 404,
+                    }
+                }
+            },
+        },
+        502: {
+            "description": "Upstream Polymarket API error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Polymarket API request failed",
+                        "code": "PROXY_ERROR",
+                        "status": 502,
+                    }
+                }
+            },
+        },
+        503: {
+            "description": "Circuit breaker open",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Circuit breaker open for clob API",
+                        "code": "SERVICE_UNAVAILABLE",
+                        "retry_after": 30,
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
+async def get_orderbook(
+    request: Request,
+    token_id: str,
+    client: ProxyClient,
+    depth: int | None = Query(
+        None,
+        ge=1,
+        le=100,
+        description="Maximum number of bid/ask levels to return. Default returns all levels.",
+    ),
+) -> OrderBookResponse:
+    """Get the L2 order book for a token.
+
+    Proxies to Polymarket CLOB `/book` endpoint with caching.
+
+    The order book shows current bids (buy orders) and asks (sell orders)
+    aggregated by price level. Use the `depth` parameter to limit the
+    number of levels returned (useful for reducing payload size).
+
+    **Response includes computed fields:**
+    - `spread`: Difference between best ask and best bid
+    - `mid_price`: Average of best bid and best ask
+    - `best_bid`, `best_ask`: Top-of-book prices
+
+    **Cache TTL:** 5 seconds (order book is highly volatile)
+    """
+    params: dict[str, str] = {"token_id": token_id}
+
+    try:
+        data, cache_status = await client.get_clob(
+            "/book",
+            params,
+            cache_ttl=ORDERBOOK_CACHE_TTL,
+        )
+    except RuntimeError as e:
+        # Circuit breaker open
+        if "Circuit breaker open" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": str(e),
+                    "code": "SERVICE_UNAVAILABLE",
+                    "retry_after": 30,
+                },
+                headers={"Retry-After": "30"},
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # Handle 404 from upstream
+        if "404" in error_msg or "No orderbook exists" in error_msg:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "message": "No orderbook exists for the requested token id",
+                    "code": "NOT_FOUND",
+                    "token_id": token_id,
+                },
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+
+    # Transform bids and asks
+    bids = [OrderLevel(price=b["price"], size=b["size"]) for b in data.get("bids", [])]
+    asks = [OrderLevel(price=a["price"], size=a["size"]) for a in data.get("asks", [])]
+
+    # Apply depth limit if specified
+    if depth is not None:
+        bids = bids[:depth]
+        asks = asks[:depth]
+
+    # Compute derived fields
+    best_bid: str | None = None
+    best_ask: str | None = None
+    spread: str | None = None
+    mid_price: str | None = None
+
+    if bids:
+        best_bid = bids[0].price
+    if asks:
+        best_ask = asks[0].price
+
+    if best_bid is not None and best_ask is not None:
+        bid_val = float(best_bid)
+        ask_val = float(best_ask)
+        spread = f"{ask_val - bid_val:.6f}".rstrip("0").rstrip(".")
+        mid_price = f"{(bid_val + ask_val) / 2:.6f}".rstrip("0").rstrip(".")
+
+    return OrderBookResponse(
+        token_id=token_id,
+        market=data.get("market", ""),
+        timestamp=data.get("timestamp", ""),
+        bids=bids,
+        asks=asks,
+        spread=spread,
+        mid_price=mid_price,
+        best_bid=best_bid,
+        best_ask=best_ask,
+        tick_size=data.get("tick_size", "0.01"),
+        min_order_size=data.get("min_order_size", "0.001"),
         cache_status=cache_status,
     )
 

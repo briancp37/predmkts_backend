@@ -39,7 +39,7 @@
       "Cache responses with 5s TTL (order book is volatile)",
       "Add depth parameter to limit levels returned (default 10)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "top_holders_proxy",

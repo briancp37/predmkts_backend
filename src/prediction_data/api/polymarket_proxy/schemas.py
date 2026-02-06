@@ -203,3 +203,81 @@ class PriceHistoryResponse(BaseModel):
         description="Cache status: HIT, MISS, or STALE",
         json_schema_extra={"example": "HIT"},
     )
+
+
+class OrderLevel(BaseModel):
+    """Single price level in the order book."""
+
+    price: str = Field(
+        ...,
+        description="Price at this level (0-1 for probability)",
+        json_schema_extra={"example": "0.65"},
+    )
+    size: str = Field(
+        ...,
+        description="Total quantity available at this price",
+        json_schema_extra={"example": "1500.50"},
+    )
+
+
+class OrderBookResponse(BaseModel):
+    """Order book (L2) response for a token."""
+
+    token_id: str = Field(
+        ...,
+        description="Polymarket CLOB token ID",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    market: str = Field(
+        ...,
+        description="Market condition ID",
+        json_schema_extra={"example": "0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa"},
+    )
+    timestamp: str = Field(
+        ...,
+        description="Snapshot timestamp (ISO 8601 format)",
+        json_schema_extra={"example": "2023-10-01T12:00:00Z"},
+    )
+    bids: list[OrderLevel] = Field(
+        ...,
+        description="Bid levels sorted by price descending (best bid first)",
+    )
+    asks: list[OrderLevel] = Field(
+        ...,
+        description="Ask levels sorted by price ascending (best ask first)",
+    )
+    spread: str | None = Field(
+        None,
+        description="Bid-ask spread (best ask - best bid)",
+        json_schema_extra={"example": "0.02"},
+    )
+    mid_price: str | None = Field(
+        None,
+        description="Mid price ((best bid + best ask) / 2)",
+        json_schema_extra={"example": "0.66"},
+    )
+    best_bid: str | None = Field(
+        None,
+        description="Best (highest) bid price",
+        json_schema_extra={"example": "0.65"},
+    )
+    best_ask: str | None = Field(
+        None,
+        description="Best (lowest) ask price",
+        json_schema_extra={"example": "0.67"},
+    )
+    tick_size: str = Field(
+        ...,
+        description="Minimum price increment",
+        json_schema_extra={"example": "0.01"},
+    )
+    min_order_size: str = Field(
+        ...,
+        description="Minimum tradeable quantity",
+        json_schema_extra={"example": "0.001"},
+    )
+    cache_status: str = Field(
+        ...,
+        description="Cache status: HIT, MISS, or STALE",
+        json_schema_extra={"example": "MISS"},
+    )

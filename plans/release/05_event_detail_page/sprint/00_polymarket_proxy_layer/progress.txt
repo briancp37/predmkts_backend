@@ -64,6 +64,23 @@
 - Proper error handling with 502 (upstream failure) and 503 (circuit breaker)
 - Response includes cache_status (HIT/MISS/STALE) for debugging
 
+### orderbook_proxy (2026-02-06)
+- Added `GET /api/v1/proxy/markets/{token_id}/orderbook` endpoint to `router.py`:
+  - Proxies to Polymarket CLOB `/book` endpoint
+  - Returns L2 order book with bid and ask levels
+  - Each level includes price and aggregated size
+  - 5s cache TTL (order book is highly volatile)
+- Added new schemas to `schemas.py`:
+  - `OrderLevel` - single price level with price and size
+  - `OrderBookResponse` - full order book response with computed fields
+- Computed fields in response:
+  - `spread` - difference between best ask and best bid
+  - `mid_price` - average of best bid and best ask
+  - `best_bid`, `best_ask` - top-of-book prices
+- Added `depth` query parameter to limit bid/ask levels returned
+- Includes `tick_size` and `min_order_size` from upstream
+- Proper error handling for 404 (token not found), 502, 503
+
 ## In Progress
 
 
