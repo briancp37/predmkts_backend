@@ -133,6 +133,6 @@
       "Add proper TypeScript types for all hook responses",
       "Configure React Query staleTime to match backend cache TTL"
     ],
-    "passes": false
+    "passes": true
   }
 ]

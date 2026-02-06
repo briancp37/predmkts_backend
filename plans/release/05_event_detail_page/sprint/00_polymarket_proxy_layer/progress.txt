@@ -2,7 +2,7 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -189,6 +189,33 @@
   - Updated `ProxyHealthResponse` schema to support string values in cache_stats
 - Shutdown cleanup:
   - `close_proxy_client()` now closes cache backend (important for Redis connection)
+
+### frontend_hooks (2026-02-06)
+- Created `web/src/hooks/use-polymarket-proxy.ts` with React Query hooks:
+  - `useTimeseries(tokenId, interval)` - price history with interval-based staleTime
+  - `useOrderbook(tokenId)` - L2 order book with 5s refetch interval
+  - `useTopHolders(conditionId, limit)` - top token holders with 5min cache
+  - `useMarketTrades(conditionId, limit)` - recent trades with 30s cache
+  - `useMarketPrice(conditionId)` - real-time market info with 10s refetch
+  - `useMarketTokens(marketId)` - token ID mappings (cached indefinitely)
+- TypeScript types for all responses:
+  - `PricePoint`, `PriceHistoryResponse`, `TimeseriesInterval`
+  - `OrderLevel`, `OrderBookResponse`
+  - `Trade`, `RecentTradesResponse`, `TradeSide`
+  - `TokenPrice`, `MarketInfoResponse`
+  - `TopHolder`, `TopHoldersResponse`
+  - `TokenInfo`, `MarketTokensResponse`
+- React Query configuration to match backend cache TTLs:
+  - Orderbook: 5s staleTime, 5s default refetch interval
+  - Trades: 30s staleTime
+  - Market price: 10s staleTime, 10s default refetch interval
+  - Top holders: 5min staleTime
+  - Timeseries: varies by interval (30s for 1m up to 1h for 1d+)
+  - Market tokens: Infinity (never stale)
+- Response transformers for snake_case to camelCase conversion
+- Exported all hooks and types from `web/src/hooks/index.ts`
+- All typechecks pass (`npm run typecheck`)
+- All tests pass (`npm run test`)
 
 ## In Progress
 

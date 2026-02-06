@@ -117,3 +117,33 @@ export {
   type UpdateTrackedTraderRequest,
   type ActivityFilters,
 } from './use-tracked-traders';
+
+// Polymarket proxy hooks (Sprint 00 - Polymarket Proxy Layer)
+export {
+  useTimeseries,
+  useOrderbook,
+  useMarketTrades,
+  useMarketPrice,
+  useTopHolders,
+  useMarketTokens,
+  type PricePoint,
+  type PriceHistoryResponse,
+  type TimeseriesInterval,
+  type OrderLevel,
+  type OrderBookResponse,
+  type Trade as ProxyTrade,
+  type RecentTradesResponse,
+  type TradeSide,
+  type TokenPrice,
+  type MarketInfoResponse,
+  type TopHolder,
+  type TopHoldersResponse,
+  type TokenInfo,
+  type MarketTokensResponse,
+  type UseTimeseriesParams,
+  type UseOrderbookParams,
+  type UseMarketTradesParams,
+  type UseMarketPriceParams,
+  type UseTopHoldersParams,
+  type UseMarketTokensParams,
+} from './use-polymarket-proxy';
