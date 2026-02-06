@@ -6,6 +6,7 @@ with built-in resilience patterns including:
 - Rate limiting to stay under Polymarket limits
 - Circuit breaker to prevent cascading failures
 - Response caching with configurable TTL
+- Stale-while-error: returns cached data on transient failures
 
 Rate limits (from CLAUDE.md):
 - CLOB API: 9,000 req/10s overall
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -24,6 +26,11 @@ from typing import Any
 import httpx
 import structlog
 
+from prediction_data.api.polymarket_proxy.exceptions import (
+    CircuitOpenError,
+    ProxyError,
+    UpstreamRateLimitError,
+)
 from prediction_data.core.config import get_settings
 from prediction_data.core.logging import get_logger
 
@@ -370,6 +377,7 @@ class PolymarketProxyClient:
         method: str,
         url: str,
         api: str,
+        endpoint: str,
         *,
         params: dict[str, Any] | None = None,
         json: Any | None = None,
@@ -380,6 +388,7 @@ class PolymarketProxyClient:
             method: HTTP method (GET, POST, etc.).
             url: Full URL to request.
             api: API name for rate limiting/circuit breaker (clob, data, gamma).
+            endpoint: The endpoint path for error context.
             params: Query parameters.
             json: JSON body for POST requests.
 
@@ -387,20 +396,29 @@ class PolymarketProxyClient:
             Response object.
 
         Raises:
-            httpx.HTTPStatusError: On non-retryable HTTP errors.
-            httpx.RequestError: On network errors after all retries.
-            RuntimeError: If circuit breaker is open.
+            CircuitOpenError: If circuit breaker is open.
+            UpstreamRateLimitError: If rate limit exhausted after retries.
+            ProxyError: On upstream API failures after all retries.
         """
         circuit = self._get_circuit(api)
 
         if not circuit.can_execute():
-            raise RuntimeError(
-                f"Circuit breaker open for {api} API. "
-                f"Service unavailable, retry after {circuit.recovery_timeout}s."
+            self._logger.warning(
+                "Circuit breaker open, blocking request",
+                api=api,
+                endpoint=endpoint,
+                circuit_state=circuit.state.value,
+            )
+            raise CircuitOpenError(
+                message=f"Circuit breaker open for {api} API",
+                api=api,
+                retry_after=int(circuit.recovery_timeout),
             )
 
         client = self._ensure_client()
         last_error: Exception | None = None
+        last_status_code: int | None = None
+        rate_limit_hit = False
 
         for attempt in range(self.MAX_RETRIES):
             await self._rate_limit(api)
@@ -411,22 +429,29 @@ class PolymarketProxyClient:
                     method=method,
                     url=url,
                     api=api,
+                    endpoint=endpoint,
                     attempt=attempt + 1,
                 )
 
                 response = await client.request(method, url, params=params, json=json)
+                last_status_code = response.status_code
 
                 # Check for rate limit response
                 if response.status_code == 429:
+                    rate_limit_hit = True
                     retry_after = response.headers.get("Retry-After", "10")
                     delay = min(float(retry_after), self.RETRY_MAX_DELAY)
                     self._logger.warning(
                         "Rate limited by upstream",
                         api=api,
+                        endpoint=endpoint,
                         retry_after=delay,
+                        attempt=attempt + 1,
                     )
-                    await asyncio.sleep(delay)
-                    continue
+                    if attempt < self.MAX_RETRIES - 1:
+                        await asyncio.sleep(delay)
+                        continue
+                    # Last attempt hit rate limit - will be raised below
 
                 # Check for server errors (retryable)
                 if response.status_code >= 500:
@@ -446,24 +471,55 @@ class PolymarketProxyClient:
                     self.RETRY_MAX_DELAY,
                 )
                 # Add jitter (±25%)
-                import random
-
                 delay *= 0.75 + random.random() * 0.5
 
                 self._logger.warning(
                     "Proxy request failed, retrying",
                     api=api,
+                    endpoint=endpoint,
                     attempt=attempt + 1,
                     max_retries=self.MAX_RETRIES,
                     delay=delay,
                     error=str(e),
+                    error_type=type(e).__name__,
                 )
 
                 if attempt < self.MAX_RETRIES - 1:
                     await asyncio.sleep(delay)
 
-        # All retries exhausted
-        raise last_error or RuntimeError("Request failed after all retries")
+        # All retries exhausted - log and raise appropriate error
+        self._logger.error(
+            "Proxy request failed after all retries",
+            api=api,
+            endpoint=endpoint,
+            attempts=self.MAX_RETRIES,
+            last_error=str(last_error) if last_error else None,
+            last_status_code=last_status_code,
+            rate_limit_hit=rate_limit_hit,
+        )
+
+        if rate_limit_hit:
+            raise UpstreamRateLimitError(
+                message=f"Polymarket {api} API rate limit exceeded after {self.MAX_RETRIES} retries",
+                api=api,
+                retry_after=10,
+            )
+
+        # Extract upstream error details if available
+        upstream_error: str | None = None
+        if last_error is not None and isinstance(last_error, httpx.HTTPStatusError):
+            try:
+                upstream_error = last_error.response.text[:500]
+            except Exception:
+                upstream_error = str(last_error)
+
+        raise ProxyError(
+            message=f"Polymarket {api} API request failed after {self.MAX_RETRIES} retries",
+            upstream_status=last_status_code,
+            upstream_error=upstream_error,
+            api=api,
+            endpoint=endpoint,
+        )
 
     async def get_clob(
         self,
@@ -472,6 +528,7 @@ class PolymarketProxyClient:
         *,
         cache_ttl: int | None = None,
         skip_cache: bool = False,
+        stale_on_error: bool = True,
     ) -> tuple[dict[str, Any], str]:
         """Make a GET request to the CLOB API.
 
@@ -480,9 +537,15 @@ class PolymarketProxyClient:
             params: Query parameters.
             cache_ttl: Override default cache TTL.
             skip_cache: Skip cache lookup/storage.
+            stale_on_error: Return stale cached data on transient failures.
 
         Returns:
             Tuple of (response_data, cache_status). cache_status is HIT/MISS/STALE.
+
+        Raises:
+            CircuitOpenError: If circuit breaker is open.
+            UpstreamRateLimitError: If rate limit exhausted.
+            ProxyError: On upstream API failures.
         """
         cache_key = f"clob:{endpoint}"
 
@@ -492,15 +555,33 @@ class PolymarketProxyClient:
                 return cached, status
 
         url = f"{self._clob_url}{endpoint}"
-        response = await self._request_with_retry("GET", url, "clob", params=params)
-        response.raise_for_status()
 
-        data = response.json()
+        try:
+            response = await self._request_with_retry(
+                "GET", url, "clob", endpoint, params=params
+            )
+            response.raise_for_status()
 
-        if not skip_cache:
-            self._cache.set(cache_key, params, data, ttl=cache_ttl)
+            data = response.json()
 
-        return data, "MISS"
+            if not skip_cache:
+                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+
+            return data, "MISS"
+
+        except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
+            # Try to return stale cached data on transient failures
+            if stale_on_error and not skip_cache:
+                stale_data, stale_status = self._cache.get(cache_key, params)
+                if stale_data is not None:
+                    self._logger.info(
+                        "Returning stale cached data after error",
+                        api="clob",
+                        endpoint=endpoint,
+                        error_type=type(e).__name__,
+                    )
+                    return stale_data, "STALE"
+            raise
 
     async def get_data(
         self,
@@ -509,6 +590,7 @@ class PolymarketProxyClient:
         *,
         cache_ttl: int | None = None,
         skip_cache: bool = False,
+        stale_on_error: bool = True,
     ) -> tuple[dict[str, Any], str]:
         """Make a GET request to the Data API.
 
@@ -517,9 +599,15 @@ class PolymarketProxyClient:
             params: Query parameters.
             cache_ttl: Override default cache TTL.
             skip_cache: Skip cache lookup/storage.
+            stale_on_error: Return stale cached data on transient failures.
 
         Returns:
             Tuple of (response_data, cache_status). cache_status is HIT/MISS/STALE.
+
+        Raises:
+            CircuitOpenError: If circuit breaker is open.
+            UpstreamRateLimitError: If rate limit exhausted.
+            ProxyError: On upstream API failures.
         """
         cache_key = f"data:{endpoint}"
 
@@ -529,15 +617,33 @@ class PolymarketProxyClient:
                 return cached, status
 
         url = f"{self._data_url}{endpoint}"
-        response = await self._request_with_retry("GET", url, "data", params=params)
-        response.raise_for_status()
 
-        data = response.json()
+        try:
+            response = await self._request_with_retry(
+                "GET", url, "data", endpoint, params=params
+            )
+            response.raise_for_status()
 
-        if not skip_cache:
-            self._cache.set(cache_key, params, data, ttl=cache_ttl)
+            data = response.json()
 
-        return data, "MISS"
+            if not skip_cache:
+                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+
+            return data, "MISS"
+
+        except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
+            # Try to return stale cached data on transient failures
+            if stale_on_error and not skip_cache:
+                stale_data, stale_status = self._cache.get(cache_key, params)
+                if stale_data is not None:
+                    self._logger.info(
+                        "Returning stale cached data after error",
+                        api="data",
+                        endpoint=endpoint,
+                        error_type=type(e).__name__,
+                    )
+                    return stale_data, "STALE"
+            raise
 
     async def get_gamma(
         self,
@@ -546,6 +652,7 @@ class PolymarketProxyClient:
         *,
         cache_ttl: int | None = None,
         skip_cache: bool = False,
+        stale_on_error: bool = True,
     ) -> tuple[dict[str, Any], str]:
         """Make a GET request to the Gamma API.
 
@@ -554,9 +661,15 @@ class PolymarketProxyClient:
             params: Query parameters.
             cache_ttl: Override default cache TTL.
             skip_cache: Skip cache lookup/storage.
+            stale_on_error: Return stale cached data on transient failures.
 
         Returns:
             Tuple of (response_data, cache_status). cache_status is HIT/MISS/STALE.
+
+        Raises:
+            CircuitOpenError: If circuit breaker is open.
+            UpstreamRateLimitError: If rate limit exhausted.
+            ProxyError: On upstream API failures.
         """
         cache_key = f"gamma:{endpoint}"
 
@@ -566,15 +679,33 @@ class PolymarketProxyClient:
                 return cached, status
 
         url = f"{self._gamma_url}{endpoint}"
-        response = await self._request_with_retry("GET", url, "gamma", params=params)
-        response.raise_for_status()
 
-        data = response.json()
+        try:
+            response = await self._request_with_retry(
+                "GET", url, "gamma", endpoint, params=params
+            )
+            response.raise_for_status()
 
-        if not skip_cache:
-            self._cache.set(cache_key, params, data, ttl=cache_ttl)
+            data = response.json()
 
-        return data, "MISS"
+            if not skip_cache:
+                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+
+            return data, "MISS"
+
+        except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
+            # Try to return stale cached data on transient failures
+            if stale_on_error and not skip_cache:
+                stale_data, stale_status = self._cache.get(cache_key, params)
+                if stale_data is not None:
+                    self._logger.info(
+                        "Returning stale cached data after error",
+                        api="gamma",
+                        endpoint=endpoint,
+                        error_type=type(e).__name__,
+                    )
+                    return stale_data, "STALE"
+            raise
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""

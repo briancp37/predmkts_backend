@@ -106,7 +106,7 @@
       "Add health check that pings Polymarket endpoints",
       "Create ProxyError exception class with upstream details"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "caching_layer",

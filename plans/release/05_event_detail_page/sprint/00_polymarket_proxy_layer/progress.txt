@@ -98,6 +98,30 @@
 - Proper error handling with 502 (upstream failure) and 503 (circuit breaker)
 - Response includes cache_status (HIT/MISS/STALE) for debugging
 
+### error_handling (2026-02-06)
+- Created `exceptions.py` with structured exception classes:
+  - `ProxyError` - base class for 502 Bad Gateway errors with upstream context
+  - `CircuitOpenError` - 503 Service Unavailable when circuit breaker is open
+  - `UpstreamRateLimitError` - 429 when Polymarket rate limits are hit
+  - `UpstreamNotFoundError` - 404 for missing resources upstream
+- All exceptions extend `APIError` base class for consistent response format
+- Each exception includes `Retry-After` header where applicable
+- Updated `client.py` with improved error handling:
+  - `_request_with_retry()` now raises typed exceptions instead of generic RuntimeError
+  - Added logging with full request context (api, endpoint, attempt, error_type)
+  - Logs errors at appropriate levels (warning for retryable, error for failures)
+- Implemented stale-while-error pattern:
+  - On transient failures (CircuitOpenError, UpstreamRateLimitError, ProxyError),
+    client attempts to return stale cached data if available
+  - Added `stale_on_error=True` parameter to `get_clob()`, `get_data()`, `get_gamma()`
+  - Returns cache_status="STALE" when serving cached data during errors
+- Refactored `router.py` to use new exception classes:
+  - Removed inline HTTPException raises
+  - Added structured logging with context for each endpoint
+  - Exceptions propagate with proper HTTP status codes and headers
+- Health check endpoint already existed at `/api/v1/proxy/health`
+- Exported exceptions from `__init__.py` for external use
+
 ## In Progress
 
 

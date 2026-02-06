@@ -5,16 +5,24 @@ Provides proxy endpoints for accessing Polymarket API data with:
 - Rate limiting to stay under Polymarket limits
 - Circuit breaker for failure protection
 - Token ID resolution from our database
+- Proper error handling with structured responses
 """
 
 from enum import Enum
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import httpx
+from fastapi import APIRouter, Depends, Query, Request
 
 from prediction_data.api.polymarket_proxy.client import (
     PolymarketProxyClient,
     get_proxy_client,
+)
+from prediction_data.api.polymarket_proxy.exceptions import (
+    CircuitOpenError,
+    ProxyError,
+    UpstreamNotFoundError,
+    UpstreamRateLimitError,
 )
 from prediction_data.api.polymarket_proxy.schemas import (
     MarketTokensResponse,
@@ -34,6 +42,9 @@ from prediction_data.api.polymarket_proxy.token_resolver import (
     get_token_resolver,
 )
 from prediction_data.api.rate_limit import CLOB_PROXY_RATE_LIMIT, PUBLIC_RATE_LIMIT, limiter
+from prediction_data.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -200,32 +211,34 @@ async def get_timeseries(
             params,
             cache_ttl=cache_ttl,
         )
-    except RuntimeError as e:
-        # Circuit breaker open
-        if "Circuit breaker open" in str(e):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "message": str(e),
-                    "code": "SERVICE_UNAVAILABLE",
-                    "retry_after": 30,
-                },
-                headers={"Retry-After": "30"},
-            )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+    except (CircuitOpenError, UpstreamRateLimitError) as e:
+        # These exceptions already have proper status codes and details
+        logger.warning(
+            "Timeseries proxy error",
+            token_id=token_id,
+            interval=interval.value if interval else None,
+            error_type=type(e).__name__,
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+        raise
+    except ProxyError as e:
+        logger.error(
+            "Timeseries proxy upstream failure",
+            token_id=token_id,
+            interval=interval.value if interval else None,
+            error=str(e),
+        )
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Timeseries proxy HTTP error",
+            token_id=token_id,
+            status_code=e.response.status_code,
+        )
+        raise ProxyError(
+            message="Polymarket CLOB API request failed",
+            upstream_status=e.response.status_code,
+            api="clob",
+            endpoint="/prices-history",
         )
 
     # Transform response
@@ -332,43 +345,38 @@ async def get_orderbook(
             params,
             cache_ttl=ORDERBOOK_CACHE_TTL,
         )
-    except RuntimeError as e:
-        # Circuit breaker open
-        if "Circuit breaker open" in str(e):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "message": str(e),
-                    "code": "SERVICE_UNAVAILABLE",
-                    "retry_after": 30,
-                },
-                headers={"Retry-After": "30"},
-            )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+    except (CircuitOpenError, UpstreamRateLimitError) as e:
+        logger.warning(
+            "Orderbook proxy error",
+            token_id=token_id,
+            error_type=type(e).__name__,
         )
-    except Exception as e:
-        error_msg = str(e)
+        raise
+    except ProxyError as e:
+        logger.error(
+            "Orderbook proxy upstream failure",
+            token_id=token_id,
+            error=str(e),
+        )
+        raise
+    except httpx.HTTPStatusError as e:
         # Handle 404 from upstream
-        if "404" in error_msg or "No orderbook exists" in error_msg:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "message": "No orderbook exists for the requested token id",
-                    "code": "NOT_FOUND",
-                    "token_id": token_id,
-                },
+        if e.response.status_code == 404:
+            raise UpstreamNotFoundError(
+                message="No orderbook exists for the requested token id",
+                resource_type="orderbook",
+                resource_id=token_id,
             )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+        logger.error(
+            "Orderbook proxy HTTP error",
+            token_id=token_id,
+            status_code=e.response.status_code,
+        )
+        raise ProxyError(
+            message="Polymarket CLOB API request failed",
+            upstream_status=e.response.status_code,
+            api="clob",
+            endpoint="/book",
         )
 
     # Transform bids and asks
@@ -457,13 +465,10 @@ async def get_market_tokens(
     market_tokens = await resolver.get_tokens(market_id)
 
     if not market_tokens or not market_tokens.tokens:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": "No token mappings found for market",
-                "code": "NOT_FOUND",
-                "market_id": market_id,
-            },
+        raise UpstreamNotFoundError(
+            message="No token mappings found for market",
+            resource_type="market_tokens",
+            resource_id=market_id,
         )
 
     tokens = [
@@ -606,32 +611,31 @@ async def get_trades(
             params,
             cache_ttl=TRADES_CACHE_TTL,
         )
-    except RuntimeError as e:
-        # Circuit breaker open
-        if "Circuit breaker open" in str(e):
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "message": str(e),
-                    "code": "SERVICE_UNAVAILABLE",
-                    "retry_after": 30,
-                },
-                headers={"Retry-After": "30"},
-            )
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+    except (CircuitOpenError, UpstreamRateLimitError) as e:
+        logger.warning(
+            "Trades proxy error",
+            condition_id=condition_id,
+            error_type=type(e).__name__,
         )
-    except Exception as e:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": f"Polymarket API request failed: {e}",
-                "code": "PROXY_ERROR",
-            },
+        raise
+    except ProxyError as e:
+        logger.error(
+            "Trades proxy upstream failure",
+            condition_id=condition_id,
+            error=str(e),
+        )
+        raise
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Trades proxy HTTP error",
+            condition_id=condition_id,
+            status_code=e.response.status_code,
+        )
+        raise ProxyError(
+            message="Polymarket Data API request failed",
+            upstream_status=e.response.status_code,
+            api="data",
+            endpoint="/trades",
         )
 
     # Data API returns an array directly
