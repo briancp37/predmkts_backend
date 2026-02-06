@@ -42,7 +42,7 @@
       "Add X-RateLimit-Limit, X-RateLimit-Remaining headers",
       "Consider Redis for distributed rate limiting (future)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Request Logging",

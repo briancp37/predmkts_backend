@@ -9,12 +9,14 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from prediction_data.api.auth.router import router as auth_router
 from prediction_data.api.clob_client import close_clob_client
 from prediction_data.api.events.router import router as events_router
 from prediction_data.api.exceptions import APIError
 from prediction_data.api.markets.router import router as markets_router
+from prediction_data.api.rate_limit import limiter, rate_limit_exceeded_handler
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
 from prediction_data.api.trades.router import router as trades_router
@@ -42,6 +44,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Add rate limiter state and exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS middleware - allow all origins in development
 # In production, restrict to your frontend domain

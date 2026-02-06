@@ -3,12 +3,13 @@
 from typing import Annotated
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
 from prediction_data.api.exceptions import DuplicateError, NotFoundError, ValidationError
+from prediction_data.api.rate_limit import limiter, AUTHENTICATED_RATE_LIMIT
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
 
@@ -36,7 +37,9 @@ CHClient = Annotated[Client, Depends(get_clickhouse_client)]
 
 
 @router.get("", response_model=WatchlistResponse)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_watchlist(
+    request: Request,
     db: DbSession,
     ch: CHClient,
     current_user: CurrentUser,
@@ -78,8 +81,10 @@ async def get_watchlist(
 
 
 @router.post("", response_model=WatchlistItem, status_code=status.HTTP_201_CREATED)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def add_market_to_watchlist(
-    request: WatchlistAddRequest,
+    request: Request,
+    body: WatchlistAddRequest,
     db: DbSession,
     ch: CHClient,
     current_user: CurrentUser,
@@ -89,15 +94,15 @@ async def add_market_to_watchlist(
     Returns the created watchlist item. Returns 400 if already in watchlist.
     """
     # Validate market exists in ClickHouse
-    if not await market_exists(ch, request.marketId):
+    if not await market_exists(ch, body.marketId):
         raise ValidationError(message="Market not found")
 
     # Check if already in watchlist
-    if await is_in_watchlist(db, current_user.id, request.marketId):
+    if await is_in_watchlist(db, current_user.id, body.marketId):
         raise DuplicateError(message="Market already in watchlist")
 
     # Add to watchlist
-    watchlist = await add_to_watchlist(db, current_user.id, request.marketId)
+    watchlist = await add_to_watchlist(db, current_user.id, body.marketId)
 
     return WatchlistItem(
         id=watchlist.id,
@@ -107,7 +112,9 @@ async def add_market_to_watchlist(
 
 
 @router.delete("/{market_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def remove_market_from_watchlist(
+    request: Request,
     market_id: str,
     db: DbSession,
     current_user: CurrentUser,

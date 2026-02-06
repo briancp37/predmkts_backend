@@ -43,6 +43,34 @@
 - Email validation already handled via `EmailStr` type
 - All validation errors return 422 with field-level error details (via existing RequestValidationError handler)
 
+### Rate Limiting (2026-02-05)
+- Added `slowapi>=0.1.9` dependency to `pyproject.toml`
+- Created `src/prediction_data/api/rate_limit.py` with:
+  - `limiter` instance using slowapi with IP-based default key
+  - Rate limit constants:
+    - `AUTH_RATE_LIMIT = "10/minute"` - strict for brute force prevention
+    - `PUBLIC_RATE_LIMIT = "100/minute"` - standard for public endpoints
+    - `AUTHENTICATED_RATE_LIMIT = "200/minute"` - higher for logged-in users
+    - `CLOB_PROXY_RATE_LIMIT = "50/minute"` - conservative for Polymarket proxy
+  - `get_user_identifier()` - returns user ID for authenticated requests, IP otherwise
+  - `rate_limit_exceeded_handler()` - custom JSON response with Retry-After header
+- Integrated rate limiter in `src/prediction_data/api/main.py`:
+  - Added `app.state.limiter = limiter`
+  - Added `RateLimitExceeded` exception handler
+- Applied rate limits to all routers:
+  - `auth/router.py`: AUTH_RATE_LIMIT on register, login, refresh; AUTHENTICATED_RATE_LIMIT on /me
+  - `markets/router.py`: PUBLIC_RATE_LIMIT on all GET endpoints; CLOB_PROXY_RATE_LIMIT on /advanced (uses CLOB API)
+  - `traders/router.py`: PUBLIC_RATE_LIMIT on all endpoints
+  - `watchlist/router.py`: AUTHENTICATED_RATE_LIMIT on all endpoints
+  - `tracked_traders/router.py`: AUTHENTICATED_RATE_LIMIT on all endpoints
+  - `trades/router.py`: PUBLIC_RATE_LIMIT on /smart and /whales
+  - `events/router.py`: PUBLIC_RATE_LIMIT on all endpoints
+- Rate limit exceeded returns:
+  - 429 status code
+  - JSON: `{detail, code: "RATE_LIMIT_EXCEEDED", status: 429, retry_after}`
+  - Headers: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`
+- Note: Currently uses in-memory storage. For distributed deployments, Redis backend should be considered.
+
 ## In Progress
 
 ## Blockers

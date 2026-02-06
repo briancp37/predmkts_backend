@@ -3,9 +3,10 @@
 from typing import Literal
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from prediction_data.api.clickhouse import get_clickhouse_client
+from prediction_data.api.rate_limit import limiter, PUBLIC_RATE_LIMIT
 from prediction_data.api.smart_score import compute_smart_scores_batch
 from prediction_data.api.traders.schemas import (
     LeaderboardEntry,
@@ -30,7 +31,9 @@ router = APIRouter()
 
 
 @router.get("", response_model=TraderListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_traders(
+    request: Request,
     search: str | None = Query(
         None, description="Search by wallet address prefix (case-insensitive)"
     ),
@@ -77,7 +80,9 @@ async def list_traders(
 
 
 @router.get("/smart-scores", response_model=SmartScoreListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_smart_scores(
+    request: Request,
     minScore: float = Query(
         0, ge=0, le=100, description="Minimum smart score to include"
     ),
@@ -143,7 +148,9 @@ async def get_smart_scores(
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_pnl_leaderboard(
+    request: Request,
     period: Literal["1d", "7d", "30d", "all"] = Query(
         "7d", description="Time period for leaderboard aggregation"
     ),
@@ -185,7 +192,9 @@ async def get_pnl_leaderboard(
 
 
 @router.get("/{address}", response_model=TraderDetailResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_trader(
+    request: Request,
     address: str = Path(
         ...,
         description="Wallet address (case-insensitive, normalized to lowercase)",
@@ -220,7 +229,9 @@ async def get_trader(
 
 
 @router.get("/{address}/trades", response_model=TradeListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_trader_trades(
+    request: Request,
     address: str = Path(
         ...,
         description="Wallet address (case-insensitive, normalized to lowercase)",

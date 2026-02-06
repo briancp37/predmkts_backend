@@ -3,10 +3,11 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prediction_data.api.deps import get_current_user
+from prediction_data.api.rate_limit import limiter, AUTH_RATE_LIMIT, AUTHENTICATED_RATE_LIMIT
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
 
@@ -30,7 +31,9 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def register(
+    request: Request,
     user_data: UserCreate,
     db: DbSession,
 ) -> User:
@@ -45,7 +48,9 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def login(
+    request: Request,
     credentials: UserLogin,
     db: DbSession,
 ) -> TokenResponse:
@@ -64,7 +69,9 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit(AUTH_RATE_LIMIT)
 async def refresh_token(
+    request: Request,
     token_data: TokenRefresh,
     db: DbSession,
 ) -> TokenResponse:
@@ -107,7 +114,9 @@ async def refresh_token(
 
 
 @router.get("/me", response_model=UserResponse)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_current_user_info(
+    request: Request,
     current_user: CurrentUser,
 ) -> User:
     """Get the current authenticated user's information."""
@@ -115,7 +124,9 @@ async def get_current_user_info(
 
 
 @router.patch("/me", response_model=UserResponse)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def update_current_user_profile(
+    request: Request,
     user_data: UserUpdate,
     current_user: CurrentUser,
     db: DbSession,

@@ -4,12 +4,13 @@ from typing import Annotated
 from uuid import UUID
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.deps import get_current_user
 from prediction_data.api.exceptions import DuplicateError, NotFoundError, TierLimitExceededError
+from prediction_data.api.rate_limit import limiter, AUTHENTICATED_RATE_LIMIT
 from prediction_data.api.traders.schemas import TradeResponse
 from prediction_data.db.models.user import User
 from prediction_data.db.session import get_db
@@ -46,7 +47,9 @@ CHClient = Annotated[Client, Depends(get_clickhouse_client)]
 
 
 @router.get("", response_model=TrackedTradersListResponse)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_tracked_traders(
+    request: Request,
     db: DbSession,
     ch: CHClient,
     current_user: CurrentUser,
@@ -88,8 +91,10 @@ async def get_tracked_traders(
 
 
 @router.post("", response_model=TrackedTraderResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def add_tracked(
-    request: TrackedTraderCreate,
+    request: Request,
+    body: TrackedTraderCreate,
     db: DbSession,
     current_user: CurrentUser,
 ) -> TrackedTraderResponse:
@@ -110,7 +115,7 @@ async def add_tracked(
         )
 
     # Normalize address
-    address = request.traderAddress.lower()
+    address = body.traderAddress.lower()
 
     # Check for duplicate
     existing = await get_tracked_trader_by_address(db, current_user.id, address)
@@ -119,7 +124,7 @@ async def add_tracked(
 
     # Add tracked trader
     tracker = await add_tracked_trader(
-        db, current_user.id, address, request.customName
+        db, current_user.id, address, body.customName
     )
 
     return TrackedTraderResponse(
@@ -131,7 +136,9 @@ async def add_tracked(
 
 
 @router.get("/activity", response_model=list[TrackedTraderActivity])
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_activity(
+    request: Request,
     db: DbSession,
     ch: CHClient,
     current_user: CurrentUser,
@@ -202,7 +209,9 @@ async def get_activity(
 
 
 @router.get("/{tracker_id}", response_model=TrackedTraderWithStats)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def get_tracked_trader(
+    request: Request,
     tracker_id: UUID,
     db: DbSession,
     ch: CHClient,
@@ -233,7 +242,9 @@ async def get_tracked_trader(
 
 
 @router.delete("/{tracker_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def delete_tracked_trader(
+    request: Request,
     tracker_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
@@ -251,9 +262,11 @@ async def delete_tracked_trader(
 
 
 @router.patch("/{tracker_id}", response_model=TrackedTraderResponse)
+@limiter.limit(AUTHENTICATED_RATE_LIMIT)
 async def patch_tracked_trader(
+    request: Request,
     tracker_id: UUID,
-    request: TrackedTraderUpdate,
+    body: TrackedTraderUpdate,
     db: DbSession,
     current_user: CurrentUser,
 ) -> TrackedTraderResponse:
@@ -262,7 +275,7 @@ async def patch_tracked_trader(
     Returns 404 if not found or not owned by user.
     """
     tracker = await update_tracked_trader(
-        db, current_user.id, tracker_id, request.customName
+        db, current_user.id, tracker_id, body.customName
     )
 
     if not tracker:

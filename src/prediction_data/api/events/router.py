@@ -1,7 +1,7 @@
 """Events API routes."""
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.events.schemas import (
@@ -12,12 +12,15 @@ from prediction_data.api.events.service import (
     get_event_by_id,
     get_events,
 )
+from prediction_data.api.rate_limit import limiter, PUBLIC_RATE_LIMIT
 
 router = APIRouter()
 
 
 @router.get("", response_model=EventListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_events(
+    request: Request,
     category: str | None = Query(None, description="Filter by category (exact match)"),
     search: str | None = Query(None, description="Search in title and description"),
     status: str | None = Query(None, description="Filter by status (e.g., 'active', 'resolved')"),
@@ -60,7 +63,9 @@ async def list_events(
 
 
 @router.get("/{event_id}", response_model=EventResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_event(
+    request: Request,
     event_id: str = Path(
         ...,
         description="Event identifier (can be platform_event_id or slug)",

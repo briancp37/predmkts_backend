@@ -3,7 +3,7 @@
 from typing import Literal
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from prediction_data.api.clickhouse import get_clickhouse_client
 from prediction_data.api.clob_client import ClobApiClient, get_clob_client
@@ -27,12 +27,15 @@ from prediction_data.api.markets.service import (
     get_markets_screener,
     get_tags,
 )
+from prediction_data.api.rate_limit import limiter, PUBLIC_RATE_LIMIT, CLOB_PROXY_RATE_LIMIT
 
 router = APIRouter()
 
 
 @router.get("", response_model=MarketListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_markets(
+    request: Request,
     category: str | None = Query(None, description="Filter by category (exact match)"),
     search: str | None = Query(None, description="Search in question and description"),
     resolved: bool | None = Query(None, description="Filter by resolved status"),
@@ -75,7 +78,9 @@ async def list_markets(
 
 
 @router.get("/advanced", response_model=MarketAdvancedListResponse)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def list_markets_advanced(
+    request: Request,
     category: str | None = Query(None, description="Filter by category (exact match)"),
     search: str | None = Query(None, description="Search in question and description"),
     resolved: bool | None = Query(None, description="Filter by resolved status"),
@@ -173,7 +178,9 @@ async def list_markets_advanced(
 
 
 @router.get("/screener", response_model=MarketAdvancedListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_markets_screener(
+    request: Request,
     timeWindow: Literal["6h", "12h", "24h", "7d"] = Query(
         "24h", description="Time window for volume and price change calculations"
     ),
@@ -260,7 +267,9 @@ async def list_markets_screener(
 
 
 @router.get("/tags", response_model=list[TagResponse])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_tags(
+    request: Request,
     client: Client = Depends(get_clickhouse_client),
 ) -> list[TagResponse]:
     """List all available tags (categories) for filtering markets.
@@ -280,7 +289,9 @@ async def list_tags(
 
 
 @router.get("/{market_id}", response_model=MarketResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_market(
+    request: Request,
     market_id: str = Path(
         ...,
         description="Market identifier (can be internal ID, polymarketId, or slug)",
@@ -305,7 +316,9 @@ async def get_market(
 
 
 @router.get("/{market_id}/trades", response_model=TradeListResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_market_trades(
+    request: Request,
     market_id: str = Path(
         ...,
         description="Market identifier (can be internal ID, polymarketId, or slug)",
@@ -371,7 +384,9 @@ async def list_market_trades(
 
 
 @router.get("/{market_id}/price-history", response_model=PriceHistoryResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def get_price_history(
+    request: Request,
     market_id: str = Path(
         ...,
         description="Market identifier (can be internal ID, polymarketId, or slug)",

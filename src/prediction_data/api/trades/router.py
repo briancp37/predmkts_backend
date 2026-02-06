@@ -1,9 +1,10 @@
 """Global trades API routes."""
 
 from clickhouse_connect.driver.client import Client
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from prediction_data.api.clickhouse import get_clickhouse_client
+from prediction_data.api.rate_limit import limiter, PUBLIC_RATE_LIMIT
 from prediction_data.api.trades.schemas import (
     SmartTradeResponse,
     WhaleTradeResponse,
@@ -14,7 +15,9 @@ router = APIRouter()
 
 
 @router.get("/smart", response_model=list[SmartTradeResponse])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_smart_trades(
+    request: Request,
     minScore: float = Query(
         70.0, ge=0, le=100, description="Minimum smart score (0-100)"
     ),
@@ -47,7 +50,9 @@ async def list_smart_trades(
 
 
 @router.get("/whales", response_model=list[WhaleTradeResponse])
+@limiter.limit(PUBLIC_RATE_LIMIT)
 async def list_whale_trades(
+    request: Request,
     minAmount: float = Query(
         10000.0, ge=0, description="Minimum USD value of trade"
     ),
