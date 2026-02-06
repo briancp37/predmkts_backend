@@ -1,0 +1,90 @@
+[
+  {
+    "category": "realized_variance",
+    "description": "Compute realized variance in log-odds space",
+    "steps": [
+      "Create metrics/realized_variance.py module",
+      "Implement realized_variance(dx_series) = sum(dx^2)",
+      "Support rolling window calculation with configurable lookback",
+      "Implement realized_variance_rolling(dx, window_periods) -> Series",
+      "Handle NaN values in dx series (skip or propagate)",
+      "Add annualization: RV_ann = RV / (window_periods * dt_years)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "realized_volatility",
+    "description": "Compute annualized realized volatility",
+    "steps": [
+      "Implement realized_volatility(dx_series, dt_years) function",
+      "Calculate: sqrt(RV / T) where T = n * dt_years",
+      "Support multiple window sizes: 1h, 1d, 7d",
+      "Create WindowConfig class with window_name, periods, dt_years",
+      "Return volatility in annualized log-odds units"
+    ],
+    "passes": false
+  },
+  {
+    "category": "mad_estimator",
+    "description": "Compute Median Absolute Deviation for robust scale",
+    "steps": [
+      "Implement compute_mad(dx_series) function",
+      "Calculate: median(|dx - median(dx)|)",
+      "Apply scaling: sigma_mad = 1.4826 * MAD (to match std for normal)",
+      "Handle edge cases: too few observations, all zeros",
+      "Return both raw MAD and scaled sigma_mad"
+    ],
+    "passes": false
+  },
+  {
+    "category": "truncated_rv",
+    "description": "Compute Truncated Realized Variance for belief volatility",
+    "steps": [
+      "Create metrics/belief_volatility.py module",
+      "Implement truncated_rv(dx_series, threshold_multiplier=6) function",
+      "Compute threshold: theta = c * sigma_mad (c in [5, 10])",
+      "TRV = sum(dx^2 * 1{|dx| <= theta})",
+      "Track count of included vs excluded increments",
+      "Annualize: sigma_b = sqrt(TRV / T_included)",
+      "Return TRV, sigma_b_ann, n_included, n_excluded"
+    ],
+    "passes": false
+  },
+  {
+    "category": "bipower_variation",
+    "description": "Compute Bipower Variation for jump-robust volatility",
+    "steps": [
+      "Implement bipower_variation(dx_series) function",
+      "Calculate: BV = (pi/2) * sum(|dx[k]| * |dx[k-1]|) for k >= 2",
+      "Use mu_1 = sqrt(2/pi) constant for scaling if needed",
+      "Annualize: sigma_b_bv = sqrt(BV / T)",
+      "Handle short series (need at least 2 observations)",
+      "Return BV, sigma_b_ann"
+    ],
+    "passes": false
+  },
+  {
+    "category": "window_calculations",
+    "description": "Implement multi-window metric calculations",
+    "steps": [
+      "Create compute_volatility_metrics(df, windows=['1h','1d','7d']) function",
+      "Map window names to periods: 1h=120 (30s bins), 1d=2880, 7d=20160",
+      "For each window, compute: RV, TRV, BV, sigma_realized, sigma_b_trv, sigma_b_bv",
+      "Return nested dict keyed by window name",
+      "Handle case where series is shorter than window (use full series)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "volatility_summary",
+    "description": "Create summary statistics for volatility metrics",
+    "steps": [
+      "Create VolatilityMetrics Pydantic model",
+      "Fields: window, realized_variance, realized_vol_ann, belief_vol_trv, belief_vol_bipower",
+      "Add n_observations, n_jumps_excluded, coverage_pct",
+      "Add timestamp range (start_ts, end_ts)",
+      "Implement to_dict() and from_dict() methods"
+    ],
+    "passes": false
+  }
+]

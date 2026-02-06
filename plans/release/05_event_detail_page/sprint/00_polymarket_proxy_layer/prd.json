@@ -67,7 +67,7 @@
       "Cache responses with 30s TTL",
       "Include trade id, price, size, side, timestamp, maker address"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "market_info_proxy",

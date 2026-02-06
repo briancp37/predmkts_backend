@@ -1,0 +1,90 @@
+[
+  {
+    "category": "jump_threshold",
+    "description": "Compute dynamic jump detection threshold",
+    "steps": [
+      "Create metrics/jumps.py module",
+      "Implement compute_jump_threshold(sigma_b, dt_years, multiplier=6) function",
+      "Calculate expected diffusion std: sd_delta = sigma_b * sqrt(dt_years)",
+      "Threshold: theta_jump = m * sd_delta (m in [5, 10])",
+      "Support configurable multiplier parameter",
+      "Return threshold value and components"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_detection",
+    "description": "Identify jumps in log-odds series",
+    "steps": [
+      "Implement detect_jumps(dx_series, sigma_b, dt_years, multiplier=6) function",
+      "Flag jump at k if: |dx[k]| > theta_jump",
+      "Return boolean Series of same length as dx",
+      "Also return jump sizes array: dx[jump_flags]",
+      "Handle edge cases: no jumps, all jumps",
+      "Add summary: n_jumps, pct_jumps"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_intensity",
+    "description": "Compute jump intensity (arrival rate)",
+    "steps": [
+      "Implement jump_intensity(n_jumps, T_years) function",
+      "Calculate: lambda = N_J / T",
+      "Return intensity in jumps per year",
+      "Handle edge case of T=0 (return 0 or None)",
+      "Add confidence interval if desired (Poisson)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_size_stats",
+    "description": "Compute jump size distribution statistics",
+    "steps": [
+      "Implement jump_size_stats(jump_sizes) function",
+      "Calculate: mean(|z|), mean(z), std(z), variance(z)",
+      "Calculate: E[z^2] = mean(jump_sizes^2)",
+      "Separate positive and negative jumps",
+      "Return stats dict: mean_abs, mean_signed, std, variance, skew",
+      "Handle empty jump_sizes array"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_qv_contribution",
+    "description": "Compute jump contribution to quadratic variation",
+    "steps": [
+      "Implement jump_qv(jump_sizes) function",
+      "Calculate: JV = sum(z^2) for all jumps",
+      "Calculate jump share: JV / (RV + JV) or JV / total_qv",
+      "Return JV, jump_share_pct",
+      "Interpret: what fraction of variability is from jumps"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_metrics_summary",
+    "description": "Create comprehensive jump metrics output",
+    "steps": [
+      "Create JumpMetrics Pydantic model",
+      "Fields: n_jumps, intensity_ann, mean_abs_size, mean_signed_size, variance, jump_qv, jump_share_pct",
+      "Add largest_jump, smallest_jump, jump_timestamps",
+      "Implement to_dict() method",
+      "Add window context (which period this was computed over)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jump_list_output",
+    "description": "Produce list of individual jump events",
+    "steps": [
+      "Create Jump Pydantic model",
+      "Fields: timestamp, dx, p_before, p_after, size_in_logodds, size_in_probability",
+      "Implement list_jumps(df, jump_flags) function",
+      "Return list of Jump objects sorted by timestamp",
+      "Include dollar volume if available (size * price)",
+      "Add to API response for jump inspection"
+    ],
+    "passes": false
+  }
+]

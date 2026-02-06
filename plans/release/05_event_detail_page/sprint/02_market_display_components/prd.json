@@ -1,0 +1,82 @@
+[
+  {
+    "category": "event_header",
+    "description": "Build the event header component with title, probability, and metadata",
+    "steps": [
+      "Create EventHeader component in web/src/components/event/event-header.tsx",
+      "Display event title with proper typography (text-2xl font-bold)",
+      "Show category tags as colored badges (Tech, Politics, etc.)",
+      "Display primary probability as large percentage (e.g., '12% chance')",
+      "Show volume with proper formatting ($66,109 Vol.)",
+      "Display end date with relative time (e.g., 'Ends Jun 30, 2026')",
+      "Add watchlist toggle button for authenticated users"
+    ],
+    "passes": false
+  },
+  {
+    "category": "outcome_cards",
+    "description": "Build outcome cards showing Yes/No or multi-outcome probabilities",
+    "steps": [
+      "Create OutcomeCard component in web/src/components/event/outcome-card.tsx",
+      "Create OutcomeCardList component to render all outcomes",
+      "Display outcome name (Yes/No or custom outcome names)",
+      "Show probability as percentage with color coding (green for >50%, red for <50%)",
+      "Display price in cents (e.g., 12c for 12%)",
+      "Show 24h change with up/down arrow and color (green/red)",
+      "Add hover state with subtle background change",
+      "Make cards clickable to select outcome for trading"
+    ],
+    "passes": false
+  },
+  {
+    "category": "probability_display",
+    "description": "Create reusable probability display components",
+    "steps": [
+      "Create ProbabilityBadge component for inline probability display",
+      "Create ProbabilityBar component for visual bar representation",
+      "Implement color gradient from red (0%) to green (100%)",
+      "Add animation for probability changes",
+      "Create helper function for probability formatting (0.12 -> 12%)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "market_details_panel",
+    "description": "Build the market details sidebar panel",
+    "steps": [
+      "Create MarketDetailsPanel component in web/src/components/event/market-details-panel.tsx",
+      "Display total volume with proper currency formatting",
+      "Show end date with full date and time",
+      "Show created date with relative time (e.g., '2 weeks ago')",
+      "Display resolver address (truncated with copy button)",
+      "Show market ID",
+      "Add expandable section for additional metadata"
+    ],
+    "passes": false
+  },
+  {
+    "category": "resolution_rules",
+    "description": "Build the resolution rules/criteria section",
+    "steps": [
+      "Create ResolutionRules component in web/src/components/event/resolution-rules.tsx",
+      "Display event description with proper markdown rendering",
+      "Parse and highlight key resolution criteria",
+      "Add collapsible section for long descriptions",
+      "Add 'Propose Resolution' button placeholder (disabled)",
+      "Show resolver type and source information"
+    ],
+    "passes": false
+  },
+  {
+    "category": "category_tags",
+    "description": "Implement category tag display and navigation",
+    "steps": [
+      "Create CategoryTag component with predefined color mapping",
+      "Map categories to colors (Politics=blue, Crypto=orange, Tech=purple, etc.)",
+      "Make tags clickable to navigate to category filter",
+      "Add hover tooltip with full category name",
+      "Support multiple tags per event"
+    ],
+    "passes": false
+  }
+]

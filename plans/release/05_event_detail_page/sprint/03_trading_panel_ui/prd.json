@@ -1,0 +1,107 @@
+[
+  {
+    "category": "trading_panel_layout",
+    "description": "Build the trading panel container and layout",
+    "steps": [
+      "Create TradingPanel component in web/src/components/event/trading-panel.tsx",
+      "Implement sticky positioning on desktop (top offset for header)",
+      "Add card styling with border, shadow, and padding",
+      "Create collapsed/expanded state for mobile",
+      "Add expand button for mobile collapsed view",
+      "Ensure panel doesn't overlap with footer on scroll"
+    ],
+    "passes": false
+  },
+  {
+    "category": "outcome_selector",
+    "description": "Build the outcome selection UI within trading panel",
+    "steps": [
+      "Create OutcomeSelector component with radio-button style selection",
+      "Display all outcomes with prices (Yes 12c, No 88c)",
+      "Highlight selected outcome with accent color",
+      "Show real-time price for each outcome",
+      "Support keyboard navigation between outcomes",
+      "Emit selected outcome ID on change"
+    ],
+    "passes": false
+  },
+  {
+    "category": "trade_direction_toggle",
+    "description": "Build Buy/Sell mode toggle",
+    "steps": [
+      "Create TradeDirectionToggle component",
+      "Implement segmented control with Buy/Sell options",
+      "Color code: Buy=green, Sell=red",
+      "Update panel UI based on selected direction",
+      "Store direction in component state",
+      "Add keyboard shortcut hints (B for Buy, S for Sell)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "amount_input",
+    "description": "Build the trade amount input with validation",
+    "steps": [
+      "Create TradeAmountInput component with numeric input",
+      "Add USD prefix/suffix indicator",
+      "Implement quick-select buttons ($10, $50, $100, $500)",
+      "Add input validation (min $1, max based on liquidity)",
+      "Show shares calculation: amount / price = shares",
+      "Display potential payout: shares * $1 (for winning outcome)",
+      "Show ROI percentage: (payout - amount) / amount * 100"
+    ],
+    "passes": false
+  },
+  {
+    "category": "trade_summary",
+    "description": "Build trade summary display before submission",
+    "steps": [
+      "Create TradeSummary component showing order details",
+      "Display: Outcome, Direction, Amount, Shares, Avg Price",
+      "Show potential return with percentage",
+      "Add estimated fees line (placeholder)",
+      "Show total cost/proceeds",
+      "Update summary in real-time as inputs change"
+    ],
+    "passes": false
+  },
+  {
+    "category": "dummy_trade_button",
+    "description": "Implement the trade submission button with dummy action",
+    "steps": [
+      "Create TradeSubmitButton component",
+      "Style as primary action button (full width, prominent)",
+      "Show 'Buy [Outcome]' or 'Sell [Outcome]' text",
+      "Add loading state during 'submission'",
+      "On click: show toast notification 'Trading coming soon!'",
+      "Add confetti animation or success feedback",
+      "Disable button if amount is invalid or no outcome selected"
+    ],
+    "passes": false
+  },
+  {
+    "category": "authentication_gate",
+    "description": "Handle unauthenticated users in trading panel",
+    "steps": [
+      "Check authentication status in TradingPanel",
+      "Show 'Log in to trade' button for unauthenticated users",
+      "Redirect to login with return URL to event page",
+      "Show full trading panel for authenticated users",
+      "Display user's current position if they have one"
+    ],
+    "passes": false
+  },
+  {
+    "category": "position_display",
+    "description": "Show user's current position in this market",
+    "steps": [
+      "Create PositionDisplay component",
+      "Fetch user's position from wallet_position_state if authenticated",
+      "Show: Shares held, Avg cost, Current value, PnL",
+      "Color code PnL (green positive, red negative)",
+      "Add 'Close Position' button placeholder",
+      "Show position only if user has non-zero position"
+    ],
+    "passes": false
+  }
+]

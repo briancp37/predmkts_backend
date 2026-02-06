@@ -1,0 +1,27 @@
+# Sprint Progress: Data Foundation
+# Release: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Key API references:
+- Gamma API: https://gamma-api.polymarket.com/markets/{id}
+- CLOB trades: https://clob.polymarket.com/data/trades
+- CLOB book: https://clob.polymarket.com/book
+
+Data model:
+- pm_market_meta: Market metadata with condition_id, outcomes, asset_ids
+- pm_trades_raw: Raw trade history for all markets
+- pm_book_snapshots: Optional order book snapshots
+

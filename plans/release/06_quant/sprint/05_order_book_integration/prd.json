@@ -1,0 +1,101 @@
+[
+  {
+    "category": "book_snapshot_fetching",
+    "description": "Implement order book snapshot fetching from CLOB API",
+    "steps": [
+      "Create data/orderbook.py module",
+      "Implement fetch_book_snapshot(condition_id, asset_id) function",
+      "Call GET https://clob.polymarket.com/book with params",
+      "Parse response: bids[], asks[], tick_size, min_order_size, timestamp",
+      "Extract best bid/ask from top of arrays",
+      "Create BookSnapshot Pydantic model",
+      "Store snapshot to pm_book_snapshots table"
+    ],
+    "passes": false
+  },
+  {
+    "category": "midprice_calculation",
+    "description": "Calculate midprice from bid/ask",
+    "steps": [
+      "Implement compute_midprice(best_bid, best_ask) function",
+      "Calculate: mid = (best_bid + best_ask) / 2",
+      "Handle one-sided book (only bids or only asks)",
+      "Validate bid < ask (else flag as crossed)",
+      "Return mid and validation status"
+    ],
+    "passes": false
+  },
+  {
+    "category": "spread_metrics",
+    "description": "Compute spread-based metrics",
+    "steps": [
+      "Implement compute_spread(best_bid, best_ask) function",
+      "Calculate absolute spread: ask - bid",
+      "Calculate relative spread: (ask - bid) / mid",
+      "Calculate spread in probability points and bps",
+      "Return SpreadMetrics model with all variants"
+    ],
+    "passes": false
+  },
+  {
+    "category": "book_time_series",
+    "description": "Build time series from book snapshots",
+    "steps": [
+      "Implement build_book_series(snapshots) function",
+      "Create DataFrame with: ts, best_bid, best_ask, mid, spread",
+      "Align with trade-based price series",
+      "Prefer midprice over VWAP when available",
+      "Forward-fill book data with appropriate max_gap"
+    ],
+    "passes": false
+  },
+  {
+    "category": "liquidity_metrics",
+    "description": "Compute liquidity regime metrics from spreads",
+    "steps": [
+      "Implement compute_liquidity_metrics(spread_series) function",
+      "Calculate: mean, median, p90, p99 of spread",
+      "Calculate time spent in wide vs tight spread regimes",
+      "Define thresholds: tight < 0.01, normal < 0.05, wide >= 0.05",
+      "Return liquidity regime summary"
+    ],
+    "passes": false
+  },
+  {
+    "category": "spread_adjusted_thresholds",
+    "description": "Adjust jump thresholds based on spread",
+    "steps": [
+      "Implement adjust_threshold_for_spread(base_threshold, spread, min_tick) function",
+      "When spread is wide, increase jump threshold",
+      "Rationale: wide spreads mean more noise, fewer true jumps",
+      "Suggested: threshold += spread / 2",
+      "Document rationale in function docstring"
+    ],
+    "passes": false
+  },
+  {
+    "category": "book_collection_cli",
+    "description": "Add CLI for continuous book snapshot collection",
+    "steps": [
+      "Add 'quant collect-book --condition-id <id> --interval-seconds 30' command",
+      "Run periodic fetch_book_snapshot calls",
+      "Store each snapshot to ClickHouse",
+      "Support --duration flag for timed collection",
+      "Add graceful shutdown on Ctrl+C",
+      "Log collection statistics on exit"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price_series_integration",
+    "description": "Integrate book data into price series construction",
+    "steps": [
+      "Update build_price_series to accept optional book_series parameter",
+      "When book data available: prefer midprice over VWAP",
+      "Add method='MID' option to use midprice",
+      "Add method='VWAP_WITH_MID_FALLBACK' for hybrid",
+      "Track source of each price point (trade/mid)"
+    ],
+    "passes": false
+  }
+]

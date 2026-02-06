@@ -1,0 +1,30 @@
+# Sprint Progress: Core Volatility Metrics
+# Release: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Key formulas:
+- Realized Variance: RV = sum(dx^2)
+- Realized Vol: sigma = sqrt(RV / T)
+- MAD: median(|dx - median(dx)|)
+- sigma_mad = 1.4826 * MAD
+
+Truncated RV:
+- threshold = c * sigma_mad, c in [5, 10]
+- TRV = sum(dx^2 * 1{|dx| <= threshold})
+
+Bipower Variation:
+- BV = (pi/2) * sum(|dx[k]| * |dx[k-1]|)
+

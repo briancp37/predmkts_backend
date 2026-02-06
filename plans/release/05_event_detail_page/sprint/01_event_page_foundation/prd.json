@@ -1,0 +1,77 @@
+[
+  {
+    "category": "api_event_detail_endpoint",
+    "description": "Enhance the events API to return full event detail with nested markets and outcomes",
+    "steps": [
+      "Update EventResponse schema to include nested markets with outcomes",
+      "Add outcome price and 24h change fields to market schema",
+      "Update get_event_by_id service to JOIN dim_outcome data",
+      "Add outcome prices from market_mark_daily or dim_outcome.latest_price",
+      "Add price_change_24h calculation from market_mark_daily",
+      "Test endpoint returns complete event with markets and outcomes"
+    ],
+    "passes": false
+  },
+  {
+    "category": "frontend_routing",
+    "description": "Set up Next.js routing for event detail page",
+    "steps": [
+      "Create web/src/app/(dashboard)/event/[slug]/page.tsx",
+      "Set up dynamic route parameter extraction for slug",
+      "Create useEvent(slug) hook in web/src/hooks/use-event.ts",
+      "Add event detail endpoint to API client types",
+      "Regenerate TypeScript types from OpenAPI spec",
+      "Verify route works with test event slug"
+    ],
+    "passes": false
+  },
+  {
+    "category": "page_layout",
+    "description": "Create the two-column layout structure for event detail page",
+    "steps": [
+      "Create EventDetailLayout component with main content + sidebar",
+      "Implement responsive grid: single column mobile, two columns desktop",
+      "Add sticky sidebar behavior on desktop (position: sticky)",
+      "Create placeholder sections for each component area",
+      "Add breadcrumb navigation: Markets > Category > Event Title",
+      "Verify layout renders correctly at all breakpoints"
+    ],
+    "passes": false
+  },
+  {
+    "category": "loading_states",
+    "description": "Add loading skeletons for event detail page",
+    "steps": [
+      "Create EventHeaderSkeleton component",
+      "Create OutcomeCardsSkeleton component",
+      "Create TradingPanelSkeleton component",
+      "Create ChartSkeleton component",
+      "Create ActivitySkeleton component",
+      "Wire up skeletons to display during data fetch"
+    ],
+    "passes": false
+  },
+  {
+    "category": "error_handling",
+    "description": "Handle event not found and API errors gracefully",
+    "steps": [
+      "Create EventNotFound component for 404 state",
+      "Add error boundary for runtime errors",
+      "Display user-friendly error message on API failure",
+      "Add retry button for failed requests",
+      "Log errors to console in development mode"
+    ],
+    "passes": false
+  },
+  {
+    "category": "navigation_update",
+    "description": "Add event detail navigation integration",
+    "steps": [
+      "Update MarketCard to link to /event/{slug} instead of external Polymarket",
+      "Update MarketTable rows to link to event detail page",
+      "Add back navigation button on event detail page",
+      "Ensure page title updates with event name"
+    ],
+    "passes": false
+  }
+]

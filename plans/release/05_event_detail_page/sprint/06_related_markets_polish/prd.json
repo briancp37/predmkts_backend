@@ -1,0 +1,124 @@
+[
+  {
+    "category": "api_related_events",
+    "description": "Create API endpoint for related events",
+    "steps": [
+      "Create GET /api/v1/events/{event_id}/related endpoint",
+      "Add RelatedEventsResponse schema",
+      "Find related events by matching category",
+      "Secondary sort by volume (most active first)",
+      "Exclude the current event from results",
+      "Default limit to 5 events, max 20",
+      "Return: event_id, title, slug, probability, volume, 24h_change"
+    ],
+    "passes": false
+  },
+  {
+    "category": "related_markets_sidebar",
+    "description": "Build related markets sidebar component",
+    "steps": [
+      "Create RelatedMarkets component in web/src/components/event/related-markets.tsx",
+      "Create useRelatedEvents hook for data fetching",
+      "Display list of related market cards (compact)",
+      "Show: Title (truncated), Probability, Volume",
+      "Make cards clickable to navigate to event",
+      "Show loading skeleton during fetch",
+      "Show empty state if no related markets"
+    ],
+    "passes": false
+  },
+  {
+    "category": "related_market_card",
+    "description": "Build compact related market card component",
+    "steps": [
+      "Create RelatedMarketCard component",
+      "Display title with 2-line clamp (truncate overflow)",
+      "Show probability badge with color coding",
+      "Show 24h change indicator (up/down arrow + percentage)",
+      "Show volume in compact format ($66K)",
+      "Add hover state with subtle elevation",
+      "Ensure proper click target size for touch"
+    ],
+    "passes": false
+  },
+  {
+    "category": "responsive_layout",
+    "description": "Ensure fully responsive design across breakpoints",
+    "steps": [
+      "Test and fix mobile layout (single column)",
+      "Move trading panel to bottom sheet on mobile",
+      "Stack sidebar below main content on tablet",
+      "Ensure charts resize properly",
+      "Test touch interactions on mobile",
+      "Add appropriate font size scaling",
+      "Verify no horizontal scroll at any breakpoint"
+    ],
+    "passes": false
+  },
+  {
+    "category": "mobile_trading_sheet",
+    "description": "Create mobile bottom sheet for trading panel",
+    "steps": [
+      "Create MobileTradingSheet component using sheet/drawer pattern",
+      "Add floating 'Trade' button at bottom of screen on mobile",
+      "Open sheet with trading panel when button clicked",
+      "Add swipe-to-dismiss gesture",
+      "Prevent body scroll when sheet is open",
+      "Maintain state when sheet closes and reopens"
+    ],
+    "passes": false
+  },
+  {
+    "category": "loading_optimization",
+    "description": "Optimize loading performance and user experience",
+    "steps": [
+      "Implement skeleton loading for all async sections",
+      "Add staggered loading animation",
+      "Prioritize above-the-fold content loading",
+      "Lazy load related markets and activity (below fold)",
+      "Add Suspense boundaries for code splitting",
+      "Measure and optimize Largest Contentful Paint"
+    ],
+    "passes": false
+  },
+  {
+    "category": "error_states",
+    "description": "Handle all error states gracefully",
+    "steps": [
+      "Add error boundary at page level",
+      "Show inline error for failed chart data",
+      "Show inline error for failed activity data",
+      "Add retry buttons for recoverable errors",
+      "Log errors to console with context",
+      "Show user-friendly messages (not technical errors)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "accessibility",
+    "description": "Ensure accessibility compliance",
+    "steps": [
+      "Add proper ARIA labels to all interactive elements",
+      "Ensure keyboard navigation works throughout page",
+      "Add focus indicators to all focusable elements",
+      "Verify color contrast meets WCAG AA",
+      "Add screen reader announcements for tab changes",
+      "Test with VoiceOver/NVDA"
+    ],
+    "passes": false
+  },
+  {
+    "category": "final_polish",
+    "description": "Final UI polish and consistency checks",
+    "steps": [
+      "Audit all components for consistent spacing",
+      "Verify typography scale is consistent",
+      "Check all colors match design system",
+      "Add subtle animations/transitions where appropriate",
+      "Remove any console.log statements",
+      "Review and remove unused code/imports",
+      "Update navigation to include Events section"
+    ],
+    "passes": false
+  }
+]

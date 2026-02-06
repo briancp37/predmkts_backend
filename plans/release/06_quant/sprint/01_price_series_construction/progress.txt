@@ -1,0 +1,28 @@
+# Sprint Progress: Price Series Construction
+# Release: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Key parameters:
+- bin_seconds: 30 (default), range 10-300
+- max_gap_seconds: 1800 (30 min default)
+- epsilon: 1e-6 for price clamping
+
+Formulas:
+- VWAP = sum(price * size) / sum(size)
+- logit(p) = log(p / (1-p))
+- dx[k] = x[k] - x[k-1]
+- dt_years = bin_seconds / (365.25 * 24 * 3600)
+

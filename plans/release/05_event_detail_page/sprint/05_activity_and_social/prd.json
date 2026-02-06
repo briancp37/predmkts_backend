@@ -1,0 +1,105 @@
+[
+  {
+    "category": "activity_tabs",
+    "description": "Build the tabbed activity section container",
+    "steps": [
+      "Create ActivityTabs component in web/src/components/event/activity-tabs.tsx",
+      "Implement tab navigation: Comments, Top Holders, Activity",
+      "Use URL hash or state for active tab persistence",
+      "Add smooth transition between tab content",
+      "Show count badge on Activity tab (recent trades count)",
+      "Make tabs scrollable on mobile if needed"
+    ],
+    "passes": false
+  },
+  {
+    "category": "comments_placeholder",
+    "description": "Build comments tab with coming soon placeholder",
+    "steps": [
+      "Create CommentsTab component with placeholder UI",
+      "Display 'Comments coming soon' message with icon",
+      "Show fake comment input (disabled) to show intent",
+      "Add call-to-action to join community/Discord",
+      "Style consistently with other tabs"
+    ],
+    "passes": false
+  },
+  {
+    "category": "top_holders_tab",
+    "description": "Build top holders display using proxy data",
+    "steps": [
+      "Create TopHoldersTab component",
+      "Use useTopHolders hook from Sprint 00 for data fetching",
+      "Display table: Rank, Wallet (truncated), Position, Value",
+      "Make wallet address clickable (link to trader profile)",
+      "Add copy button for full wallet address",
+      "Show loading skeleton during fetch",
+      "Show empty state if no holders"
+    ],
+    "passes": false
+  },
+  {
+    "category": "top_holders_item",
+    "description": "Build individual top holder row component",
+    "steps": [
+      "Create TopHolderRow component with consistent styling",
+      "Display rank number with medal icons for top 3",
+      "Show wallet avatar (jazzicon or blockie)",
+      "Truncate wallet address with copy-on-click",
+      "Format position size in shares",
+      "Format value with $ prefix",
+      "Add hover state with full details tooltip"
+    ],
+    "passes": false
+  },
+  {
+    "category": "activity_feed",
+    "description": "Build the recent trades activity feed using proxy data",
+    "steps": [
+      "Create ActivityFeed component",
+      "Use useMarketTrades hook from Sprint 00 for data fetching",
+      "Display trade items: Wallet bought/sold X shares at Y price",
+      "Show relative time (e.g., '2 min ago')",
+      "Color code buy (green) vs sell (red)",
+      "Add infinite scroll or 'Load more' button",
+      "Show trade size in dollars"
+    ],
+    "passes": false
+  },
+  {
+    "category": "activity_item",
+    "description": "Build individual activity item component",
+    "steps": [
+      "Create ActivityItem component for trade display",
+      "Display: Wallet avatar (jazzicon), Address, Action, Size, Price, Time",
+      "Use icons: ArrowUp for buy, ArrowDown for sell",
+      "Add subtle animation on new items appearing",
+      "Handle long wallet names with truncation",
+      "Make wallet address clickable to trader profile"
+    ],
+    "passes": false
+  },
+  {
+    "category": "activity_loading",
+    "description": "Handle loading and empty states for activity",
+    "steps": [
+      "Create ActivitySkeleton with animated placeholder items",
+      "Show 'No recent activity' for empty data",
+      "Add retry button on fetch failure",
+      "Show stale indicator if data is older than 1m"
+    ],
+    "passes": false
+  },
+  {
+    "category": "polling_updates",
+    "description": "Add polling for activity updates",
+    "steps": [
+      "Configure React Query refetchInterval (30s for trades)",
+      "Highlight new trades that appear since last fetch",
+      "Add 'New activity' banner at top when new trades arrive",
+      "Pause polling when tab is not visible (document.hidden)",
+      "Add manual refresh button"
+    ],
+    "passes": false
+  }
+]

@@ -1,0 +1,100 @@
+[
+  {
+    "category": "module_structure",
+    "description": "Create the quant module directory structure",
+    "steps": [
+      "Create src/prediction_data/quant/ directory",
+      "Create __init__.py with module exports",
+      "Create models.py for Pydantic data models",
+      "Create data/ subdirectory for data fetching",
+      "Create preprocessing/ subdirectory for transformations",
+      "Create metrics/ subdirectory for metric computations"
+    ],
+    "passes": false
+  },
+  {
+    "category": "clickhouse_tables",
+    "description": "Create ClickHouse tables for quant data storage",
+    "steps": [
+      "Create pm_market_meta table with condition_id, gamma_market_id, slug, question, outcomes, asset_ids, end_ts, status",
+      "Create pm_trades_raw table with trade_id, condition_id, asset_id, side, price, size, match_ts",
+      "Create pm_book_snapshots table (optional) with condition_id, asset_id, snapshot_ts, best_bid, best_ask, spread, mid",
+      "Create pm_quant_metrics table for storing computed metrics per window",
+      "Add table creation to gold init-tables CLI command",
+      "Verify tables created with correct engines (ReplacingMergeTree)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "market_meta_fetching",
+    "description": "Implement market metadata fetching from Gamma API",
+    "steps": [
+      "Create data/market_meta.py module",
+      "Implement fetch_market_meta(condition_id | gamma_id | slug) function",
+      "Parse Gamma API response: conditionId, outcomes, outcomePrices, clob_token_ids",
+      "Extract end_ts from endTime/resolveTime fields",
+      "Create MarketMeta Pydantic model with all required fields",
+      "Handle active/closed/resolved status parsing",
+      "Store fetched metadata to pm_market_meta table",
+      "Add caching to avoid redundant fetches"
+    ],
+    "passes": false
+  },
+  {
+    "category": "trade_fetching",
+    "description": "Implement trade history fetching from CLOB API",
+    "steps": [
+      "Create data/trades.py module",
+      "Implement fetch_trades(condition_id, after_ts, before_ts, asset_id) function",
+      "Handle pagination using before/after cursors",
+      "Parse trade fields: trade_id, market, asset_id, side, price, size, match_time",
+      "Create Trade Pydantic model for trade records",
+      "Normalize timestamps to UTC with millisecond precision",
+      "Parse price/size strings to Decimal for precision",
+      "Validate price is in (0, 1) range",
+      "Store trades to pm_trades_raw table",
+      "Implement incremental fetching (only new trades)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "trade_normalization",
+    "description": "Implement trade data normalization",
+    "steps": [
+      "Create preprocessing/normalization.py module",
+      "Implement parse_timestamp(match_time) -> datetime with UTC",
+      "Implement parse_decimal(price_str) -> Decimal with validation",
+      "Handle price normalization if in cents/bps (convert to probability)",
+      "Handle multi-part trade aggregation using bucket_index/market_order_id",
+      "Add validation for required fields",
+      "Log and skip invalid trades with warning"
+    ],
+    "passes": false
+  },
+  {
+    "category": "data_models",
+    "description": "Create Pydantic models for quant data",
+    "steps": [
+      "Create MarketMeta model with condition_id, outcomes, asset_ids, end_ts, status",
+      "Create Trade model with trade_id, condition_id, asset_id, side, price, size, match_ts",
+      "Create BookSnapshot model with condition_id, asset_id, snapshot_ts, best_bid, best_ask",
+      "Create PricePoint model with timestamp, price, volume, source (trade/mid)",
+      "Create QuantMetrics model for computed metrics output",
+      "Add model validators for price bounds, timestamp ordering"
+    ],
+    "passes": false
+  },
+  {
+    "category": "cli_commands",
+    "description": "Add CLI commands for data fetching",
+    "steps": [
+      "Create quant CLI group in prediction-data CLI",
+      "Add 'quant fetch-meta --condition-id <id>' command",
+      "Add 'quant backfill-trades --condition-id <id> --start-date --end-date' command",
+      "Add 'quant list-markets' command to show stored markets",
+      "Add --dry-run flag for preview without storage",
+      "Add progress output for long-running fetches"
+    ],
+    "passes": false
+  }
+]

@@ -1,0 +1,93 @@
+[
+  {
+    "category": "corridor_variance",
+    "description": "Compute variance within a probability corridor",
+    "steps": [
+      "Create metrics/corridor.py module",
+      "Implement corridor_variance(df, low=0.35, high=0.65) function",
+      "Include increments only when p_{k-1} is in [low, high]",
+      "Calculate: RV_corr = sum(dx^2 * 1{p_{k-1} in corridor})",
+      "Annualize: sigma_corr = sqrt(RV_corr / T_in_corridor)",
+      "Return RV_corr, sigma_corr_ann, n_in_corridor, time_in_corridor_pct",
+      "Support configurable corridor bounds"
+    ],
+    "passes": false
+  },
+  {
+    "category": "logistic_greeks",
+    "description": "Compute logistic delta and gamma",
+    "steps": [
+      "Create metrics/greeks.py module",
+      "Implement delta_x(p) = p * (1 - p)",
+      "Implement gamma_x(p) = p * (1 - p) * (1 - 2*p)",
+      "Create compute_greeks(p) function returning both",
+      "Add interpretation comments: delta is sensitivity of p to x",
+      "Vectorize for series input",
+      "Add unit tests at p=0.5, p=0.1, p=0.9"
+    ],
+    "passes": false
+  },
+  {
+    "category": "martingale_drift",
+    "description": "Compute risk-neutral drift for martingale constraint",
+    "steps": [
+      "Create metrics/drift.py module",
+      "Implement diffusion-only drift: mu = -0.5 * (1 - 2*p) * sigma_b^2",
+      "Implement martingale_drift(p, sigma_b) function",
+      "Interpret: drift that makes E[dp] = 0 in probability space",
+      "Add option for jump compensator (Phase 2)",
+      "Return mu in log-odds drift per year"
+    ],
+    "passes": false
+  },
+  {
+    "category": "ewma_forecast",
+    "description": "Implement EWMA variance forecasting",
+    "steps": [
+      "Create metrics/forecast.py module",
+      "Implement ewma_variance(rv_series, halflife=20) function",
+      "Calculate decay factor: alpha = 1 - exp(-ln(2)/halflife)",
+      "Compute: EWMA[k] = alpha * RV[k] + (1-alpha) * EWMA[k-1]",
+      "Use as variance forecast for next period",
+      "Return forecasted variance and volatility",
+      "Support configurable halflife parameter"
+    ],
+    "passes": false
+  },
+  {
+    "category": "variance_ratio",
+    "description": "Compute variance ratio for mean reversion detection",
+    "steps": [
+      "Implement variance_ratio(dx_series, q=2) function",
+      "VR(q) = Var(q-period return) / (q * Var(1-period return))",
+      "VR=1 implies random walk, VR<1 implies mean reversion, VR>1 implies momentum",
+      "Compute for multiple q values: 2, 5, 10, 20",
+      "Return VR dict and interpretation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "time_to_resolution",
+    "description": "Incorporate time-to-resolution in metrics",
+    "steps": [
+      "Add time_to_resolution field to metrics output",
+      "Compute: tau = (end_ts - current_ts) in days/years",
+      "Handle markets with no end date (perpetual)",
+      "Scale volatility by time horizon if needed",
+      "Add 'days_remaining', 'hours_remaining' convenience fields"
+    ],
+    "passes": false
+  },
+  {
+    "category": "metrics_aggregation",
+    "description": "Aggregate all advanced metrics into unified output",
+    "steps": [
+      "Create AdvancedMetrics Pydantic model",
+      "Include: corridor metrics, greeks, drift, ewma_forecast, variance_ratio",
+      "Implement compute_advanced_metrics(df, sigma_b, jump_metrics) function",
+      "Chain all advanced metric computations",
+      "Return unified AdvancedMetrics object"
+    ],
+    "passes": false
+  }
+]

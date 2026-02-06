@@ -1,0 +1,106 @@
+[
+  {
+    "category": "time_bucketing",
+    "description": "Implement time bucketing for trade aggregation",
+    "steps": [
+      "Create preprocessing/price_series.py module",
+      "Implement bucket_trades(trades, bin_seconds) function",
+      "Generate uniform time bins from first to last trade",
+      "Assign each trade to its containing bin",
+      "Handle empty bins (no trades in period)",
+      "Support configurable bin_seconds (default 30s)",
+      "Return list of (bin_start_ts, trades_in_bin) tuples"
+    ],
+    "passes": false
+  },
+  {
+    "category": "vwap_calculation",
+    "description": "Compute VWAP for each time bucket",
+    "steps": [
+      "Implement compute_vwap(trades) -> Decimal function",
+      "Calculate: sum(price * size) / sum(size)",
+      "Handle edge case of zero total size",
+      "Use Decimal arithmetic for precision",
+      "Return None for empty trade list",
+      "Add unit tests for VWAP calculation"
+    ],
+    "passes": false
+  },
+  {
+    "category": "forward_fill",
+    "description": "Implement forward-fill for missing price bins",
+    "steps": [
+      "Implement forward_fill(price_series, max_gap_seconds) function",
+      "Forward-fill None values with last known price",
+      "Track gap duration for each fill",
+      "Set value to None if gap exceeds max_gap_seconds (default 1800)",
+      "Log warning when large gaps are encountered",
+      "Return filled series with gap metadata"
+    ],
+    "passes": false
+  },
+  {
+    "category": "price_clamping",
+    "description": "Clamp prices away from 0 and 1 for logit stability",
+    "steps": [
+      "Implement clamp_price(p, epsilon=1e-6) function",
+      "Apply: p_clamped = min(1-eps, max(eps, p))",
+      "Use configurable epsilon parameter",
+      "Log when clamping is applied (for debugging)",
+      "Add validation that input is in (0, 1)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "logit_transform",
+    "description": "Implement log-odds transformation",
+    "steps": [
+      "Create preprocessing/transforms.py module",
+      "Implement logit(p) = log(p / (1-p))",
+      "Implement sigmoid(x) = 1 / (1 + exp(-x))",
+      "Handle edge cases near 0 and 1 (use clamping first)",
+      "Use numpy for vectorized operations",
+      "Add unit tests for transform invertibility"
+    ],
+    "passes": false
+  },
+  {
+    "category": "increment_calculation",
+    "description": "Compute log-odds increments for analysis",
+    "steps": [
+      "Implement compute_increments(x_series) -> dx_series",
+      "Calculate: dx[k] = x[k] - x[k-1]",
+      "Handle first element (dx[0] = NaN or 0)",
+      "Compute dt in years: bin_seconds / (365.25 * 24 * 3600)",
+      "Return DataFrame with columns: ts, p, x, dx, dt_years"
+    ],
+    "passes": false
+  },
+  {
+    "category": "build_price_series",
+    "description": "Implement end-to-end price series construction",
+    "steps": [
+      "Implement build_price_series(trades, bin_seconds, max_gap_seconds, method='VWAP') function",
+      "Chain: bucket_trades -> compute_vwap -> forward_fill -> clamp -> logit -> increments",
+      "Support method parameter: VWAP (default), LAST (last trade price)",
+      "Return DataFrame with: ts, p, x, dx, dt_years, is_filled (bool)",
+      "Add summary statistics: total bins, filled bins, gaps",
+      "Add CLI command: 'quant build-series --condition-id <id> --bin-seconds 30'"
+    ],
+    "passes": false
+  },
+  {
+    "category": "sampling_guidance",
+    "description": "Implement adaptive sampling based on liquidity",
+    "steps": [
+      "Implement suggest_bin_seconds(trades) function",
+      "Calculate average trades per hour",
+      "If < 10 trades/hour: suggest 300s (5 min)",
+      "If 10-100 trades/hour: suggest 60s",
+      "If 100-1000 trades/hour: suggest 30s (default)",
+      "If > 1000 trades/hour: suggest 10s",
+      "Return suggested bin_seconds with reasoning"
+    ],
+    "passes": false
+  }
+]

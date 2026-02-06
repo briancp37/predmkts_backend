@@ -1,0 +1,106 @@
+[
+  {
+    "category": "price_chart_component",
+    "description": "Build the interactive price chart using Recharts and proxy data",
+    "steps": [
+      "Create PriceChart component in web/src/components/event/price-chart.tsx",
+      "Use useTimeseries hook from Sprint 00 for data fetching",
+      "Implement line chart as default view using Recharts",
+      "Add area fill under the line with gradient",
+      "Show price on Y-axis formatted as percentage (0-100%)",
+      "Show time on X-axis with appropriate formatting per range",
+      "Add crosshair with tooltip showing exact price/time"
+    ],
+    "passes": false
+  },
+  {
+    "category": "chart_time_range_selector",
+    "description": "Build time range selection for price chart",
+    "steps": [
+      "Create TimeRangeSelector component with button group",
+      "Options: 1H, 6H, 1D, 1W, 1M, ALL",
+      "Map ranges to Polymarket intervals (1m, 5m, 1h, 1d)",
+      "Highlight selected range with accent color",
+      "Refetch data when range changes via useTimeseries",
+      "Show loading indicator during range change",
+      "Persist selected range in URL query param"
+    ],
+    "passes": false
+  },
+  {
+    "category": "chart_tooltip",
+    "description": "Create custom tooltip for price chart",
+    "steps": [
+      "Create ChartTooltip component with styled container",
+      "Display: Date/Time, Price (cents and percentage)",
+      "Show Open, High, Low, Close from proxy response",
+      "Display volume for the period",
+      "Show price change from previous period",
+      "Position tooltip to avoid chart edges"
+    ],
+    "passes": false
+  },
+  {
+    "category": "volume_overlay",
+    "description": "Add volume bars overlay to price chart",
+    "steps": [
+      "Add bar chart layer for volume data from proxy",
+      "Position volume bars at bottom 20% of chart",
+      "Use semi-transparent bars to not obscure price line",
+      "Color bars based on price direction (green up, red down)",
+      "Scale volume axis independently from price",
+      "Include volume in tooltip"
+    ],
+    "passes": false
+  },
+  {
+    "category": "orderbook_component",
+    "description": "Build order book visualization using proxy data",
+    "steps": [
+      "Create OrderBook component in web/src/components/event/order-book.tsx",
+      "Use useOrderbook hook from Sprint 00 for real-time data",
+      "Create horizontal bid/ask depth bars",
+      "Show best bid and best ask prices prominently",
+      "Display spread in cents and percentage",
+      "Use green for bids, red for asks",
+      "Show configurable number of levels (default 5)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "orderbook_depth_visual",
+    "description": "Create depth visualization for order book",
+    "steps": [
+      "Create cumulative depth bars showing total size at each level",
+      "Scale bar width relative to largest size",
+      "Add hover state showing exact price and size",
+      "Animate bar changes on data updates",
+      "Show mid-price line between bids and asks"
+    ],
+    "passes": false
+  },
+  {
+    "category": "chart_loading_states",
+    "description": "Handle loading and empty states for charts",
+    "steps": [
+      "Create ChartLoadingSkeleton with animated placeholder",
+      "Show 'No price data available' for empty data",
+      "Add retry button on chart data fetch failure",
+      "Maintain chart dimensions during loading to prevent layout shift",
+      "Show subtle loading indicator on range change (not full skeleton)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "orderbook_loading_states",
+    "description": "Handle loading and error states for order book",
+    "steps": [
+      "Create OrderBookSkeleton with animated placeholder",
+      "Show 'Order book unavailable' on proxy failure",
+      "Add auto-retry with exponential backoff",
+      "Show stale indicator if data is older than 10s",
+      "Configure refetch interval (5s default)"
+    ],
+    "passes": false
+  }
+]

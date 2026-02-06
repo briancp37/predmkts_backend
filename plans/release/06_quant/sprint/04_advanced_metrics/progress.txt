@@ -1,0 +1,33 @@
+# Sprint Progress: Advanced Metrics
+# Release: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+Corridor variance:
+- Include dx only when p_{k-1} in [0.35, 0.65]
+- Useful for "swing zone" volatility
+
+Logistic Greeks:
+- Delta_x = p(1-p): sensitivity of p to x
+- Gamma_x = p(1-p)(1-2p): convexity
+
+Martingale drift:
+- mu = -0.5 * (1-2p) * sigma_b^2
+- Ensures E[dp] = 0 (probability is martingale)
+
+EWMA:
+- alpha = 1 - exp(-ln(2)/halflife)
+- EWMA[k] = alpha * RV[k] + (1-alpha) * EWMA[k-1]
+

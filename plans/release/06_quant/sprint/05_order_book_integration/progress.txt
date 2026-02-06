@@ -1,0 +1,32 @@
+# Sprint Progress: Order Book Integration
+# Release: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Completed Tasks
+
+
+## In Progress
+
+
+## Blockers/Issues
+
+
+## Notes
+
+This sprint is OPTIONAL but recommended for better price estimates.
+
+Order book benefits:
+- Midprice is cleaner than VWAP (less microstructure noise)
+- Spread metrics enable liquidity regime detection
+- Wide spreads justify higher jump thresholds
+
+Book snapshot endpoint:
+- GET https://clob.polymarket.com/book?market={conditionId}&asset_id={tokenId}
+
+Collection approach:
+- Sample every 30s for active markets
+- Store to pm_book_snapshots table
+- Use midprice when available, fallback to VWAP
+

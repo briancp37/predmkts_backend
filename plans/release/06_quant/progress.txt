@@ -1,0 +1,40 @@
+# Release Progress: 06_quant
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Sprint Status
+
+| Sprint | Name | Status | Dependencies |
+|--------|------|--------|--------------|
+| 00 | data_foundation | Not Started | None (first) |
+| 01 | price_series_construction | Not Started | 00 |
+| 02 | core_volatility_metrics | Not Started | 01 |
+| 03 | jump_detection | Not Started | 02 |
+| 04 | advanced_metrics | Not Started | 02, 03 |
+| 05 | order_book_integration | Not Started | 00 (optional, parallel) |
+| 06 | api_and_reporting | Not Started | 01-04 |
+
+## Architecture
+
+Black-Scholes style quant analytics for prediction markets:
+- Log-odds transformation: x = logit(p)
+- Jump-diffusion model: dx = μdt + σ_b dW + dJ
+- Belief volatility: diffusive component σ_b
+- Jump detection: flag |dx| > m × σ_b × sqrt(dt)
+
+## Key Metrics
+
+| Metric | Formula | Interpretation |
+|--------|---------|----------------|
+| Realized Variance | RV = Σ(Δx)² | Total variation |
+| Belief Volatility | σ_b = sqrt(TRV/T) | Diffusion vol |
+| Jump Intensity | λ = N_J/T | Jumps/year |
+| Logistic Delta | Δ = p(1-p) | Price sensitivity |
+| Martingale Drift | μ = -½(1-2p)σ_b² | Risk-neutral drift |
+
+## Release Notes
+
+
+## Blockers/Issues
+

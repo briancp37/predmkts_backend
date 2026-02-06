@@ -1,0 +1,39 @@
+# Release Progress: 05_event_detail_page
+# Created: 2026-02-06
+
+## Status: Not Started
+
+## Sprint Status
+
+| Sprint | Name | Status | Can Parallelize |
+|--------|------|--------|-----------------|
+| 00 | polymarket_proxy_layer | Not Started | FIRST (blocking) |
+| 01 | event_page_foundation | Not Started | After 00 |
+| 02 | market_display_components | Not Started | After 01, parallel with 03-05 |
+| 03 | trading_panel_ui | Not Started | After 01, parallel with 02,04,05 |
+| 04 | data_visualization | Not Started | After 01, parallel with 02,03,05 |
+| 05 | activity_and_social | Not Started | After 01, parallel with 02-04 |
+| 06 | related_markets_polish | Not Started | LAST (after all others) |
+
+## Architecture Decision
+
+Using **Polymarket API Proxy** pattern:
+- Frontend calls our FastAPI backend
+- Backend proxies to Polymarket CLOB/Data APIs
+- Caching layer (Redis or in-memory) for rate limiting
+- Real-time data without building pipelines
+
+## Polymarket API Endpoints Proxied
+
+| Our Endpoint | Polymarket Endpoint | Cache TTL |
+|--------------|---------------------|-----------|
+| /proxy/.../timeseries | clob.polymarket.com/prices-history | 30s-1h |
+| /proxy/.../orderbook | clob.polymarket.com/book | 5s |
+| /proxy/.../top-holders | data-api.polymarket.com/top-holders | 5m |
+| /proxy/.../trades | data-api.polymarket.com/trades | 30s |
+
+## Release Notes
+
+
+## Blockers/Issues
+

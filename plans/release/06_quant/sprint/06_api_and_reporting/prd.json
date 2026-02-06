@@ -1,0 +1,130 @@
+[
+  {
+    "category": "api_router",
+    "description": "Create FastAPI router for quant endpoints",
+    "steps": [
+      "Create src/prediction_data/api/quant/ directory",
+      "Create router.py with APIRouter(prefix='/quant', tags=['quant'])",
+      "Register router in main.py",
+      "Add rate limiting (100 req/min for compute-heavy endpoints)",
+      "Add OpenAPI tags and descriptions"
+    ],
+    "passes": false
+  },
+  {
+    "category": "metrics_endpoint",
+    "description": "Implement main metrics endpoint",
+    "steps": [
+      "Create GET /api/v1/quant/markets/{condition_id}/metrics endpoint",
+      "Accept query params: windows (default '1h,1d,7d'), bin_seconds (default 30)",
+      "Return nested metrics per window",
+      "Include current state: p, x, time_to_resolution",
+      "Include greeks at current price",
+      "Cache results with 60s TTL"
+    ],
+    "passes": false
+  },
+  {
+    "category": "timeseries_endpoint",
+    "description": "Implement timeseries data endpoint",
+    "steps": [
+      "Create GET /api/v1/quant/markets/{condition_id}/timeseries endpoint",
+      "Accept query params: start_ts, end_ts, bin_seconds",
+      "Return array of price points: ts, p, x, dx, sigma_b_rolling, is_jump",
+      "Limit max points returned (default 10000)",
+      "Support pagination with cursor",
+      "Add gzip compression for large responses"
+    ],
+    "passes": false
+  },
+  {
+    "category": "jumps_endpoint",
+    "description": "Implement jumps listing endpoint",
+    "steps": [
+      "Create GET /api/v1/quant/markets/{condition_id}/jumps endpoint",
+      "Accept query params: window (default '7d'), min_size (default 0)",
+      "Return list of jump events with details",
+      "Include: timestamp, dx, p_before, p_after, size_percentile",
+      "Sort by absolute size descending",
+      "Limit to configurable max_jumps (default 100)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "api_schemas",
+    "description": "Create Pydantic schemas for API responses",
+    "steps": [
+      "Create schemas.py with response models",
+      "Create QuantMetricsResponse with market info + metrics dict",
+      "Create TimeseriesResponse with points array",
+      "Create JumpsResponse with jumps array",
+      "Add examples to schemas for OpenAPI docs",
+      "Regenerate TypeScript types for frontend"
+    ],
+    "passes": false
+  },
+  {
+    "category": "service_layer",
+    "description": "Create service layer for business logic",
+    "steps": [
+      "Create service.py with QuantService class",
+      "Implement get_metrics(condition_id, windows, bin_seconds) method",
+      "Implement get_timeseries(condition_id, start_ts, end_ts, bin_seconds) method",
+      "Implement get_jumps(condition_id, window, min_size) method",
+      "Handle data fetching, computation, caching",
+      "Add proper error handling for missing markets"
+    ],
+    "passes": false
+  },
+  {
+    "category": "cli_compute",
+    "description": "Add CLI commands for metric computation",
+    "steps": [
+      "Add 'quant compute --condition-id <id> --windows 1h,1d,7d' command",
+      "Output metrics to stdout as JSON or table",
+      "Add --output-file flag for file output",
+      "Add --store flag to save to pm_quant_metrics table",
+      "Add --verbose flag for detailed output"
+    ],
+    "passes": false
+  },
+  {
+    "category": "validation_sanity",
+    "description": "Implement validation and sanity checks",
+    "steps": [
+      "Create validation.py module",
+      "Implement validate_price_series(df) - check p in (0,1), no NaN explosions",
+      "Implement validate_logodds(x_series) - check for infinities",
+      "Implement check_martingale(df) - verify E[Δp] ≈ 0 after jump filtering",
+      "Add plot_diagnostics(df) for internal debugging (matplotlib)",
+      "Log validation results with warnings for anomalies"
+    ],
+    "passes": false
+  },
+  {
+    "category": "metrics_storage",
+    "description": "Implement metrics persistence to ClickHouse",
+    "steps": [
+      "Implement store_metrics(condition_id, metrics) function",
+      "Write to pm_quant_metrics table",
+      "Store per-window metrics separately",
+      "Add computed_at timestamp",
+      "Implement get_latest_metrics(condition_id, window) for cache check",
+      "Add TTL-based refresh logic"
+    ],
+    "passes": false
+  },
+  {
+    "category": "error_handling",
+    "description": "Implement comprehensive error handling",
+    "steps": [
+      "Create custom exceptions: MarketNotFoundError, InsufficientDataError",
+      "Handle missing markets with 404",
+      "Handle insufficient trades with 422 and helpful message",
+      "Handle computation errors with 500 and logging",
+      "Add retry logic for transient data fetching failures",
+      "Return structured error responses"
+    ],
+    "passes": false
+  }
+]
