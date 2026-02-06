@@ -19,6 +19,26 @@
 - All type checks pass (mypy)
 - All linting passes (ruff)
 
+### frontend_routing (2026-02-06)
+- Regenerated TypeScript types from OpenAPI spec
+  - EventMarketOutcome and EventMarketResponse now included in schema.d.ts
+  - EventResponse.markets uses new EventMarketResponse type with outcomes and volume24h
+- Created useEvent(slug) hook in web/src/hooks/use-event.ts
+  - Follows existing hook patterns from use-markets.ts
+  - Exports useEvent() for single event and useEvents() for lists
+  - Proper error handling with 404 detection
+  - Query key pattern: ['event', eventId]
+- Added exports to web/src/hooks/index.ts
+- Created web/src/app/(dashboard)/event/[slug]/page.tsx
+  - Dynamic route parameter extraction using Next.js 15 `use(params)` pattern
+  - Loading skeleton while fetching event data
+  - Error state component with 404 handling and retry button
+  - Event header with category badge, title, description, status
+  - Markets grid showing nested outcomes with prices and 24h changes
+  - Back navigation link to /markets
+- All TypeScript type checks pass (npm run typecheck)
+- All tests pass (npm run test - 82 tests)
+
 ## In Progress
 
 
@@ -29,5 +49,6 @@
 - The endpoint now returns fully nested markets with outcomes, prices, and 24h changes
 - Price data comes from market_mark_daily table (VWAP mark prices)
 - Fallback to parsing tokens JSON from dim_market when dim_outcome is empty
-- Next task should be frontend_routing to wire up the Next.js page
+- Next task should be page_layout to create the two-column layout structure
+- The event page currently shows markets with outcomes, but doesn't yet have the full two-column layout with sidebar
 

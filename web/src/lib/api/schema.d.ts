@@ -14,8 +14,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Register
+         * Register new user
          * @description Register a new user account.
+         *
+         *     Creates a new user account with the provided email and password.
+         *     The email must be unique and the password must be at least 8 characters.
+         *
+         *     **Rate limit:** 10 requests/minute per IP address.
          */
         post: operations["register_api_v1_auth_register_post"];
         delete?: never;
@@ -34,8 +39,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Login
-         * @description Authenticate and get JWT tokens.
+         * Login and get tokens
+         * @description Authenticate and receive JWT tokens.
+         *
+         *     Returns an access token (30 min TTL) and refresh token (7 day TTL).
+         *     Include the access token in the `Authorization: Bearer <token>` header
+         *     for authenticated endpoints.
+         *
+         *     **Rate limit:** 10 requests/minute per IP address.
          */
         post: operations["login_api_v1_auth_login_post"];
         delete?: never;
@@ -54,8 +65,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Refresh Token
-         * @description Refresh JWT tokens using a refresh token.
+         * Refresh access token
+         * @description Exchange a refresh token for new access and refresh tokens.
+         *
+         *     Use this endpoint when your access token expires. The refresh token
+         *     must be valid and not expired (7 day TTL from login).
+         *
+         *     **Rate limit:** 10 requests/minute per IP address.
          */
         post: operations["refresh_token_api_v1_auth_refresh_post"];
         delete?: never;
@@ -72,8 +88,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Current User Info
-         * @description Get the current authenticated user's information.
+         * Get current user
+         * @description Get the authenticated user's profile information.
+         *
+         *     Returns the user's ID, email, name, tier, and timestamps.
+         *     Requires a valid access token in the Authorization header.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         get: operations["get_current_user_info_api_v1_auth_me_get"];
         put?: never;
@@ -82,8 +103,13 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update Current User Profile
-         * @description Update the current authenticated user's profile.
+         * Update current user
+         * @description Update the authenticated user's profile.
+         *
+         *     Currently supports updating the display name. Other fields
+         *     (email, password) cannot be changed via this endpoint.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         patch: operations["update_current_user_profile_api_v1_auth_me_patch"];
         trace?: never;
@@ -520,19 +546,24 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Watchlist
-         * @description Get user's watchlist with market details.
+         * Get watchlist
+         * @description Get the authenticated user's watchlist.
          *
          *     Returns all markets in the user's watchlist, enriched with current
-         *     market information including price and 24h change.
+         *     market information including question, category, price, and 24h change.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         get: operations["get_watchlist_api_v1_watchlist_get"];
         put?: never;
         /**
-         * Add Market To Watchlist
-         * @description Add a market to user's watchlist.
+         * Add to watchlist
+         * @description Add a market to the user's watchlist.
          *
-         *     Returns the created watchlist item. Returns 400 if already in watchlist.
+         *     The market ID must be a valid Polymarket condition ID (0x + 64 hex chars).
+         *     Returns 400 if the market is already in the watchlist or doesn't exist.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         post: operations["add_market_to_watchlist_api_v1_watchlist_post"];
         delete?: never;
@@ -552,10 +583,13 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove Market From Watchlist
-         * @description Remove a market from user's watchlist.
+         * Remove from watchlist
+         * @description Remove a market from the user's watchlist.
          *
-         *     Returns 204 No Content on success, 404 if not in watchlist.
+         *     Returns 204 No Content on success. Returns 404 if the market
+         *     is not in the user's watchlist.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         delete: operations["remove_market_from_watchlist_api_v1_watchlist__market_id__delete"];
         options?: never;
@@ -571,20 +605,25 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Tracked Traders
-         * @description Get user's tracked traders with stats.
+         * List tracked traders
+         * @description Get all tracked traders with stats.
          *
-         *     Returns all tracked traders with PnL, recent trade count, and smart score.
-         *     Includes the user's tier limit for tracked traders.
+         *     Returns tracked traders with 30-day PnL, recent trade count, and smart score.
+         *     Also includes the user's tier limit (free: 5, pro: 50, enterprise: unlimited).
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         get: operations["get_tracked_traders_api_v1_tracked_traders_get"];
         put?: never;
         /**
-         * Add Tracked
-         * @description Add a trader to user's tracked list.
+         * Add tracked trader
+         * @description Add a trader to the tracked list.
          *
-         *     Returns 403 if tier limit is exceeded.
-         *     Returns 400 if trader is already tracked.
+         *     The wallet address must be a valid Ethereum address (0x + 40 hex chars).
+         *     Returns 403 if you've reached your tier limit (free: 5, pro: 50).
+         *     Returns 400 if the trader is already in your tracked list.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         post: operations["add_tracked_api_v1_tracked_traders_post"];
         delete?: never;
@@ -601,10 +640,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Activity
-         * @description Get activity feed from tracked traders.
+         * Get activity feed
+         * @description Get the activity feed from all tracked traders.
          *
-         *     Returns recent trades from all tracked traders, ordered by timestamp DESC.
+         *     Returns recent trades from your tracked traders, ordered by timestamp (newest first).
+         *     Includes trader info, trade details, and can be filtered by date range.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         get: operations["get_activity_api_v1_tracked_traders_activity_get"];
         put?: never;
@@ -623,28 +665,37 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Tracked Trader
+         * Get tracked trader
          * @description Get a single tracked trader with detailed stats.
          *
-         *     Returns 404 if not found or not owned by user.
+         *     Returns the tracked trader with 30-day PnL, recent trade count, and smart score.
+         *     Returns 404 if not found or not owned by the authenticated user.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         get: operations["get_tracked_trader_api_v1_tracked_traders__tracker_id__get"];
         put?: never;
         post?: never;
         /**
-         * Delete Tracked Trader
-         * @description Remove a trader from user's tracked list.
+         * Remove tracked trader
+         * @description Remove a trader from the tracked list.
          *
-         *     Returns 204 No Content on success, 404 if not found.
+         *     Returns 204 No Content on success. Returns 404 if the tracker
+         *     is not found or not owned by the authenticated user.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         delete: operations["delete_tracked_trader_api_v1_tracked_traders__tracker_id__delete"];
         options?: never;
         head?: never;
         /**
-         * Patch Tracked Trader
+         * Update tracked trader
          * @description Update a tracked trader's custom name.
          *
-         *     Returns 404 if not found or not owned by user.
+         *     Use this to set or update the custom display name for a tracked trader.
+         *     Returns 404 if the tracker is not found or not owned by the authenticated user.
+         *
+         *     **Rate limit:** 200 requests/minute per user.
          */
         patch: operations["patch_tracked_trader_api_v1_tracked_traders__tracker_id__patch"];
         trace?: never;
@@ -762,6 +813,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proxy/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Polymarket API health
+         * @description Check connectivity and health of all proxied Polymarket APIs.
+         */
+        get: operations["health_check_api_v1_proxy_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{token_id}/timeseries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get price history for a token
+         * @description Get historical price data for a Polymarket CLOB token. Use either interval (1m, 5m, 15m, 1h, 6h, 1d, 1w, max) OR startTs/endTs for date range. Response is cached with TTL based on interval granularity.
+         */
+        get: operations["get_timeseries_api_v1_proxy_markets__token_id__timeseries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{token_id}/orderbook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get L2 order book for a token
+         * @description Get the current order book (L2) for a Polymarket CLOB token. Returns bid and ask levels with aggregated sizes. Order book data is volatile so cache TTL is short (5s).
+         */
+        get: operations["get_orderbook_api_v1_proxy_markets__token_id__orderbook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{market_id}/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get token IDs for a market
+         * @description Get Polymarket CLOB token IDs for a market's outcomes. Token IDs are required for CLOB API calls (order book, price history, etc.). Results are cached since token IDs don't change.
+         */
+        get: operations["get_market_tokens_api_v1_proxy_markets__market_id__tokens_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/tokens/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get token resolver cache statistics
+         * @description Returns cache hit/miss statistics for the token resolver.
+         */
+        get: operations["get_token_resolver_stats_api_v1_proxy_tokens_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{condition_id}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get recent trades for a market
+         * @description Get recent trades for a Polymarket market by condition ID. Useful for activity feeds and trade history. Results are cached for 30 seconds.
+         */
+        get: operations["get_trades_api_v1_proxy_markets__condition_id__trades_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{condition_id}/top-holders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get top holders for a market
+         * @description Get the top token holders for a Polymarket market by condition ID. Returns wallet addresses, balances, and optional user profile information. Results are cached for 5 minutes.
+         */
+        get: operations["get_top_holders_api_v1_proxy_markets__condition_id__top_holders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proxy/markets/{condition_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get real-time market info
+         * @description Get current market information including prices, volume, and liquidity. Proxies to Polymarket CLOB API for real-time data. Falls back to cached dim_market data if CLOB is unavailable.
+         */
+        get: operations["get_market_info_api_v1_proxy_markets__condition_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -770,10 +981,50 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Health Check
-         * @description Health check endpoint.
+         * Comprehensive health check
+         * @description Check health of API and all dependencies. Returns status for each dependency.
          */
         get: operations["health_check_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kubernetes readiness probe
+         * @description Returns 200 if the service is ready to accept traffic. Checks all critical dependencies.
+         */
+        get: operations["readiness_probe_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Kubernetes liveness probe
+         * @description Returns 200 if the service process is alive. Does not check dependencies.
+         */
+        get: operations["liveness_probe_health_live_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -787,40 +1038,239 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * DependencyHealth
+         * @description Health status for a single dependency.
+         */
+        DependencyHealth: {
+            status: components["schemas"]["DependencyStatus"];
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Error */
+            error?: string | null;
+        };
+        /**
+         * DependencyStatus
+         * @description Individual dependency status values.
+         * @enum {string}
+         */
+        DependencyStatus: "up" | "down";
+        /**
          * EventListResponse
          * @description Paginated event list response.
          */
         EventListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of events
+             */
             items: components["schemas"]["EventResponse"][];
-            /** Total */
+            /**
+             * Total
+             * @description Total number of matching events
+             * @example 50
+             */
             total: number;
-            /** Page */
+            /**
+             * Page
+             * @description Current page number
+             * @example 1
+             */
             page: number;
-            /** Limit */
+            /**
+             * Limit
+             * @description Results per page
+             * @example 20
+             */
             limit: number;
+        };
+        /**
+         * EventMarketOutcome
+         * @description Outcome with price change data for event detail view.
+         */
+        EventMarketOutcome: {
+            /**
+             * Id
+             * @description Unique outcome identifier
+             * @example outcome-yes-123
+             */
+            id: string;
+            /**
+             * Tokenid
+             * @description CLOB token ID for this outcome
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286595
+             */
+            tokenId: string;
+            /**
+             * Outcomename
+             * @description Human-readable outcome name
+             * @example Yes
+             */
+            outcomeName: string;
+            /**
+             * Currentprice
+             * @description Current price (0.0 to 1.0)
+             * @example 0.65
+             */
+            currentPrice: number;
+            /**
+             * Volume
+             * @description Total volume traded on this outcome in USD
+             * @example 125000.5
+             */
+            volume: number;
+            /**
+             * Pricechange24H
+             * @description Price change in last 24 hours (absolute, e.g., 0.05 = 5 cents)
+             * @default 0
+             * @example 0.05
+             */
+            priceChange24h: number;
+        };
+        /**
+         * EventMarketResponse
+         * @description Market response with outcomes and price changes for event detail view.
+         */
+        EventMarketResponse: {
+            /**
+             * Id
+             * @description Internal market identifier
+             * @example market-12345
+             */
+            id: string;
+            /**
+             * Polymarketid
+             * @description Polymarket market ID
+             * @example 0x1234567890abcdef
+             */
+            polymarketId: string;
+            /**
+             * Conditionid
+             * @description Polymarket condition ID (64 hex chars with 0x prefix)
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
+            conditionId?: string | null;
+            /**
+             * Slug
+             * @description URL-friendly market slug
+             * @example will-bitcoin-reach-100k-by-2025
+             */
+            slug?: string | null;
+            /**
+             * Question
+             * @description Market question
+             * @example Will Bitcoin reach $100,000 by end of 2025?
+             */
+            question: string;
+            /**
+             * Description
+             * @description Detailed market description and resolution criteria
+             */
+            description?: string | null;
+            /**
+             * Category
+             * @description Market category
+             * @example Crypto
+             */
+            category?: string | null;
+            /**
+             * Enddate
+             * @description Market resolution deadline (ISO 8601)
+             * @example 2025-12-31T23:59:59Z
+             */
+            endDate?: string | null;
+            /**
+             * Resolved
+             * @description Whether the market has been resolved
+             * @example false
+             */
+            resolved: boolean;
+            /**
+             * Totalvolume
+             * @description Total trading volume in USD
+             * @example 1250000
+             */
+            totalVolume: number;
+            /**
+             * Liquidity
+             * @description Current liquidity in USD
+             * @example 50000
+             */
+            liquidity: number;
+            /**
+             * Createdat
+             * @description Market creation timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
+            createdAt: string;
+            /**
+             * Imageurl
+             * @description Market cover image URL
+             */
+            imageUrl?: string | null;
+            /**
+             * Outcomes
+             * @description List of outcomes with current prices and 24h price changes
+             */
+            outcomes?: components["schemas"]["EventMarketOutcome"][];
+            /**
+             * Volume24H
+             * @description Total trading volume across all outcomes in last 24 hours (USD)
+             * @default 0
+             * @example 15000
+             */
+            volume24h: number;
         };
         /**
          * EventResponse
          * @description Event response with associated markets.
          */
         EventResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Internal event identifier
+             * @example event-12345
+             */
             id: string;
-            /** Polymarketeventid */
+            /**
+             * Polymarketeventid
+             * @description Polymarket event ID
+             * @example 12345
+             */
             polymarketEventId: string;
-            /** Title */
+            /**
+             * Title
+             * @description Event title
+             * @example 2024 US Presidential Election
+             */
             title: string;
-            /** Description */
+            /**
+             * Description
+             * @description Detailed event description
+             */
             description?: string | null;
-            /** Slug */
+            /**
+             * Slug
+             * @description URL-friendly event slug
+             * @example 2024-us-presidential-election
+             */
             slug: string;
-            /** Status */
+            /**
+             * Status
+             * @description Event status (active, resolved, etc.)
+             * @example active
+             */
             status: string;
-            /** Category */
+            /**
+             * Category
+             * @description Event category
+             * @example Politics
+             */
             category?: string | null;
-            /** Markets */
-            markets?: components["schemas"]["MarketBase"][];
+            /**
+             * Markets
+             * @description Markets associated with this event, with outcomes and price data
+             */
+            markets?: components["schemas"]["EventMarketResponse"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -828,19 +1278,58 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * HealthResponse
+         * @description Full health check response.
+         */
+        HealthResponse: {
+            status: components["schemas"]["HealthStatus"];
+            /** Version */
+            version: string;
+            /** Dependencies */
+            dependencies: {
+                [key: string]: components["schemas"]["DependencyHealth"];
+            };
+        };
+        /**
+         * HealthStatus
+         * @description Overall health status values.
+         * @enum {string}
+         */
+        HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /**
          * LeaderboardEntry
          * @description Entry in the PnL leaderboard.
          */
         LeaderboardEntry: {
-            /** Rank */
+            /**
+             * Rank
+             * @description Position on the leaderboard (1-indexed)
+             * @example 1
+             */
             rank: number;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Pnl */
+            /**
+             * Pnl
+             * @description Total PnL for the period in USD
+             * @example 25000
+             */
             pnl: number;
-            /** Tradecount */
+            /**
+             * Tradecount
+             * @description Number of trades in the period
+             * @example 45
+             */
             tradeCount: number;
-            /** Winrate */
+            /**
+             * Winrate
+             * @description Win rate as decimal (0.0 to 1.0)
+             * @example 0.62
+             */
             winRate: number;
         };
         /**
@@ -848,11 +1337,22 @@ export interface components {
          * @description Leaderboard response with entries.
          */
         LeaderboardResponse: {
-            /** Period */
+            /**
+             * Period
+             * @description Time period for the leaderboard
+             * @example 7d
+             */
             period: string;
-            /** Entries */
+            /**
+             * Entries
+             * @description Leaderboard entries
+             */
             entries: components["schemas"]["LeaderboardEntry"][];
-            /** Generatedat */
+            /**
+             * Generatedat
+             * @description When the leaderboard was generated
+             * @example 2024-01-20T00:00:00Z
+             */
             generatedAt: string;
         };
         /**
@@ -860,113 +1360,262 @@ export interface components {
          * @description Paginated advanced market list response.
          */
         MarketAdvancedListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of markets with CLOB data
+             */
             items: components["schemas"]["MarketAdvancedResponse"][];
-            /** Total */
+            /**
+             * Total
+             * @description Total number of matching markets
+             */
             total: number;
-            /** Page */
+            /**
+             * Page
+             * @description Current page number
+             */
             page: number;
-            /** Limit */
+            /**
+             * Limit
+             * @description Results per page
+             */
             limit: number;
         };
         /**
          * MarketAdvancedResponse
-         * @description Market response with CLOB bid/ask data.
+         * @description Market response with CLOB bid/ask data from Polymarket.
          */
         MarketAdvancedResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Internal market identifier
+             * @example market-12345
+             */
             id: string;
-            /** Polymarketid */
+            /**
+             * Polymarketid
+             * @description Polymarket market ID
+             * @example 0x1234567890abcdef
+             */
             polymarketId: string;
-            /** Conditionid */
+            /**
+             * Conditionid
+             * @description Polymarket condition ID (64 hex chars with 0x prefix)
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
             conditionId?: string | null;
-            /** Slug */
+            /**
+             * Slug
+             * @description URL-friendly market slug
+             * @example will-bitcoin-reach-100k-by-2025
+             */
             slug?: string | null;
-            /** Question */
+            /**
+             * Question
+             * @description Market question
+             * @example Will Bitcoin reach $100,000 by end of 2025?
+             */
             question: string;
-            /** Description */
+            /**
+             * Description
+             * @description Detailed market description and resolution criteria
+             */
             description?: string | null;
-            /** Category */
+            /**
+             * Category
+             * @description Market category
+             * @example Crypto
+             */
             category?: string | null;
-            /** Enddate */
+            /**
+             * Enddate
+             * @description Market resolution deadline (ISO 8601)
+             * @example 2025-12-31T23:59:59Z
+             */
             endDate?: string | null;
-            /** Resolved */
+            /**
+             * Resolved
+             * @description Whether the market has been resolved
+             * @example false
+             */
             resolved: boolean;
-            /** Totalvolume */
+            /**
+             * Totalvolume
+             * @description Total trading volume in USD
+             * @example 1250000
+             */
             totalVolume: number;
-            /** Liquidity */
+            /**
+             * Liquidity
+             * @description Current liquidity in USD
+             * @example 50000
+             */
             liquidity: number;
-            /** Createdat */
+            /**
+             * Createdat
+             * @description Market creation timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             createdAt: string;
-            /** Imageurl */
+            /**
+             * Imageurl
+             * @description Market cover image URL
+             */
             imageUrl?: string | null;
-            /** Outcomes */
+            /**
+             * Outcomes
+             * @description List of possible outcomes for this market
+             */
             outcomes?: components["schemas"]["MarketOutcome"][];
-            /** Bid */
+            /**
+             * Bid
+             * @description Current best bid price (0.0 to 1.0)
+             * @example 0.64
+             */
             bid?: number | null;
-            /** Ask */
+            /**
+             * Ask
+             * @description Current best ask price (0.0 to 1.0)
+             * @example 0.66
+             */
             ask?: number | null;
-            /** Spread */
+            /**
+             * Spread
+             * @description Bid-ask spread (ask - bid)
+             * @example 0.02
+             */
             spread?: number | null;
-            /** Spreadpercent */
+            /**
+             * Spreadpercent
+             * @description Spread as percentage of midpoint price
+             * @example 3.08
+             */
             spreadPercent?: number | null;
-            /** Spreadcents */
+            /**
+             * Spreadcents
+             * @description Spread in cents (spread * 100)
+             * @example 2
+             */
             spreadCents?: number | null;
             /**
              * Volume24H
+             * @description Trading volume in last 24 hours (USD)
              * @default 0
+             * @example 15000
              */
             volume24h: number;
             /**
              * Pricechange24H
+             * @description Price change in last 24 hours (absolute)
              * @default 0
+             * @example 0.05
              */
             priceChange24h: number;
         };
         /**
-         * MarketBase
-         * @description Base market information.
+         * MarketInfoResponse
+         * @description Real-time market information including prices, volume, and liquidity.
          */
-        MarketBase: {
-            /** Id */
-            id: string;
-            /** Polymarketid */
-            polymarketId: string;
-            /** Conditionid */
-            conditionId?: string | null;
-            /** Slug */
-            slug?: string | null;
-            /** Question */
-            question: string;
-            /** Description */
-            description?: string | null;
-            /** Category */
-            category?: string | null;
-            /** Enddate */
-            endDate?: string | null;
-            /** Resolved */
-            resolved: boolean;
-            /** Totalvolume */
-            totalVolume: number;
-            /** Liquidity */
-            liquidity: number;
-            /** Createdat */
-            createdAt: string;
-            /** Imageurl */
-            imageUrl?: string | null;
+        MarketInfoResponse: {
+            /**
+             * Condition Id
+             * @description Polymarket condition ID (market identifier)
+             * @example 0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa
+             */
+            condition_id: string;
+            /**
+             * Question
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by end of 2024?
+             */
+            question?: string | null;
+            /**
+             * Tokens
+             * @description Current prices for each outcome token
+             */
+            tokens: components["schemas"]["TokenPrice"][];
+            /**
+             * Active
+             * @description Whether the market is active for trading
+             * @example true
+             */
+            active: boolean;
+            /**
+             * Closed
+             * @description Whether the market has been resolved/closed
+             * @example false
+             */
+            closed: boolean;
+            /**
+             * Accepting Orders
+             * @description Whether the market is currently accepting orders
+             * @example true
+             */
+            accepting_orders: boolean;
+            /**
+             * Volume 24H
+             * @description 24-hour trading volume in USD
+             * @example 150000.5
+             */
+            volume_24h?: number | null;
+            /**
+             * Liquidity
+             * @description Market liquidity metric
+             * @example 75000
+             */
+            liquidity?: number | null;
+            /**
+             * Minimum Order Size
+             * @description Minimum order size for this market
+             * @example 15
+             */
+            minimum_order_size: number;
+            /**
+             * Minimum Tick Size
+             * @description Minimum price increment
+             * @example 0.01
+             */
+            minimum_tick_size: number;
+            /**
+             * Data Source
+             * @description Data source: 'clob' for real-time or 'fallback' for cached dim_market
+             * @example clob
+             */
+            data_source: string;
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example MISS
+             */
+            cache_status: string;
         };
         /**
          * MarketListResponse
          * @description Paginated market list response.
          */
         MarketListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of markets
+             */
             items: components["schemas"]["MarketResponse"][];
-            /** Total */
+            /**
+             * Total
+             * @description Total number of matching markets
+             * @example 150
+             */
             total: number;
-            /** Page */
+            /**
+             * Page
+             * @description Current page number
+             * @example 1
+             */
             page: number;
-            /** Limit */
+            /**
+             * Limit
+             * @description Results per page
+             * @example 50
+             */
             limit: number;
         };
         /**
@@ -974,15 +1623,35 @@ export interface components {
          * @description Outcome details for a market.
          */
         MarketOutcome: {
-            /** Id */
+            /**
+             * Id
+             * @description Unique outcome identifier
+             * @example outcome-yes-123
+             */
             id: string;
-            /** Tokenid */
+            /**
+             * Tokenid
+             * @description CLOB token ID for this outcome
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286595
+             */
             tokenId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Human-readable outcome name
+             * @example Yes
+             */
             outcomeName: string;
-            /** Currentprice */
+            /**
+             * Currentprice
+             * @description Current price (0.0 to 1.0)
+             * @example 0.65
+             */
             currentPrice: number;
-            /** Volume */
+            /**
+             * Volume
+             * @description Total volume traded on this outcome in USD
+             * @example 125000.5
+             */
             volume: number;
         };
         /**
@@ -990,77 +1659,432 @@ export interface components {
          * @description Market response with outcomes.
          */
         MarketResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Internal market identifier
+             * @example market-12345
+             */
             id: string;
-            /** Polymarketid */
+            /**
+             * Polymarketid
+             * @description Polymarket market ID
+             * @example 0x1234567890abcdef
+             */
             polymarketId: string;
-            /** Conditionid */
+            /**
+             * Conditionid
+             * @description Polymarket condition ID (64 hex chars with 0x prefix)
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
             conditionId?: string | null;
-            /** Slug */
+            /**
+             * Slug
+             * @description URL-friendly market slug
+             * @example will-bitcoin-reach-100k-by-2025
+             */
             slug?: string | null;
-            /** Question */
+            /**
+             * Question
+             * @description Market question
+             * @example Will Bitcoin reach $100,000 by end of 2025?
+             */
             question: string;
-            /** Description */
+            /**
+             * Description
+             * @description Detailed market description and resolution criteria
+             */
             description?: string | null;
-            /** Category */
+            /**
+             * Category
+             * @description Market category
+             * @example Crypto
+             */
             category?: string | null;
-            /** Enddate */
+            /**
+             * Enddate
+             * @description Market resolution deadline (ISO 8601)
+             * @example 2025-12-31T23:59:59Z
+             */
             endDate?: string | null;
-            /** Resolved */
+            /**
+             * Resolved
+             * @description Whether the market has been resolved
+             * @example false
+             */
             resolved: boolean;
-            /** Totalvolume */
+            /**
+             * Totalvolume
+             * @description Total trading volume in USD
+             * @example 1250000
+             */
             totalVolume: number;
-            /** Liquidity */
+            /**
+             * Liquidity
+             * @description Current liquidity in USD
+             * @example 50000
+             */
             liquidity: number;
-            /** Createdat */
+            /**
+             * Createdat
+             * @description Market creation timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             createdAt: string;
-            /** Imageurl */
+            /**
+             * Imageurl
+             * @description Market cover image URL
+             */
             imageUrl?: string | null;
-            /** Outcomes */
+            /**
+             * Outcomes
+             * @description List of possible outcomes for this market
+             */
             outcomes?: components["schemas"]["MarketOutcome"][];
+        };
+        /**
+         * MarketTokensResponse
+         * @description Token ID mappings for a market.
+         */
+        MarketTokensResponse: {
+            /**
+             * Market Id
+             * @description Our platform_market_id
+             * @example 0x123abc456def
+             */
+            market_id: string;
+            /**
+             * Tokens
+             * @description List of token IDs for each outcome
+             */
+            tokens: components["schemas"]["TokenInfo"][];
+            /**
+             * Yes Token Id
+             * @description Token ID for the YES outcome (convenience field)
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            yes_token_id?: string | null;
+            /**
+             * No Token Id
+             * @description Token ID for the NO outcome (convenience field)
+             * @example 48331043779252212594626385532706912750332728571942532289631379312455583286915
+             */
+            no_token_id?: string | null;
+        };
+        /**
+         * OrderBookResponse
+         * @description Order book (L2) response for a token.
+         */
+        OrderBookResponse: {
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id: string;
+            /**
+             * Market
+             * @description Market condition ID
+             * @example 0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa
+             */
+            market: string;
+            /**
+             * Timestamp
+             * @description Snapshot timestamp (ISO 8601 format)
+             * @example 2023-10-01T12:00:00Z
+             */
+            timestamp: string;
+            /**
+             * Bids
+             * @description Bid levels sorted by price descending (best bid first)
+             */
+            bids: components["schemas"]["OrderLevel"][];
+            /**
+             * Asks
+             * @description Ask levels sorted by price ascending (best ask first)
+             */
+            asks: components["schemas"]["OrderLevel"][];
+            /**
+             * Spread
+             * @description Bid-ask spread (best ask - best bid)
+             * @example 0.02
+             */
+            spread?: string | null;
+            /**
+             * Mid Price
+             * @description Mid price ((best bid + best ask) / 2)
+             * @example 0.66
+             */
+            mid_price?: string | null;
+            /**
+             * Best Bid
+             * @description Best (highest) bid price
+             * @example 0.65
+             */
+            best_bid?: string | null;
+            /**
+             * Best Ask
+             * @description Best (lowest) ask price
+             * @example 0.67
+             */
+            best_ask?: string | null;
+            /**
+             * Tick Size
+             * @description Minimum price increment
+             * @example 0.01
+             */
+            tick_size: string;
+            /**
+             * Min Order Size
+             * @description Minimum tradeable quantity
+             * @example 0.001
+             */
+            min_order_size: string;
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example MISS
+             */
+            cache_status: string;
+        };
+        /**
+         * OrderLevel
+         * @description Single price level in the order book.
+         */
+        OrderLevel: {
+            /**
+             * Price
+             * @description Price at this level (0-1 for probability)
+             * @example 0.65
+             */
+            price: string;
+            /**
+             * Size
+             * @description Total quantity available at this price
+             * @example 1500.50
+             */
+            size: string;
         };
         /**
          * PriceHistoryPoint
          * @description Single point in price history.
          */
         PriceHistoryPoint: {
-            /** Timestamp */
+            /**
+             * Timestamp
+             * @description Timestamp for this data point (ISO 8601)
+             * @example 2024-01-15T00:00:00Z
+             */
             timestamp: string;
-            /** Price */
+            /**
+             * Price
+             * @description Price at this timestamp (0.0 to 1.0)
+             * @example 0.65
+             */
             price: number;
-            /** Volume */
+            /**
+             * Volume
+             * @description Volume during this interval (USD)
+             * @example 5000
+             */
             volume: number;
         };
         /**
          * PriceHistoryResponse
-         * @description Response for price history endpoint.
+         * @description Price history timeseries response.
          */
         PriceHistoryResponse: {
-            /** Items */
-            items: components["schemas"]["PriceHistoryPoint"][];
-            /** Marketid */
-            marketId: string;
-            /** Outcomeid */
-            outcomeId?: string | null;
-            /** Interval */
-            interval: string;
-            /** Startdate */
-            startDate?: string | null;
-            /** Enddate */
-            endDate?: string | null;
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id: string;
+            /**
+             * Interval
+             * @description Interval used for the query (1m, 1h, 6h, 1d, 1w, max)
+             * @example 1h
+             */
+            interval?: string | null;
+            /**
+             * Fidelity
+             * @description Resolution of the data in minutes
+             * @example 15
+             */
+            fidelity?: number | null;
+            /**
+             * Start Ts
+             * @description Start timestamp if date range was specified
+             * @example 1697788800
+             */
+            start_ts?: number | null;
+            /**
+             * End Ts
+             * @description End timestamp if date range was specified
+             * @example 1697875200
+             */
+            end_ts?: number | null;
+            /**
+             * History
+             * @description List of price points in chronological order
+             */
+            history: components["schemas"]["PricePoint"][];
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example HIT
+             */
+            cache_status: string;
+        };
+        /**
+         * PricePoint
+         * @description Single price point in timeseries data.
+         */
+        PricePoint: {
+            /**
+             * Timestamp
+             * @description Unix timestamp (UTC)
+             * @example 1697875200
+             */
+            timestamp: number;
+            /**
+             * Price
+             * @description Price at this timestamp (0-1 for probability)
+             * @example 0.65
+             */
+            price: number;
+        };
+        /**
+         * ProxyHealthResponse
+         * @description Health status for all proxied Polymarket APIs.
+         */
+        ProxyHealthResponse: {
+            /** @description CLOB API health status */
+            clob: components["schemas"]["ProxyHealthStatus"];
+            /** @description Data API health status */
+            data: components["schemas"]["ProxyHealthStatus"];
+            /** @description Gamma API health status */
+            gamma: components["schemas"]["ProxyHealthStatus"];
+            /**
+             * Cache Stats
+             * @description Cache statistics (size, hits, misses, hit_rate, backend)
+             * @example {
+             *       "backend": "memory",
+             *       "hit_rate": 91,
+             *       "hits": 500,
+             *       "misses": 50,
+             *       "size": 100
+             *     }
+             */
+            cache_stats: {
+                [key: string]: number | string;
+            };
+            /**
+             * Circuit Status
+             * @description Circuit breaker status for each API
+             * @example {
+             *       "clob": "closed",
+             *       "data": "closed",
+             *       "gamma": "closed"
+             *     }
+             */
+            circuit_status: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * ProxyHealthStatus
+         * @description Health status for a single API.
+         */
+        ProxyHealthStatus: {
+            /**
+             * Status
+             * @description Health status: healthy, degraded, or unhealthy
+             * @example healthy
+             */
+            status: string;
+            /**
+             * Status Code
+             * @description HTTP status code from health check
+             * @example 200
+             */
+            status_code?: number | null;
+            /**
+             * Latency Ms
+             * @description Response latency in milliseconds
+             * @example 45.2
+             */
+            latency_ms?: number | null;
+            /**
+             * Error
+             * @description Error message if unhealthy
+             */
+            error?: string | null;
+        };
+        /**
+         * RecentTradesResponse
+         * @description Response for recent trades query.
+         */
+        RecentTradesResponse: {
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID or condition ID
+             * @example 0x123abc
+             */
+            token_id: string;
+            /**
+             * Trades
+             * @description List of recent trades, most recent first
+             */
+            trades: components["schemas"]["Trade"][];
+            /**
+             * Count
+             * @description Number of trades returned
+             * @example 50
+             */
+            count: number;
+            /**
+             * Has More
+             * @description Whether more trades exist beyond the limit
+             * @example true
+             */
+            has_more: boolean;
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example MISS
+             */
+            cache_status: string;
         };
         /**
          * SmartScoreComponents
          * @description Components that make up a smart score.
+         *
+         *     Weighted: 30% accuracy, 25% consistency, 25% sizing, 20% timing.
          */
         SmartScoreComponents: {
-            /** Accuracy */
+            /**
+             * Accuracy
+             * @description Accuracy score (0-100) - based on win rate
+             * @example 82
+             */
             accuracy: number;
-            /** Consistency */
+            /**
+             * Consistency
+             * @description Consistency score (0-100) - based on stable returns
+             * @example 75
+             */
             consistency: number;
-            /** Sizing */
+            /**
+             * Sizing
+             * @description Sizing score (0-100) - based on proper position sizing
+             * @example 68
+             */
             sizing: number;
-            /** Timing */
+            /**
+             * Timing
+             * @description Timing score (0-100) - based on entry/exit timing
+             * @example 72
+             */
             timing: number;
         };
         /**
@@ -1068,11 +2092,22 @@ export interface components {
          * @description List of smart scores.
          */
         SmartScoreListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of smart scores
+             */
             items: components["schemas"]["SmartScoreResponse"][];
-            /** Timewindow */
+            /**
+             * Timewindow
+             * @description Time window used for calculation
+             * @example 30d
+             */
             timeWindow: string;
-            /** Generatedat */
+            /**
+             * Generatedat
+             * @description When scores were calculated
+             * @example 2024-01-20T00:00:00Z
+             */
             generatedAt: string;
         };
         /**
@@ -1080,10 +2115,19 @@ export interface components {
          * @description Smart score response for a trader.
          */
         SmartScoreResponse: {
-            /** Address */
+            /**
+             * Address
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             address: string;
-            /** Smartscore */
+            /**
+             * Smartscore
+             * @description Overall smart score (0-100)
+             * @example 78.5
+             */
             smartScore: number;
+            /** @description Individual score components */
             components: components["schemas"]["SmartScoreComponents"];
         };
         /**
@@ -1091,36 +2135,90 @@ export interface components {
          * @description Trade response with smart score of the trader.
          */
         SmartTradeResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Unique trade identifier
+             * @example trade-abc123
+             */
             id: string;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID
+             * @example market-12345
+             */
             marketId: string;
-            /** Marketquestion */
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
             marketQuestion: string;
-            /** Outcomeid */
+            /**
+             * Outcomeid
+             * @description Outcome ID
+             * @example outcome-yes-123
+             */
             outcomeId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Outcome name
+             * @example Yes
+             */
             outcomeName: string;
             /**
              * Side
+             * @description Trade side
+             * @example BUY
              * @enum {string}
              */
             side: "BUY" | "SELL";
-            /** Price */
+            /**
+             * Price
+             * @description Execution price (0.0 to 1.0)
+             * @example 0.65
+             */
             price: number;
-            /** Quantity */
+            /**
+             * Quantity
+             * @description Number of shares traded
+             * @example 1000
+             */
             quantity: number;
-            /** Usdvalue */
+            /**
+             * Usdvalue
+             * @description USD value of trade
+             * @example 650
+             */
             usdValue: number;
-            /** Fees */
+            /**
+             * Fees
+             * @description Trading fees in USD
+             * @example 1.3
+             */
             fees: number;
-            /** Realizedpnl */
+            /**
+             * Realizedpnl
+             * @description Realized PnL if closing position
+             * @example 50
+             */
             realizedPnl?: number | null;
-            /** Timestamp */
+            /**
+             * Timestamp
+             * @description Trade timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             timestamp: string;
-            /** Smartscore */
+            /**
+             * Smartscore
+             * @description Trader's smart score at time of trade
+             * @example 85
+             */
             smartScore: number;
         };
         /**
@@ -1128,37 +2226,240 @@ export interface components {
          * @description Tag (category) information for filtering markets.
          */
         TagResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Unique tag identifier
+             * @example politics
+             */
             id: string;
-            /** Name */
+            /**
+             * Name
+             * @description Display name
+             * @example Politics
+             */
             name: string;
-            /** Slug */
+            /**
+             * Slug
+             * @description URL-friendly slug
+             * @example politics
+             */
             slug: string;
-            /** Marketcount */
+            /**
+             * Marketcount
+             * @description Number of markets with this tag
+             * @example 250
+             */
             marketCount: number;
+        };
+        /**
+         * TimeseriesInterval
+         * @description Valid interval options for timeseries queries.
+         * @enum {string}
+         */
+        TimeseriesInterval: "1m" | "5m" | "15m" | "1h" | "6h" | "1d" | "1w" | "max";
+        /**
+         * TokenInfo
+         * @description Token information for a market outcome.
+         */
+        TokenInfo: {
+            /**
+             * Outcome Id
+             * @description Internal outcome ID (market_id_index)
+             * @example 0x123abc_0
+             */
+            outcome_id: string;
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID for this outcome
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id: string;
+            /**
+             * Side
+             * @description Token side (token1 = Yes, token2 = No)
+             * @example token1
+             */
+            side: string;
+            /**
+             * Outcome Label
+             * @description Human-readable outcome label
+             * @example Yes
+             */
+            outcome_label: string;
+        };
+        /**
+         * TokenPrice
+         * @description Price information for a single token/outcome.
+         */
+        TokenPrice: {
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id: string;
+            /**
+             * Outcome
+             * @description Outcome label (e.g., 'Yes', 'No', or custom)
+             * @example Yes
+             */
+            outcome: string;
+            /**
+             * Price
+             * @description Current price (0-1 for probability)
+             * @example 0.65
+             */
+            price: number;
+            /**
+             * Winner
+             * @description Whether this outcome won (None if not resolved)
+             * @example false
+             */
+            winner?: boolean | null;
         };
         /**
          * TokenRefresh
          * @description Schema for token refresh request.
          */
         TokenRefresh: {
-            /** Refresh Token */
+            /**
+             * Refresh Token
+             * @description Refresh token from previous login/refresh
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
             refresh_token: string;
+        };
+        /**
+         * TokenResolverStats
+         * @description Statistics for the token resolver cache.
+         */
+        TokenResolverStats: {
+            /**
+             * Cache Size
+             * @description Number of market mappings cached
+             * @example 1000
+             */
+            cache_size: number;
+            /**
+             * Cache Hits
+             * @description Number of cache hits
+             * @example 5000
+             */
+            cache_hits: number;
+            /**
+             * Cache Misses
+             * @description Number of cache misses
+             * @example 200
+             */
+            cache_misses: number;
+            /**
+             * Hit Rate
+             * @description Cache hit rate percentage
+             * @example 96.2
+             */
+            hit_rate: number;
         };
         /**
          * TokenResponse
          * @description Schema for JWT token response.
          */
         TokenResponse: {
-            /** Access Token */
+            /**
+             * Access Token
+             * @description JWT access token (expires in 30 minutes)
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
             access_token: string;
-            /** Refresh Token */
+            /**
+             * Refresh Token
+             * @description JWT refresh token (expires in 7 days)
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
             refresh_token: string;
             /**
              * Token Type
+             * @description Token type (always 'bearer')
              * @default bearer
+             * @example bearer
              */
             token_type: string;
+        };
+        /**
+         * TopHolder
+         * @description Single holder in the top holders list.
+         */
+        TopHolder: {
+            /**
+             * Wallet Address
+             * @description Wallet address of the holder (proxy wallet)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
+            wallet_address: string;
+            /**
+             * Amount
+             * @description Token balance held
+             * @example 15000.50
+             */
+            amount: string;
+            /**
+             * Pseudonym
+             * @description User pseudonym if available
+             * @example crypto_whale_99
+             */
+            pseudonym?: string | null;
+            /**
+             * Name
+             * @description User display name if public
+             * @example John Doe
+             */
+            name?: string | null;
+            /**
+             * Profile Image
+             * @description URL to user profile image
+             * @example https://polymarket.com/images/profile/123.jpg
+             */
+            profile_image?: string | null;
+            /**
+             * Outcome Index
+             * @description Outcome index for this position (0 for Yes, 1 for No)
+             * @example 0
+             */
+            outcome_index?: number | null;
+        };
+        /**
+         * TopHoldersResponse
+         * @description Response for top holders query.
+         */
+        TopHoldersResponse: {
+            /**
+             * Condition Id
+             * @description Polymarket market condition ID
+             * @example 0x1b6f76e5b8587ee896c35847e12d11e75290a8c3934c5952e8a9d6e4c6f03cfa
+             */
+            condition_id: string;
+            /**
+             * Token Id
+             * @description Token ID if querying specific outcome (None if querying full market)
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id?: string | null;
+            /**
+             * Holders
+             * @description List of top holders sorted by balance descending
+             */
+            holders: components["schemas"]["TopHolder"][];
+            /**
+             * Count
+             * @description Number of holders returned
+             * @example 20
+             */
+            count: number;
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example MISS
+             */
+            cache_status: string;
         };
         /**
          * TrackedTraderActivity
@@ -1168,16 +2469,29 @@ export interface components {
             /**
              * Traderid
              * Format: uuid
+             * @description Tracker entry ID
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             traderId: string;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Customname */
+            /**
+             * Customname
+             * @description Custom name if set
+             * @example Smart Money Alpha
+             */
             customName?: string | null;
-            trade: components["schemas"]["prediction_data__api__traders__schemas__TradeResponse"];
+            /** @description Trade details */
+            trade: components["schemas"]["TradeResponse"];
             /**
              * Timestamp
              * Format: date-time
+             * @description Activity timestamp
+             * @example 2024-01-15T10:30:00Z
              */
             timestamp: string;
         };
@@ -1186,9 +2500,17 @@ export interface components {
          * @description Request body for adding a tracked trader.
          */
         TrackedTraderCreate: {
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Ethereum wallet address to track (0x + 40 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Customname */
+            /**
+             * Customname
+             * @description Custom display name for this trader
+             * @example Smart Money Alpha
+             */
             customName?: string | null;
         };
         /**
@@ -1196,18 +2518,30 @@ export interface components {
          * @description Tracked trader response.
          */
         TrackedTraderResponse: {
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Ethereum wallet address to track (0x + 40 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Customname */
+            /**
+             * Customname
+             * @description Custom display name for this trader
+             * @example Whale Watcher
+             */
             customName?: string | null;
             /**
              * Id
              * Format: uuid
+             * @description Unique tracker entry identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             id: string;
             /**
              * Createdat
              * Format: date-time
+             * @description When tracking started
+             * @example 2024-01-15T10:30:00Z
              */
             createdAt: string;
         };
@@ -1216,7 +2550,11 @@ export interface components {
          * @description Request body for updating a tracked trader.
          */
         TrackedTraderUpdate: {
-            /** Customname */
+            /**
+             * Customname
+             * @description New custom display name
+             * @example Updated Name
+             */
             customName?: string | null;
         };
         /**
@@ -1224,31 +2562,51 @@ export interface components {
          * @description Tracked trader with stats from ClickHouse.
          */
         TrackedTraderWithStats: {
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Ethereum wallet address to track (0x + 40 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Customname */
+            /**
+             * Customname
+             * @description Custom display name for this trader
+             * @example Whale Watcher
+             */
             customName?: string | null;
             /**
              * Id
              * Format: uuid
+             * @description Unique tracker entry identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             id: string;
             /**
              * Createdat
              * Format: date-time
+             * @description When tracking started
+             * @example 2024-01-15T10:30:00Z
              */
             createdAt: string;
             /**
              * Totalpnl
+             * @description Total profit/loss in USD (30-day window)
              * @default 0
+             * @example 15000.5
              */
             totalPnl: number;
             /**
              * Recenttrades
+             * @description Number of trades in last 7 days
              * @default 0
+             * @example 12
              */
             recentTrades: number;
-            /** Smartscore */
+            /**
+             * Smartscore
+             * @description Trader's smart score (0-100). Null if <5 trades.
+             * @example 78.5
+             */
             smartScore?: number | null;
         };
         /**
@@ -1256,95 +2614,288 @@ export interface components {
          * @description Response for tracked traders listing.
          */
         TrackedTradersListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of tracked traders with stats
+             */
             items: components["schemas"]["TrackedTraderWithStats"][];
-            /** Count */
+            /**
+             * Count
+             * @description Current number of tracked traders
+             * @example 3
+             */
             count: number;
             /**
              * Limit
-             * @description Tier limit for tracked traders
+             * @description Tier limit for tracked traders (free: 5, pro: 50, enterprise: unlimited)
+             * @example 5
              */
             limit: number;
         };
         /**
+         * Trade
+         * @description Single trade from the activity feed.
+         */
+        Trade: {
+            /**
+             * Id
+             * @description Unique trade identifier (transaction hash)
+             * @example 0x1234567890abcdef
+             */
+            id: string;
+            /**
+             * Price
+             * @description Trade price (0-1 for probability)
+             * @example 0.65
+             */
+            price: string;
+            /**
+             * Size
+             * @description Trade size in tokens
+             * @example 100.50
+             */
+            size: string;
+            /**
+             * Side
+             * @description Trade side (BUY or SELL)
+             * @example BUY
+             */
+            side: string;
+            /**
+             * Timestamp
+             * @description Unix timestamp in milliseconds
+             * @example 1697875200000
+             */
+            timestamp: number;
+            /**
+             * Maker Address
+             * @description Wallet address of the maker
+             * @example 0xabc123...
+             */
+            maker_address?: string | null;
+            /**
+             * Outcome
+             * @description Outcome name (e.g., 'Yes', 'No')
+             * @example Yes
+             */
+            outcome?: string | null;
+            /**
+             * Outcome Index
+             * @description Outcome index (0 for Yes, 1 for No)
+             * @example 0
+             */
+            outcome_index?: number | null;
+        };
+        /**
          * TradeListResponse
-         * @description Paginated list of trades.
+         * @description Paginated trade list response.
          */
         TradeListResponse: {
-            /** Items */
-            items: components["schemas"]["prediction_data__api__traders__schemas__TradeResponse"][];
-            /** Total */
+            /**
+             * Items
+             * @description List of trades
+             */
+            items: components["schemas"]["prediction_data__api__markets__schemas__TradeResponse"][];
+            /**
+             * Total
+             * @description Total number of matching trades
+             */
             total: number;
-            /** Page */
+            /**
+             * Page
+             * @description Current page number
+             */
             page: number;
-            /** Limit */
+            /**
+             * Limit
+             * @description Results per page
+             */
             limit: number;
         };
         /**
          * TradeResponse
-         * @description Trade record for a market.
+         * @description Trade record for a trader.
          */
         TradeResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Unique trade identifier
+             * @example trade-abc123
+             */
             id: string;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID
+             * @example market-12345
+             */
             marketId: string;
-            /** Outcomeid */
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
+            marketQuestion: string;
+            /**
+             * Outcomeid
+             * @description Outcome ID
+             * @example outcome-yes-123
+             */
             outcomeId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Outcome name
+             * @example Yes
+             */
             outcomeName: string;
             /**
              * Side
+             * @description Trade side
+             * @example BUY
              * @enum {string}
              */
             side: "BUY" | "SELL";
-            /** Price */
+            /**
+             * Price
+             * @description Execution price (0.0 to 1.0)
+             * @example 0.65
+             */
             price: number;
-            /** Amount */
-            amount: number;
-            /** Usdvalue */
+            /**
+             * Quantity
+             * @description Number of shares traded
+             * @example 1000
+             */
+            quantity: number;
+            /**
+             * Usdvalue
+             * @description USD value of trade
+             * @example 650
+             */
             usdValue: number;
-            /** Txhash */
-            txHash?: string | null;
-            /** Timestamp */
+            /**
+             * Fees
+             * @description Trading fees in USD
+             * @example 1.3
+             */
+            fees: number;
+            /**
+             * Realizedpnl
+             * @description Realized PnL if closing position
+             * @example 50
+             */
+            realizedPnl?: number | null;
+            /**
+             * Timestamp
+             * @description Trade timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             timestamp: string;
         };
+        /**
+         * TradeSide
+         * @description Valid trade side filter values.
+         * @enum {string}
+         */
+        TradeSide: "BUY" | "SELL";
         /**
          * TraderDetailResponse
          * @description Detailed trader response with positions and stats.
          */
         TraderDetailResponse: {
-            /** Address */
+            /**
+             * Address
+             * @description Ethereum wallet address (lowercase, 0x + 40 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             address: string;
-            /** Username */
+            /**
+             * Username
+             * @description Polymarket username if linked
+             * @example cryptotrader42
+             */
             username?: string | null;
-            /** Firstseen */
+            /**
+             * Firstseen
+             * @description First trade timestamp (ISO 8601)
+             * @example 2023-06-15T10:30:00Z
+             */
             firstSeen: string;
-            /** Totalpnl */
+            /**
+             * Totalpnl
+             * @description Total profit/loss (realized + unrealized) in USD
+             * @example 15000.5
+             */
             totalPnl: number;
-            /** Realizedpnl */
+            /**
+             * Realizedpnl
+             * @description Realized profit/loss in USD
+             * @example 8000
+             */
             realizedPnl: number;
-            /** Totaltrades */
+            /**
+             * Totaltrades
+             * @description Total number of trades executed
+             * @example 342
+             */
             totalTrades: number;
-            /** Wincount */
+            /**
+             * Wincount
+             * @description Number of winning trades
+             * @example 185
+             */
             winCount: number;
-            /** Losscount */
+            /**
+             * Losscount
+             * @description Number of losing trades
+             * @example 157
+             */
             lossCount: number;
-            /** Id */
+            /**
+             * Id
+             * @description Internal trader identifier
+             * @example trader-abc123
+             */
             id: string;
-            /** Smartscore */
+            /**
+             * Smartscore
+             * @description Smart score (0-100) based on trading performance. Null if <5 trades.
+             * @example 78.5
+             */
             smartScore?: number | null;
-            /** Createdat */
+            /**
+             * Createdat
+             * @description Record creation timestamp
+             * @example 2024-01-15T10:30:00Z
+             */
             createdAt: string;
-            /** Updatedat */
+            /**
+             * Updatedat
+             * @description Last update timestamp
+             * @example 2024-01-20T14:00:00Z
+             */
             updatedAt: string;
-            /** Positions */
+            /**
+             * Positions
+             * @description Current open positions
+             */
             positions?: components["schemas"]["TraderPosition"][];
-            /** Tradecount */
+            /**
+             * Tradecount
+             * @description Total trade count
+             * @example 342
+             */
             tradeCount: number;
-            /** Winrate */
+            /**
+             * Winrate
+             * @description Win rate as decimal (0.0 to 1.0)
+             * @example 0.54
+             */
             winRate: number;
         };
         /**
@@ -1352,13 +2903,25 @@ export interface components {
          * @description Paginated list of traders.
          */
         TraderListResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description List of traders
+             */
             items: components["schemas"]["TraderResponse"][];
-            /** Total */
+            /**
+             * Total
+             * @description Total number of matching traders
+             */
             total: number;
-            /** Page */
+            /**
+             * Page
+             * @description Current page number
+             */
             page: number;
-            /** Limit */
+            /**
+             * Limit
+             * @description Results per page
+             */
             limit: number;
         };
         /**
@@ -1366,23 +2929,59 @@ export interface components {
          * @description Current position held by a trader.
          */
         TraderPosition: {
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID for this position
+             * @example market-12345
+             */
             marketId: string;
-            /** Marketquestion */
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
             marketQuestion: string;
-            /** Outcomeid */
+            /**
+             * Outcomeid
+             * @description Outcome ID
+             * @example outcome-yes-123
+             */
             outcomeId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Outcome name
+             * @example Yes
+             */
             outcomeName: string;
-            /** Quantity */
+            /**
+             * Quantity
+             * @description Number of shares held
+             * @example 1500
+             */
             quantity: number;
-            /** Avgcost */
+            /**
+             * Avgcost
+             * @description Average cost basis per share (0.0 to 1.0)
+             * @example 0.45
+             */
             avgCost: number;
-            /** Currentprice */
+            /**
+             * Currentprice
+             * @description Current market price per share
+             * @example 0.65
+             */
             currentPrice: number;
-            /** Unrealizedpnl */
+            /**
+             * Unrealizedpnl
+             * @description Unrealized profit/loss in USD
+             * @example 300
+             */
             unrealizedPnl: number;
-            /** Realizedpnl */
+            /**
+             * Realizedpnl
+             * @description Realized profit/loss in USD
+             * @example 150
+             */
             realizedPnl: number;
         };
         /**
@@ -1390,29 +2989,77 @@ export interface components {
          * @description Trader response with additional metadata.
          */
         TraderResponse: {
-            /** Address */
+            /**
+             * Address
+             * @description Ethereum wallet address (lowercase, 0x + 40 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             address: string;
-            /** Username */
+            /**
+             * Username
+             * @description Polymarket username if linked
+             * @example cryptotrader42
+             */
             username?: string | null;
-            /** Firstseen */
+            /**
+             * Firstseen
+             * @description First trade timestamp (ISO 8601)
+             * @example 2023-06-15T10:30:00Z
+             */
             firstSeen: string;
-            /** Totalpnl */
+            /**
+             * Totalpnl
+             * @description Total profit/loss (realized + unrealized) in USD
+             * @example 15000.5
+             */
             totalPnl: number;
-            /** Realizedpnl */
+            /**
+             * Realizedpnl
+             * @description Realized profit/loss in USD
+             * @example 8000
+             */
             realizedPnl: number;
-            /** Totaltrades */
+            /**
+             * Totaltrades
+             * @description Total number of trades executed
+             * @example 342
+             */
             totalTrades: number;
-            /** Wincount */
+            /**
+             * Wincount
+             * @description Number of winning trades
+             * @example 185
+             */
             winCount: number;
-            /** Losscount */
+            /**
+             * Losscount
+             * @description Number of losing trades
+             * @example 157
+             */
             lossCount: number;
-            /** Id */
+            /**
+             * Id
+             * @description Internal trader identifier
+             * @example trader-abc123
+             */
             id: string;
-            /** Smartscore */
+            /**
+             * Smartscore
+             * @description Smart score (0-100) based on trading performance. Null if <5 trades.
+             * @example 78.5
+             */
             smartScore?: number | null;
-            /** Createdat */
+            /**
+             * Createdat
+             * @description Record creation timestamp
+             * @example 2024-01-15T10:30:00Z
+             */
             createdAt: string;
-            /** Updatedat */
+            /**
+             * Updatedat
+             * @description Last update timestamp
+             * @example 2024-01-20T14:00:00Z
+             */
             updatedAt: string;
         };
         /**
@@ -1423,11 +3070,21 @@ export interface components {
             /**
              * Email
              * Format: email
+             * @description User email address (must be unique)
+             * @example user@example.com
              */
             email: string;
-            /** Password */
+            /**
+             * Password
+             * @description Password (minimum 8 characters)
+             * @example securepassword123
+             */
             password: string;
-            /** Name */
+            /**
+             * Name
+             * @description Display name (optional)
+             * @example John Doe
+             */
             name?: string | null;
         };
         /**
@@ -1438,9 +3095,15 @@ export interface components {
             /**
              * Email
              * Format: email
+             * @description Registered email address
+             * @example user@example.com
              */
             email: string;
-            /** Password */
+            /**
+             * Password
+             * @description Account password
+             * @example securepassword123
+             */
             password: string;
         };
         /**
@@ -1451,21 +3114,39 @@ export interface components {
             /**
              * Id
              * Format: uuid
+             * @description Unique user identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             id: string;
-            /** Email */
+            /**
+             * Email
+             * @description User email address
+             * @example user@example.com
+             */
             email: string;
-            /** Name */
-            name: string | null;
+            /**
+             * Name
+             * @description Display name
+             * @example John Doe
+             */
+            name?: string | null;
+            /**
+             * @description Account tier (free, pro, enterprise)
+             * @example free
+             */
             tier: components["schemas"]["UserTier"];
             /**
              * Created At
              * Format: date-time
+             * @description Account creation timestamp
+             * @example 2024-01-15T10:30:00Z
              */
             created_at: string;
             /**
              * Updated At
              * Format: date-time
+             * @description Last profile update timestamp
+             * @example 2024-01-15T10:30:00Z
              */
             updated_at: string;
         };
@@ -1480,7 +3161,11 @@ export interface components {
          * @description Schema for updating user profile.
          */
         UserUpdate: {
-            /** Name */
+            /**
+             * Name
+             * @description New display name
+             * @example Jane Doe
+             */
             name?: string | null;
         };
         /** ValidationError */
@@ -1491,13 +3176,21 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /**
          * WatchlistAddRequest
-         * @description Request body for adding to watchlist.
+         * @description Request body for adding a market to the watchlist.
          */
         WatchlistAddRequest: {
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market condition ID to add (0x + 64 hex chars)
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
             marketId: string;
         };
         /**
@@ -1508,42 +3201,78 @@ export interface components {
             /**
              * Id
              * Format: uuid
+             * @description Unique watchlist entry identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             id: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID being watched
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
             marketId: string;
             /**
              * Createdat
              * Format: date-time
+             * @description When the market was added to watchlist
+             * @example 2024-01-15T10:30:00Z
              */
             createdAt: string;
         };
         /**
          * WatchlistItemWithMarket
-         * @description Watchlist item with market details.
+         * @description Watchlist item enriched with market details.
          */
         WatchlistItemWithMarket: {
             /**
              * Id
              * Format: uuid
+             * @description Unique watchlist entry identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
              */
             id: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID being watched
+             * @example 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+             */
             marketId: string;
             /**
              * Createdat
              * Format: date-time
+             * @description When the market was added to watchlist
+             * @example 2024-01-15T10:30:00Z
              */
             createdAt: string;
-            /** Marketquestion */
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
             marketQuestion: string;
-            /** Marketcategory */
+            /**
+             * Marketcategory
+             * @description Market category
+             * @example Crypto
+             */
             marketCategory?: string | null;
-            /** Currentprice */
+            /**
+             * Currentprice
+             * @description Current Yes price (0.0 to 1.0)
+             * @example 0.65
+             */
             currentPrice: number;
-            /** Pricechange24H */
+            /**
+             * Pricechange24H
+             * @description Price change in last 24 hours (absolute)
+             * @example 0.05
+             */
             priceChange24h: number;
-            /** Resolved */
+            /**
+             * Resolved
+             * @description Whether the market has been resolved
+             * @example false
+             */
             resolved: boolean;
         };
         /**
@@ -1551,9 +3280,16 @@ export interface components {
          * @description Response for watchlist listing.
          */
         WatchlistResponse: {
-            /** Items */
+            /**
+             * Items
+             * @description Watchlist items with market details
+             */
             items: components["schemas"]["WatchlistItemWithMarket"][];
-            /** Count */
+            /**
+             * Count
+             * @description Total number of items in watchlist
+             * @example 5
+             */
             count: number;
         };
         /**
@@ -1561,86 +3297,259 @@ export interface components {
          * @description Trade response with whale metadata.
          */
         WhaleTradeResponse: {
-            /** Id */
+            /**
+             * Id
+             * @description Unique trade identifier
+             * @example trade-abc123
+             */
             id: string;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market ID
+             * @example market-12345
+             */
             marketId: string;
-            /** Marketquestion */
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
             marketQuestion: string;
-            /** Outcomeid */
+            /**
+             * Outcomeid
+             * @description Outcome ID
+             * @example outcome-yes-123
+             */
             outcomeId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Outcome name
+             * @example Yes
+             */
             outcomeName: string;
             /**
              * Side
+             * @description Trade side
+             * @example BUY
              * @enum {string}
              */
             side: "BUY" | "SELL";
-            /** Price */
+            /**
+             * Price
+             * @description Execution price (0.0 to 1.0)
+             * @example 0.65
+             */
             price: number;
-            /** Quantity */
+            /**
+             * Quantity
+             * @description Number of shares traded
+             * @example 1000
+             */
             quantity: number;
-            /** Usdvalue */
+            /**
+             * Usdvalue
+             * @description USD value of trade
+             * @example 650
+             */
             usdValue: number;
-            /** Fees */
+            /**
+             * Fees
+             * @description Trading fees in USD
+             * @example 1.3
+             */
             fees: number;
-            /** Realizedpnl */
+            /**
+             * Realizedpnl
+             * @description Realized PnL if closing position
+             * @example 50
+             */
             realizedPnl?: number | null;
-            /** Timestamp */
+            /**
+             * Timestamp
+             * @description Trade timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             timestamp: string;
-            /** Totalwalletvalue */
+            /**
+             * Totalwalletvalue
+             * @description Total portfolio value of the whale trader in USD
+             * @example 500000
+             */
             totalWalletValue: number;
         };
         /**
-         * TradeListResponse
-         * @description Paginated trade list response.
+         * PriceHistoryResponse
+         * @description Response for price history endpoint.
          */
-        prediction_data__api__markets__schemas__TradeListResponse: {
-            /** Items */
-            items: components["schemas"]["TradeResponse"][];
-            /** Total */
-            total: number;
-            /** Page */
-            page: number;
-            /** Limit */
-            limit: number;
+        prediction_data__api__markets__schemas__PriceHistoryResponse: {
+            /**
+             * Items
+             * @description Price history data points
+             */
+            items: components["schemas"]["PriceHistoryPoint"][];
+            /**
+             * Marketid
+             * @description Market ID for this history
+             */
+            marketId: string;
+            /**
+             * Outcomeid
+             * @description Specific outcome ID if filtered
+             */
+            outcomeId?: string | null;
+            /**
+             * Interval
+             * @description Time interval (daily, hourly)
+             * @example daily
+             */
+            interval: string;
+            /**
+             * Startdate
+             * @description Start of date range
+             */
+            startDate?: string | null;
+            /**
+             * Enddate
+             * @description End of date range
+             */
+            endDate?: string | null;
         };
         /**
          * TradeResponse
-         * @description Trade record for a trader.
+         * @description Trade record for a market.
          */
-        prediction_data__api__traders__schemas__TradeResponse: {
-            /** Id */
+        prediction_data__api__markets__schemas__TradeResponse: {
+            /**
+             * Id
+             * @description Unique trade identifier
+             * @example trade-abc123
+             */
             id: string;
-            /** Traderaddress */
+            /**
+             * Traderaddress
+             * @description Ethereum wallet address of the trader (lowercase)
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
             traderAddress: string;
-            /** Marketid */
+            /**
+             * Marketid
+             * @description Market this trade belongs to
+             * @example market-12345
+             */
             marketId: string;
-            /** Marketquestion */
-            marketQuestion: string;
-            /** Outcomeid */
+            /**
+             * Outcomeid
+             * @description Outcome being traded
+             * @example outcome-yes-123
+             */
             outcomeId: string;
-            /** Outcomename */
+            /**
+             * Outcomename
+             * @description Name of the outcome
+             * @example Yes
+             */
             outcomeName: string;
             /**
              * Side
+             * @description Trade side (BUY or SELL)
+             * @example BUY
              * @enum {string}
              */
             side: "BUY" | "SELL";
-            /** Price */
+            /**
+             * Price
+             * @description Execution price (0.0 to 1.0)
+             * @example 0.65
+             */
             price: number;
-            /** Quantity */
-            quantity: number;
-            /** Usdvalue */
+            /**
+             * Amount
+             * @description Number of shares traded
+             * @example 1000
+             */
+            amount: number;
+            /**
+             * Usdvalue
+             * @description USD value of the trade (amount * price)
+             * @example 650
+             */
             usdValue: number;
-            /** Fees */
-            fees: number;
-            /** Realizedpnl */
-            realizedPnl?: number | null;
-            /** Timestamp */
+            /**
+             * Txhash
+             * @description Blockchain transaction hash
+             * @example 0xabc123...
+             */
+            txHash?: string | null;
+            /**
+             * Timestamp
+             * @description Trade execution timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
             timestamp: string;
+        };
+        /**
+         * TradeListResponse
+         * @description Paginated list of trades.
+         */
+        prediction_data__api__traders__schemas__TradeListResponse: {
+            /**
+             * Items
+             * @description List of trades
+             */
+            items: components["schemas"]["TradeResponse"][];
+            /**
+             * Total
+             * @description Total number of matching trades
+             */
+            total: number;
+            /**
+             * Page
+             * @description Current page number
+             */
+            page: number;
+            /**
+             * Limit
+             * @description Results per page
+             */
+            limit: number;
+        };
+        /**
+         * @example {
+         *       "detail": "Resource not found",
+         *       "code": "NOT_FOUND",
+         *       "status": 404
+         *     }
+         */
+        ErrorResponse: {
+            /** @description Human-readable error message */
+            detail: string;
+            /** @description Machine-readable error code */
+            code: string;
+            /** @description HTTP status code */
+            status: number;
+        };
+        /**
+         * @example {
+         *       "detail": "Rate limit exceeded",
+         *       "code": "RATE_LIMIT_EXCEEDED",
+         *       "status": 429,
+         *       "retry_after": 60
+         *     }
+         */
+        RateLimitResponse: {
+            detail: string;
+            /** @enum {string} */
+            code: "RATE_LIMIT_EXCEEDED";
+            /** @enum {integer} */
+            status: 429;
+            /** @description Seconds until rate limit resets */
+            retry_after: number;
         };
     };
     responses: never;
@@ -1673,14 +3582,26 @@ export interface operations {
                     "application/json": components["schemas"]["UserResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad request - email already registered or invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid email format or weak password */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 10 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -1706,14 +3627,26 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized - invalid credentials or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid email format or weak password */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 10 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -1739,14 +3672,26 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized - invalid credentials or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid email format or weak password */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 10 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -1767,6 +3712,20 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserResponse"];
                 };
+            };
+            /** @description Unauthorized - invalid credentials or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 10 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -1792,14 +3751,26 @@ export interface operations {
                     "application/json": components["schemas"]["UserResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized - invalid credentials or expired token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid email format or weak password */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 10 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -2040,7 +4011,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["prediction_data__api__markets__schemas__TradeListResponse"];
+                    "application/json": components["schemas"]["TradeListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2081,7 +4052,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PriceHistoryResponse"];
+                    "application/json": components["schemas"]["prediction_data__api__markets__schemas__PriceHistoryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2266,7 +4237,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TradeListResponse"];
+                    "application/json": components["schemas"]["prediction_data__api__traders__schemas__TradeListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2298,6 +4269,20 @@ export interface operations {
                     "application/json": components["schemas"]["WatchlistResponse"];
                 };
             };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     add_market_to_watchlist_api_v1_watchlist_post: {
@@ -2322,14 +4307,33 @@ export interface operations {
                     "application/json": components["schemas"]["WatchlistItem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad request - market already in watchlist or invalid market ID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid market ID format */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -2351,6 +4355,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - market not in watchlist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2359,6 +4377,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2379,6 +4404,20 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TrackedTradersListResponse"];
                 };
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2404,22 +4443,51 @@ export interface operations {
                     "application/json": components["schemas"]["TrackedTraderResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad request - trader already tracked or invalid address */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden - tier limit exceeded for tracked traders */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid wallet address format */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
     get_activity_api_v1_tracked_traders_activity_get: {
         parameters: {
             query?: {
+                /** @description Maximum activities to return */
                 limit?: number;
+                /** @description Filter from date (YYYY-MM-DD) */
                 startDate?: string | null;
+                /** @description Filter to date (YYYY-MM-DD) */
                 endDate?: string | null;
             };
             header?: never;
@@ -2437,14 +4505,26 @@ export interface operations {
                     "application/json": components["schemas"]["TrackedTraderActivity"][];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid wallet address format */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -2468,6 +4548,20 @@ export interface operations {
                     "application/json": components["schemas"]["TrackedTraderWithStats"];
                 };
             };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - tracked trader not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2476,6 +4570,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2497,6 +4598,20 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - tracked trader not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2505,6 +4620,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2532,14 +4654,33 @@ export interface operations {
                     "application/json": components["schemas"]["TrackedTraderResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - tracked trader not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error - invalid wallet address format */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+            /** @description Rate limit exceeded - max 200 requests/minute */
+            429: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
         };
     };
@@ -2685,7 +4826,489 @@ export interface operations {
             };
         };
     };
+    health_check_api_v1_proxy_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyHealthResponse"];
+                };
+            };
+        };
+    };
+    get_timeseries_api_v1_proxy_markets__token_id__timeseries_get: {
+        parameters: {
+            query?: {
+                /** @description Time interval for data points. Mutually exclusive with startTs/endTs. */
+                interval?: components["schemas"]["TimeseriesInterval"] | null;
+                /** @description Resolution in minutes (1-60). Controls data granularity. */
+                fidelity?: number | null;
+                /** @description Start Unix timestamp (UTC). Use with endTs for custom date range. */
+                startTs?: number | null;
+                /** @description End Unix timestamp (UTC). Use with startTs for custom date range. */
+                endTs?: number | null;
+            };
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Polymarket API error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Polymarket API request failed",
+                     *       "code": "PROXY_ERROR",
+                     *       "status": 502
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Circuit breaker open */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Circuit breaker open for clob API",
+                     *       "code": "SERVICE_UNAVAILABLE",
+                     *       "retry_after": 30
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_orderbook_api_v1_proxy_markets__token_id__orderbook_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of bid/ask levels to return. Default returns all levels. */
+                depth?: number | null;
+            };
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderBookResponse"];
+                };
+            };
+            /** @description Token not found or no order book exists */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "No orderbook exists for the requested token id",
+                     *       "code": "NOT_FOUND",
+                     *       "status": 404
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Polymarket API error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Polymarket API request failed",
+                     *       "code": "PROXY_ERROR",
+                     *       "status": 502
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Circuit breaker open */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Circuit breaker open for clob API",
+                     *       "code": "SERVICE_UNAVAILABLE",
+                     *       "retry_after": 30
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_market_tokens_api_v1_proxy_markets__market_id__tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                market_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketTokensResponse"];
+                };
+            };
+            /** @description Market not found or has no token mappings */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "No token mappings found for market",
+                     *       "code": "NOT_FOUND",
+                     *       "status": 404
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_token_resolver_stats_api_v1_proxy_tokens_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenResolverStats"];
+                };
+            };
+        };
+    };
+    get_trades_api_v1_proxy_markets__condition_id__trades_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of trades to return (1-100). */
+                limit?: number;
+                /** @description Filter by trade side (BUY or SELL). */
+                side?: components["schemas"]["TradeSide"] | null;
+                /** @description Filter by maker wallet address. */
+                maker?: string | null;
+            };
+            header?: never;
+            path: {
+                condition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentTradesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Polymarket API error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Polymarket API request failed",
+                     *       "code": "PROXY_ERROR",
+                     *       "status": 502
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Circuit breaker open */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Circuit breaker open for data API",
+                     *       "code": "SERVICE_UNAVAILABLE",
+                     *       "retry_after": 30
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_top_holders_api_v1_proxy_markets__condition_id__top_holders_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of holders to return (1-20). Polymarket caps at 20. */
+                limit?: number;
+                /** @description Minimum token balance filter (default 1). */
+                minBalance?: number;
+            };
+            header?: never;
+            path: {
+                condition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopHoldersResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Polymarket API error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Polymarket API request failed",
+                     *       "code": "PROXY_ERROR",
+                     *       "status": 502
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Circuit breaker open */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Circuit breaker open for data API",
+                     *       "code": "SERVICE_UNAVAILABLE",
+                     *       "retry_after": 30
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_market_info_api_v1_proxy_markets__condition_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                condition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketInfoResponse"];
+                };
+            };
+            /** @description Market not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Market not found",
+                     *       "code": "NOT_FOUND",
+                     *       "status": 404
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Polymarket API error (fallback may still return data) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "detail": "Polymarket API request failed",
+                     *       "code": "PROXY_ERROR",
+                     *       "status": 502
+                     *     }
+                     */
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     health_check_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    readiness_probe_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    liveness_probe_health_live_get: {
         parameters: {
             query?: never;
             header?: never;

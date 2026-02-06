@@ -23,7 +23,7 @@
       "Regenerate TypeScript types from OpenAPI spec",
       "Verify route works with test event slug"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "page_layout",

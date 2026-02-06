@@ -147,3 +147,14 @@ export {
   type UseTopHoldersParams,
   type UseMarketTokensParams,
 } from './use-polymarket-proxy';
+
+// Event hooks (Sprint 01 - Event Page Foundation)
+export {
+  useEvent,
+  useEvents,
+  type EventResponse,
+  type EventMarketResponse,
+  type EventMarketOutcome,
+  type EventListResponse,
+  type UseEventsParams,
+} from './use-event';
