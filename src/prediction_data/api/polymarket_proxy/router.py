@@ -8,7 +8,7 @@ Provides proxy endpoints for accessing Polymarket API data with:
 """
 
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -24,8 +24,10 @@ from prediction_data.api.polymarket_proxy.schemas import (
     PricePoint,
     ProxyHealthResponse,
     ProxyHealthStatus,
+    RecentTradesResponse,
     TokenInfo,
     TokenResolverStats,
+    Trade,
 )
 from prediction_data.api.polymarket_proxy.token_resolver import (
     TokenResolver,
@@ -503,4 +505,157 @@ async def get_token_resolver_stats(
         cache_hits=int(stats["cache_hits"]),
         cache_misses=int(stats["cache_misses"]),
         hit_rate=float(stats["hit_rate"]),
+    )
+
+
+# Trades cache TTL - moderate since trades update frequently but not as volatile as orderbook
+TRADES_CACHE_TTL = 30  # 30 seconds
+
+
+class TradeSide(str, Enum):
+    """Valid trade side filter values."""
+
+    BUY = "BUY"
+    SELL = "SELL"
+
+
+@router.get(
+    "/markets/{condition_id}/trades",
+    response_model=RecentTradesResponse,
+    summary="Get recent trades for a market",
+    description=(
+        "Get recent trades for a Polymarket market by condition ID. "
+        "Useful for activity feeds and trade history. "
+        "Results are cached for 30 seconds."
+    ),
+    responses={
+        502: {
+            "description": "Upstream Polymarket API error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Polymarket API request failed",
+                        "code": "PROXY_ERROR",
+                        "status": 502,
+                    }
+                }
+            },
+        },
+        503: {
+            "description": "Circuit breaker open",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Circuit breaker open for data API",
+                        "code": "SERVICE_UNAVAILABLE",
+                        "retry_after": 30,
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
+async def get_trades(
+    request: Request,
+    condition_id: str,
+    client: ProxyClient,
+    limit: int = Query(
+        50,
+        ge=1,
+        le=100,
+        description="Maximum number of trades to return (1-100).",
+    ),
+    side: TradeSide | None = Query(
+        None,
+        description="Filter by trade side (BUY or SELL).",
+    ),
+    maker: str | None = Query(
+        None,
+        description="Filter by maker wallet address.",
+    ),
+) -> RecentTradesResponse:
+    """Get recent trades for a market.
+
+    Proxies to Polymarket Data API `/trades` endpoint with caching.
+
+    Returns trades for the specified market condition ID, sorted by
+    timestamp descending (most recent first).
+
+    **Query parameters:**
+    - `limit`: Maximum trades to return (default 50, max 100)
+    - `side`: Filter by BUY or SELL
+    - `maker`: Filter by specific maker wallet address
+
+    **Cache TTL:** 30 seconds
+    """
+    # Build query params for upstream
+    params: dict[str, str | int] = {
+        "market": condition_id,
+        "limit": limit,
+    }
+
+    if side is not None:
+        params["side"] = side.value
+    if maker is not None:
+        params["user"] = maker
+
+    try:
+        data, cache_status = await client.get_data(
+            "/trades",
+            params,
+            cache_ttl=TRADES_CACHE_TTL,
+        )
+    except RuntimeError as e:
+        # Circuit breaker open
+        if "Circuit breaker open" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": str(e),
+                    "code": "SERVICE_UNAVAILABLE",
+                    "retry_after": 30,
+                },
+                headers={"Retry-After": "30"},
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+
+    # Data API returns an array directly
+    trades_data: list[dict[str, Any]] = data if isinstance(data, list) else []
+
+    # Transform response
+    trades: list[Trade] = []
+    for t in trades_data:
+        trade = Trade(
+            id=str(t.get("transactionHash", "")),
+            price=str(t.get("price", "0")),
+            size=str(t.get("size", "0")),
+            side=str(t.get("side", "BUY")),
+            timestamp=int(t.get("timestamp", 0)),
+            maker_address=str(t["proxyWallet"]) if t.get("proxyWallet") else None,
+            outcome=str(t["outcome"]) if t.get("outcome") else None,
+            outcome_index=int(t["outcomeIndex"]) if t.get("outcomeIndex") is not None else None,
+        )
+        trades.append(trade)
+
+    return RecentTradesResponse(
+        token_id=condition_id,
+        trades=trades,
+        count=len(trades),
+        has_more=len(trades) >= limit,
+        cache_status=cache_status,
     )

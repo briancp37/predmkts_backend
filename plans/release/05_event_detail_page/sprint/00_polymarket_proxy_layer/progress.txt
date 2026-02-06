@@ -81,6 +81,23 @@
 - Includes `tick_size` and `min_order_size` from upstream
 - Proper error handling for 404 (token not found), 502, 503
 
+### trades_proxy (2026-02-06)
+- Added `GET /api/v1/proxy/markets/{condition_id}/trades` endpoint to `router.py`:
+  - Proxies to Polymarket Data API `/trades` endpoint
+  - Queries by market condition_id (not token_id like CLOB endpoints)
+  - Returns recent trades for activity feeds
+  - 30s cache TTL (trades update frequently but not as volatile as orderbook)
+- Added new schemas to `schemas.py`:
+  - `Trade` - single trade with id, price, size, side, timestamp, maker_address, outcome
+  - `RecentTradesResponse` - list of trades with count and has_more flag
+- Query parameters supported:
+  - `limit` (1-100, default 50) - max trades to return
+  - `side` (BUY/SELL) - filter by trade direction
+  - `maker` - filter by maker wallet address
+- Added `TradeSide` enum for validation
+- Proper error handling with 502 (upstream failure) and 503 (circuit breaker)
+- Response includes cache_status (HIT/MISS/STALE) for debugging
+
 ## In Progress
 
 

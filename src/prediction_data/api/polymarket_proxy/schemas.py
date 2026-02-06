@@ -281,3 +281,77 @@ class OrderBookResponse(BaseModel):
         description="Cache status: HIT, MISS, or STALE",
         json_schema_extra={"example": "MISS"},
     )
+
+
+class Trade(BaseModel):
+    """Single trade from the activity feed."""
+
+    id: str = Field(
+        ...,
+        description="Unique trade identifier (transaction hash)",
+        json_schema_extra={"example": "0x1234567890abcdef"},
+    )
+    price: str = Field(
+        ...,
+        description="Trade price (0-1 for probability)",
+        json_schema_extra={"example": "0.65"},
+    )
+    size: str = Field(
+        ...,
+        description="Trade size in tokens",
+        json_schema_extra={"example": "100.50"},
+    )
+    side: str = Field(
+        ...,
+        description="Trade side (BUY or SELL)",
+        json_schema_extra={"example": "BUY"},
+    )
+    timestamp: int = Field(
+        ...,
+        description="Unix timestamp in milliseconds",
+        json_schema_extra={"example": 1697875200000},
+    )
+    maker_address: str | None = Field(
+        None,
+        description="Wallet address of the maker",
+        json_schema_extra={"example": "0xabc123..."},
+    )
+    outcome: str | None = Field(
+        None,
+        description="Outcome name (e.g., 'Yes', 'No')",
+        json_schema_extra={"example": "Yes"},
+    )
+    outcome_index: int | None = Field(
+        None,
+        description="Outcome index (0 for Yes, 1 for No)",
+        json_schema_extra={"example": 0},
+    )
+
+
+class RecentTradesResponse(BaseModel):
+    """Response for recent trades query."""
+
+    token_id: str = Field(
+        ...,
+        description="Polymarket CLOB token ID or condition ID",
+        json_schema_extra={"example": "0x123abc"},
+    )
+    trades: list[Trade] = Field(
+        ...,
+        description="List of recent trades, most recent first",
+    )
+    count: int = Field(
+        ...,
+        description="Number of trades returned",
+        json_schema_extra={"example": 50},
+    )
+    has_more: bool = Field(
+        ...,
+        description="Whether more trades exist beyond the limit",
+        json_schema_extra={"example": True},
+    )
+    cache_status: str = Field(
+        ...,
+        description="Cache status: HIT, MISS, or STALE",
+        json_schema_extra={"example": "MISS"},
+    )
