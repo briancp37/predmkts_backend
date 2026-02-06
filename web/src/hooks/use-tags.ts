@@ -1,7 +1,7 @@
 /**
  * React Query hooks for tags functionality
  *
- * PRD #5 - Create React Query hooks for Markets page data fetching
+ * Sprint 05 - Updated to use FastAPI backend at /api/v1/markets/tags
  *
  * Provides:
  * - useTags(search?) - Fetch available market tags with optional search
@@ -18,13 +18,11 @@ export interface Tag {
   id: string;
   name: string;
   slug: string;
-  description: string | null;
   marketCount: number;
-  createdAt: string;
 }
 
 /**
- * Response type for GET /api/tags
+ * Response type for useTags hook
  */
 export interface TagsResponse {
   tags: Tag[];
@@ -40,7 +38,7 @@ export type TagSortBy = 'popular' | 'alphabetical';
  * Query parameters for useTags hook
  */
 export interface UseTagsParams {
-  /** Search filter for tag names */
+  /** Search filter for tag names (client-side filtering) */
   search?: string;
   /** Sort by popularity or alphabetically (default: popular) */
   sort?: TagSortBy;
@@ -51,32 +49,53 @@ export interface UseTagsParams {
 }
 
 /**
- * Fetch tags from the API
+ * Fetch tags from the FastAPI backend
  */
-async function fetchTags(params: Omit<UseTagsParams, 'enabled'>): Promise<TagsResponse> {
-  const searchParams = new URLSearchParams();
-
-  if (params.search) {
-    searchParams.set('search', params.search);
-  }
-  if (params.sort) {
-    searchParams.set('sort', params.sort);
-  }
-  if (params.limit !== undefined) {
-    searchParams.set('limit', String(params.limit));
-  }
-
-  const queryString = searchParams.toString();
-  const url = `/api/tags${queryString ? `?${queryString}` : ''}`;
-
-  const response = await fetch(url);
+async function fetchTags(): Promise<Tag[]> {
+  const response = await fetch('/api/v1/markets/tags');
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `Failed to fetch tags: ${response.status}`);
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `Failed to fetch tags: ${response.status}`);
   }
 
   return response.json();
+}
+
+/**
+ * Apply client-side filtering and sorting to tags
+ */
+function processTagsClientSide(
+  tags: Tag[],
+  params: Omit<UseTagsParams, 'enabled'>
+): TagsResponse {
+  let result = [...tags];
+
+  // Apply search filter (client-side)
+  if (params.search) {
+    const searchLower = params.search.toLowerCase();
+    result = result.filter(
+      (tag) =>
+        tag.name.toLowerCase().includes(searchLower) ||
+        tag.slug.toLowerCase().includes(searchLower)
+    );
+  }
+
+  // Apply sorting
+  if (params.sort === 'alphabetical') {
+    result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  // 'popular' sort is default from API (by marketCount desc)
+
+  // Apply limit
+  if (params.limit !== undefined) {
+    result = result.slice(0, params.limit);
+  }
+
+  return {
+    tags: result,
+    total: result.length,
+  };
 }
 
 /**
@@ -103,10 +122,11 @@ export function useTags(params: UseTagsParams = {}) {
   const { enabled = true, ...queryParams } = params;
 
   return useQuery({
-    queryKey: ['tags', queryParams],
-    queryFn: () => fetchTags(queryParams),
+    queryKey: ['tags'],
+    queryFn: fetchTags,
     enabled,
     // Tags don't change frequently, longer stale time
     staleTime: 5 * 60 * 1000, // 5 minutes
+    select: (data) => processTagsClientSide(data, queryParams),
   });
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Providers, type Session } from '../providers';
+import { Providers } from '../providers';
 
 /**
  * Metadata for the application
@@ -15,8 +15,6 @@ export const metadata = {
 
 export interface RootLayoutProps {
   children: React.ReactNode;
-  /** Optional session for testing or SSR hydration */
-  session?: Session | null;
 }
 
 /**
@@ -25,11 +23,11 @@ export interface RootLayoutProps {
  *
  * This component is the Vite equivalent of Next.js App Router's layout.tsx
  * It provides:
- * - Session context for authentication (via NextAuth)
+ * - AuthProvider for JWT-based authentication state
  * - React Query provider for data fetching
  */
-export function RootLayout({ children, session }: RootLayoutProps) {
-  return <Providers session={session}>{children}</Providers>;
+export function RootLayout({ children }: RootLayoutProps) {
+  return <Providers>{children}</Providers>;
 }
 
 export default RootLayout;

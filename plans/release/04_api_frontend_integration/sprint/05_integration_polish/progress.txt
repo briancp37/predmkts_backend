@@ -135,6 +135,41 @@
 - Version migration policy documented: breaking changes require new version (v2, v3), non-breaking additions allowed in existing version
 - Future considerations documented: Accept-Version header support can be added when needed
 
+### Frontend API Client Cleanup (2026-02-05)
+- Removed entire `web/src/app/api/` directory containing all old Next.js API routes:
+  - auth/[...nextauth]/, auth/register/
+  - markets/, traders/, events/, tags/, leaderboard/
+  - watchlist/, tracked-traders/, trades/, whales/
+  - jobs/ (sync-markets, ingest-trades, compute-leaderboard, etc.)
+- Removed `web/src/lib/prisma.ts` - Prisma client initialization
+- Removed `web/src/types/next-auth.d.ts` - NextAuth type extensions
+- Removed `web/src/lib/jobs/` directory - all job files that used Prisma
+- Removed `web/src/lib/smart-scores/` directory - smart score calculator (used Prisma)
+- Removed `web/src/lib/sync-metadata.ts` - metadata sync (used Prisma)
+- Removed `web/src/lib/auth.ts` - old auth utilities (used Prisma)
+- Removed `web/src/lib/clickhouse.ts`, `web/src/lib/clickhouse-s3.ts`, `web/src/lib/s3.ts` - unused backend utilities
+- Removed `web/src/lib/rate-limit.ts` - unused rate limit utilities
+- Removed `web/src/lib/polymarket/` directory - unused Polymarket API client
+- Removed dependencies from `web/package.json`:
+  - `next-auth` - no longer using NextAuth for auth
+  - `@auth/prisma-adapter` - NextAuth Prisma adapter
+  - `prisma` (devDependencies) - Prisma CLI
+  - `@prisma/client` - Prisma client
+  - `bcryptjs` and `@types/bcryptjs` - password hashing (now on backend)
+  - `@clickhouse/client` - ClickHouse client (not used in frontend)
+  - `@aws-sdk/client-s3` - S3 client (not used in frontend)
+  - `ws` and `@types/ws` - WebSocket client (not used)
+- Updated `web/src/hooks/use-tags.ts`:
+  - Changed from `/api/tags` to `/api/v1/markets/tags` (FastAPI backend)
+  - Implemented client-side filtering for search and sorting
+  - Removed unused `description` and `createdAt` fields from Tag interface
+- Updated `web/src/components/layout/root-layout.tsx`:
+  - Removed unused `session` prop (now using JWT-based auth via AuthProvider)
+  - Updated comments to reflect new auth architecture
+- Fixed `web/src/lib/api/auth-context.tsx`:
+  - Removed unused `newUser` variable in register function
+- TypeScript compilation passes (only pre-existing recharts type issues remain)
+
 ## In Progress
 
 ## Blockers

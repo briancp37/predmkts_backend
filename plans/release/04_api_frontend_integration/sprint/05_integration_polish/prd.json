@@ -146,7 +146,7 @@
       "Remove next-auth from package.json",
       "Update any remaining imports"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "End-to-End Testing",
