@@ -426,19 +426,21 @@ async def ingest_order_filled(
     bucket: str | None = None,
     since_timestamp: int | None = None,
 ) -> str:
-    """Ingest Polymarket OrderFilledEvents for a given date via Goldsky subgraph.
+    """Ingest Polymarket OrderFilledEvents for a single date via Goldsky subgraph.
 
-    Fetches all OrderFilledEvents from the Goldsky orderbook subgraph
-    and stores them in the Bronze layer as gzip-compressed JSONL files.
+    Fetches OrderFilledEvents from the Goldsky orderbook subgraph for a specific
+    date and stores them in the Bronze layer as gzip-compressed JSONL files.
 
-    When ``since_timestamp`` is provided, only records newer than that timestamp
-    are fetched (incremental mode).  Otherwise the full day is fetched.
+    This function is for single-date ingestion only. For incremental catchup
+    that spans multiple dates, use ``ingest_order_filled_incremental`` instead.
 
     Args:
-        dt: Data partition date in YYYY-MM-DD format.
+        dt: Data partition date in YYYY-MM-DD format. Events are filtered to
+            only include those with timestamps falling on this date.
         bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
         since_timestamp: If provided, fetch only records with
-            ``timestamp_gte=since_timestamp`` instead of using day boundaries.
+            ``timestamp_gte=since_timestamp`` instead of the day start.
+            Records are still filtered to only include those on ``dt``.
 
     Returns:
         The run_id for this ingestion run.
@@ -461,19 +463,21 @@ async def ingest_order_filled(
     run_ctx.bind_to_logger(dt=dt)
     run_ctx.log_start(logger)
 
+    # Compute day boundaries as Unix timestamps
+    dt_date = date_type.fromisoformat(dt)
+    day_start_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
+    )
+    day_end_ts = calendar.timegm(
+        datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
+    )
+
+    # Use since_timestamp if provided, but cap to day boundaries
     if since_timestamp is not None:
-        # Incremental mode: fetch from since_timestamp to now
-        start_ts = since_timestamp
-        end_ts = calendar.timegm(datetime.utcnow().timetuple())
+        start_ts = max(since_timestamp, day_start_ts)
     else:
-        # Full-day mode: compute day boundaries as Unix timestamps
-        dt_date = date_type.fromisoformat(dt)
-        start_ts = calendar.timegm(
-            datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0).timetuple()
-        )
-        end_ts = calendar.timegm(
-            datetime(dt_date.year, dt_date.month, dt_date.day, 23, 59, 59).timetuple()
-        )
+        start_ts = day_start_ts
+    end_ts = day_end_ts
 
     logger.info(
         "Starting Polymarket order_filled ingestion",
@@ -574,6 +578,146 @@ async def ingest_order_filled(
     run_ctx.log_end(logger)
 
     return run_ctx.run_id
+
+
+async def ingest_order_filled_incremental(
+    *,
+    bucket: str | None = None,
+    since_timestamp: int,
+) -> dict[str, str]:
+    """Ingest Polymarket OrderFilledEvents incrementally, partitioned by event date.
+
+    Fetches all OrderFilledEvents from ``since_timestamp`` to now and writes them
+    to the appropriate date partitions based on each event's timestamp. This ensures
+    events are stored under ``dt=YYYY-MM-DD`` where the date corresponds to when
+    the event occurred, not when the ingestion ran.
+
+    Args:
+        bucket: S3 bucket name (defaults to BRONZE_BUCKET from settings).
+        since_timestamp: Fetch only records with ``timestamp >= since_timestamp``.
+
+    Returns:
+        A dict mapping each date partition (YYYY-MM-DD) to its run_id.
+    """
+    import calendar
+    from collections import defaultdict
+    from datetime import date as date_type
+    from datetime import datetime
+    from datetime import timezone as tz
+    from uuid import uuid4
+
+    from prediction_data.bronze.polymarket.goldsky import (
+        GOLDSKY_API_BASE_URL,
+        GoldskyClient,
+    )
+    from prediction_data.storage.manifest import (
+        FileReference,
+        Manifest,
+        Source,
+    )
+
+    settings = get_settings()
+    bucket = bucket or settings.bronze_bucket
+    logger: structlog.stdlib.BoundLogger = get_logger(__name__)
+
+    end_ts = calendar.timegm(datetime.utcnow().timetuple())
+
+    logger.info(
+        "Starting incremental order_filled ingestion",
+        bucket=bucket,
+        timestamp_gte=since_timestamp,
+        timestamp_lte=end_ts,
+    )
+
+    # Track state per date partition
+    # Each date gets its own run_id, files, and counters
+    date_runs: dict[str, str] = {}  # dt -> run_id
+    date_files: dict[str, list[FileReference]] = defaultdict(list)
+    date_counts: dict[str, int] = defaultdict(int)
+    date_max_ts: dict[str, int] = {}
+    date_parts: dict[str, int] = defaultdict(int)
+
+    async with GoldskyClient() as client, S3Client(bucket=bucket) as s3_client:
+        async for batch in client.iter_order_filled_batches(
+            timestamp_gte=since_timestamp, timestamp_lte=end_ts,
+        ):
+            s3_client.reset_client()
+
+            # Group events by their timestamp date
+            events_by_date: dict[str, list[dict]] = defaultdict(list)
+            for evt in batch:
+                ts_val = evt.get("timestamp")
+                if ts_val is not None:
+                    ts_int = int(ts_val)
+                    evt_date = datetime.fromtimestamp(ts_int, tz=tz.utc).strftime("%Y-%m-%d")
+                    events_by_date[evt_date].append(evt)
+
+                    # Track max timestamp per date
+                    if evt_date not in date_max_ts or ts_int > date_max_ts[evt_date]:
+                        date_max_ts[evt_date] = ts_int
+
+            # Write events for each date to their respective partitions
+            for dt_str, events in events_by_date.items():
+                # Create run_id for this date if not exists
+                if dt_str not in date_runs:
+                    date_runs[dt_str] = str(uuid4())
+
+                run_id = date_runs[dt_str]
+                part_number = date_parts[dt_str]
+
+                data_key, row_count = await s3_client.upload_jsonl(
+                    records=events,
+                    platform="polymarket",
+                    entity="order_filled",
+                    dt=dt_str,
+                    run_id=run_id,
+                    part_number=part_number,
+                )
+
+                date_files[dt_str].append(FileReference(bucket=bucket, key=data_key))
+                date_counts[dt_str] += row_count
+                date_parts[dt_str] += 1
+
+                # Write manifest for this date
+                manifest = Manifest(
+                    run_id=run_id,
+                    platform="polymarket",
+                    entity="order_filled",
+                    dt=dt_str,
+                    generated_at=datetime.now(tz.utc),
+                    files=list(date_files[dt_str]),
+                    row_count=date_counts[dt_str],
+                    source=Source(
+                        api_base_url=GOLDSKY_API_BASE_URL,
+                        pagination="cursor",
+                        cursor=None,
+                        latest_timestamp=date_max_ts.get(dt_str),
+                    ),
+                )
+                await s3_client.upload_manifest(manifest)
+
+            # Log progress
+            total_events = sum(len(evts) for evts in events_by_date.values())
+            logger.info(
+                "Processed order_filled batch",
+                batch_size=total_events,
+                dates_in_batch=list(events_by_date.keys()),
+                total_dates=len(date_runs),
+            )
+
+    # Log final summary
+    total_all = sum(date_counts.values())
+    if total_all == 0:
+        logger.info("No order_filled events found in incremental range")
+    else:
+        logger.info(
+            "Incremental order_filled ingestion complete",
+            total_rows=total_all,
+            dates_processed=len(date_runs),
+            date_breakdown={dt: date_counts[dt] for dt in sorted(date_runs.keys())},
+        )
+
+    return date_runs
 
 
 def run_ingest_order_filled(

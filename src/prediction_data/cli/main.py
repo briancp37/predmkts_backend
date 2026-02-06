@@ -721,7 +721,8 @@ def backfill_catchup(
                 try:
                     if e == "order_filled":
                         # order_filled: timestamp-incremental via Goldsky
-                        today_str = today.isoformat()
+                        # Events are partitioned by their event timestamp date,
+                        # not by when the ingestion runs.
                         latest_date, latest_ts = await find_latest_manifest_source(
                             s3, p, e
                         )
@@ -733,30 +734,35 @@ def backfill_catchup(
                             )
                             continue
 
+                        if latest_ts is None:
+                            typer.echo(
+                                f"SKIP {label}: no timestamp cursor in latest manifest "
+                                f"(dt={latest_date})"
+                            )
+                            continue
+
                         if dry_run:
-                            if latest_ts is not None:
-                                typer.echo(
-                                    f"[dry-run] Would incrementally ingest {label} "
-                                    f"since_timestamp={latest_ts}"
-                                )
-                            else:
-                                typer.echo(
-                                    f"[dry-run] Would ingest {label} "
-                                    f"(full day for {today_str}, "
-                                    f"no timestamp in latest manifest)"
-                                )
+                            typer.echo(
+                                f"[dry-run] Would incrementally ingest {label} "
+                                f"since_timestamp={latest_ts} "
+                                f"(events partitioned by event date)"
+                            )
                             continue
 
                         from prediction_data.bronze.polymarket import (
                             ingest as pm_ingest,
                         )
 
-                        run_id = await pm_ingest.ingest_order_filled(
-                            today_str,
+                        # Use incremental function that partitions by event date
+                        date_runs = await pm_ingest.ingest_order_filled_incremental(
                             bucket=bucket,
                             since_timestamp=latest_ts,
                         )
-                        typer.echo(f"OK {label} dt={today_str} run_id={run_id}")
+                        if date_runs:
+                            dates_str = ", ".join(sorted(date_runs.keys()))
+                            typer.echo(f"OK {label} dates=[{dates_str}]")
+                        else:
+                            typer.echo(f"OK {label} (no new events)")
 
                     elif _is_date_scoped_entity(e):
                         # Date-scoped: find latest date, backfill missing days

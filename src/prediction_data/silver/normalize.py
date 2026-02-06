@@ -253,7 +253,7 @@ class PolymarketMarketsNormalizer(Normalizer):
             "description": _safe_str(record.get("description")),
             "market_slug": _safe_str(record.get("market_slug") or record.get("slug")),
             "status": _safe_str(record.get("status") or record.get("active")),
-            "outcome": _safe_str(record.get("outcome")),
+            "outcome": _safe_str(record.get("outcomes") or record.get("outcome")),
             "tokens": tokens_str,
             "event_id": _safe_str(event_id),
             "updated_at": updated_at,

@@ -128,7 +128,12 @@ def _read_silver_markets(
     platform: str,
     catalog: Catalog | None = None,
 ) -> pa.Table:
-    """Read the Silver markets table for *platform* via PyIceberg."""
+    """Read the Silver markets table for *platform* via PyIceberg.
+
+    Deduplicates by platform_market_id, keeping the record with the latest
+    updated_at timestamp. This supports append-only Silver ingestion where
+    duplicates are cleaned up during maintenance compaction.
+    """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
 
@@ -136,7 +141,23 @@ def _read_silver_markets(
 
     namespace = f"silver_{platform}"
     table = catalog.load_table((namespace, "markets"))
-    return table.scan().to_arrow()
+    arrow = table.scan().to_arrow()
+
+    # Dedupe: keep latest record per platform_market_id by updated_at
+    if arrow.num_rows == 0:
+        return arrow
+
+    records = arrow.to_pylist()
+    latest_by_id: dict[str, dict[str, Any]] = {}
+    for rec in records:
+        market_id = rec.get("platform_market_id", "")
+        updated_at = rec.get("updated_at")
+        existing = latest_by_id.get(market_id)
+        if existing is None or (updated_at and updated_at > existing.get("updated_at")):
+            latest_by_id[market_id] = rec
+
+    deduped = list(latest_by_id.values())
+    return pa.Table.from_pylist(deduped, schema=arrow.schema)
 
 
 def _silver_to_dim_market(
@@ -238,20 +259,19 @@ DIM_OUTCOME_SCHEMA = pa.schema(
 DIM_OUTCOME_COLUMNS = [f.name for f in DIM_OUTCOME_SCHEMA]
 
 
-def parse_tokens(tokens_json: str | None) -> list[dict[str, str]]:
-    """Parse a JSON tokens string into a list of token dicts.
+def _parse_json_array(json_str: str | None) -> list[str]:
+    """Parse a JSON array string into a list of strings.
 
-    Each token dict is expected to have ``token_id`` and ``outcome`` keys.
-    Returns an empty list on *None*, empty string, or invalid JSON.
+    Returns an empty list on None, empty string, or invalid JSON.
     """
-    if not tokens_json:
+    if not json_str:
         return []
     try:
-        parsed = json.loads(tokens_json)
+        parsed = json.loads(json_str)
     except (json.JSONDecodeError, TypeError):
         return []
     if isinstance(parsed, list):
-        return [t for t in parsed if isinstance(t, dict)]
+        return [str(item) for item in parsed]
     return []
 
 
@@ -263,6 +283,10 @@ def _silver_to_dim_outcome(
 
     Each market with N tokens produces N outcome rows.  The *side* field is
     ``token1`` for index 0, ``token2`` for index 1, etc.
+
+    Silver markets have:
+    - tokens: JSON array of token ID strings (e.g. '["123...", "456..."]')
+    - outcome: JSON array of outcome labels (e.g. '["Yes", "No"]' or '["Over", "Under"]')
     """
     records = arrow.to_pylist()
 
@@ -270,11 +294,12 @@ def _silver_to_dim_outcome(
 
     for rec in records:
         market_id = str(rec.get("platform_market_id", "") or "")
-        tokens = parse_tokens(rec.get("tokens"))
+        token_ids = _parse_json_array(rec.get("tokens"))
+        outcome_labels = _parse_json_array(rec.get("outcome"))
 
-        for idx, tok in enumerate(tokens):
-            token_id = str(tok.get("token_id", "") or "")
-            outcome_label = str(tok.get("outcome", "") or "")
+        # Pair token IDs with outcome labels; if no labels, use empty strings
+        for idx, token_id in enumerate(token_ids):
+            outcome_label = outcome_labels[idx] if idx < len(outcome_labels) else ""
             # outcome_id: deterministic composite key
             outcome_id = f"{market_id}_{idx}"
             side = f"token{idx + 1}"
@@ -495,7 +520,12 @@ def _read_silver_events(
     platform: str,
     catalog: Catalog | None = None,
 ) -> pa.Table:
-    """Read the Silver events table for *platform* via PyIceberg."""
+    """Read the Silver events table for *platform* via PyIceberg.
+
+    Deduplicates by platform_event_id, keeping the record with the latest
+    updated_at timestamp. This supports append-only Silver ingestion where
+    duplicates are cleaned up during maintenance compaction.
+    """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
 
@@ -503,7 +533,23 @@ def _read_silver_events(
 
     namespace = f"silver_{platform}"
     table = catalog.load_table((namespace, "events"))
-    return table.scan().to_arrow()
+    arrow = table.scan().to_arrow()
+
+    # Dedupe: keep latest record per platform_event_id by updated_at
+    if arrow.num_rows == 0:
+        return arrow
+
+    records = arrow.to_pylist()
+    latest_by_id: dict[str, dict[str, Any]] = {}
+    for rec in records:
+        event_id = rec.get("platform_event_id", "")
+        updated_at = rec.get("updated_at")
+        existing = latest_by_id.get(event_id)
+        if existing is None or (updated_at and updated_at > existing.get("updated_at")):
+            latest_by_id[event_id] = rec
+
+    deduped = list(latest_by_id.values())
+    return pa.Table.from_pylist(deduped, schema=arrow.schema)
 
 
 def _silver_to_dim_event(
