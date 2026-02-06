@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     polymarket_proxy_cache_ttl: int = 30  # Default cache TTL in seconds
     polymarket_proxy_timeout: float = 10.0  # Request timeout in seconds
 
+    # Redis settings for distributed caching (optional)
+    # When REDIS_URL is set, ProxyCache uses Redis instead of in-memory cache
+    redis_url: str | None = None  # e.g., redis://localhost:6379/0
+
     # PostgreSQL settings (for API user data)
     postgres_host: str = "localhost"
     postgres_port: int = 5432

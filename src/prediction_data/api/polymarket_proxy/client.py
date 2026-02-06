@@ -5,7 +5,7 @@ with built-in resilience patterns including:
 - Exponential backoff retry on transient failures
 - Rate limiting to stay under Polymarket limits
 - Circuit breaker to prevent cascading failures
-- Response caching with configurable TTL
+- Response caching with configurable TTL (Redis or in-memory)
 - Stale-while-error: returns cached data on transient failures
 
 Rate limits (from CLAUDE.md):
@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import random
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -122,38 +124,313 @@ class CacheEntry:
         return self.expires_at <= now < (self.expires_at + stale_threshold)
 
 
-class ProxyCache:
-    """In-memory cache for proxied responses.
+class CacheBackend(ABC):
+    """Abstract base class for cache backends."""
 
-    Supports cache-aside pattern with TTL and stale-while-revalidate.
-    Cache keys are generated from endpoint + params hash.
+    @abstractmethod
+    async def get(self, key: str) -> tuple[dict[str, Any] | None, float | None]:
+        """Get cached value.
+
+        Args:
+            key: Cache key.
+
+        Returns:
+            Tuple of (data or None, expires_at or None).
+        """
+        pass
+
+    @abstractmethod
+    async def set(self, key: str, data: dict[str, Any], ttl: int) -> None:
+        """Set cached value.
+
+        Args:
+            key: Cache key.
+            data: Data to cache.
+            ttl: TTL in seconds.
+        """
+        pass
+
+    @abstractmethod
+    async def delete(self, key: str) -> bool:
+        """Delete a cache entry.
+
+        Args:
+            key: Cache key.
+
+        Returns:
+            True if the entry was deleted.
+        """
+        pass
+
+    @abstractmethod
+    async def delete_pattern(self, pattern: str) -> int:
+        """Delete cache entries matching a pattern.
+
+        Args:
+            pattern: Key prefix pattern to match.
+
+        Returns:
+            Number of entries deleted.
+        """
+        pass
+
+    @abstractmethod
+    async def clear(self) -> int:
+        """Clear all cache entries.
+
+        Returns:
+            Number of entries cleared.
+        """
+        pass
+
+    @abstractmethod
+    def size(self) -> int:
+        """Get current cache size."""
+        pass
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Close the cache backend connection."""
+        pass
+
+
+class InMemoryCacheBackend(CacheBackend):
+    """In-memory cache backend using a dictionary."""
+
+    def __init__(self, max_size: int = 10000) -> None:
+        self._cache: dict[str, tuple[dict[str, Any], float]] = {}
+        self._max_size = max_size
+
+    async def get(self, key: str) -> tuple[dict[str, Any] | None, float | None]:
+        entry = self._cache.get(key)
+        if entry is None:
+            return None, None
+        return entry[0], entry[1]
+
+    async def set(self, key: str, data: dict[str, Any], ttl: int) -> None:
+        # Evict if over max size
+        if len(self._cache) >= self._max_size:
+            self._evict_expired()
+            if len(self._cache) >= self._max_size:
+                self._evict_oldest(len(self._cache) - self._max_size + 100)
+
+        expires_at = time.monotonic() + ttl
+        self._cache[key] = (data, expires_at)
+
+    async def delete(self, key: str) -> bool:
+        if key in self._cache:
+            del self._cache[key]
+            return True
+        return False
+
+    async def delete_pattern(self, pattern: str) -> int:
+        keys_to_remove = [k for k in self._cache if k.startswith(pattern)]
+        for key in keys_to_remove:
+            del self._cache[key]
+        return len(keys_to_remove)
+
+    async def clear(self) -> int:
+        count = len(self._cache)
+        self._cache.clear()
+        return count
+
+    def size(self) -> int:
+        return len(self._cache)
+
+    async def close(self) -> None:
+        self._cache.clear()
+
+    def _evict_expired(self) -> None:
+        now = time.monotonic()
+        keys_to_remove = [k for k, (_, exp) in self._cache.items() if exp <= now]
+        for key in keys_to_remove:
+            del self._cache[key]
+
+    def _evict_oldest(self, count: int) -> None:
+        if count <= 0:
+            return
+        sorted_keys = sorted(self._cache.keys(), key=lambda k: self._cache[k][1])
+        for key in sorted_keys[:count]:
+            del self._cache[key]
+
+
+class RedisCacheBackend(CacheBackend):
+    """Redis cache backend for distributed caching.
+
+    Requires redis-py[hiredis] package to be installed.
     """
 
-    def __init__(self, default_ttl: int = 30, max_size: int = 10000) -> None:
+    def __init__(self, redis_url: str) -> None:
+        self._redis_url = redis_url
+        self._redis: Any = None  # redis.asyncio.Redis
+        self._logger = get_logger(__name__)
+
+    async def _get_client(self) -> Any:
+        """Get or create Redis client."""
+        if self._redis is None:
+            try:
+                import redis.asyncio as redis_async  # type: ignore[import-not-found]
+
+                self._redis = redis_async.from_url(
+                    self._redis_url,
+                    encoding="utf-8",
+                    decode_responses=False,  # We'll handle encoding ourselves
+                )
+            except ImportError:
+                self._logger.error(
+                    "redis package not installed. Install with: pip install redis[hiredis]"
+                )
+                raise
+        return self._redis
+
+    async def get(self, key: str) -> tuple[dict[str, Any] | None, float | None]:
+        try:
+            client = await self._get_client()
+            # Get data and TTL in a pipeline
+            pipe = client.pipeline()
+            pipe.get(key)
+            pipe.ttl(key)
+            results = await pipe.execute()
+
+            data_bytes, ttl = results
+            if data_bytes is None:
+                return None, None
+
+            data = json.loads(data_bytes)
+            # Convert TTL to absolute expiration time
+            expires_at = time.monotonic() + ttl if ttl > 0 else None
+            return data, expires_at
+
+        except Exception as e:
+            self._logger.warning(
+                "Redis cache get failed, returning miss",
+                key=key,
+                error=str(e),
+            )
+            return None, None
+
+    async def set(self, key: str, data: dict[str, Any], ttl: int) -> None:
+        try:
+            client = await self._get_client()
+            data_bytes = json.dumps(data).encode("utf-8")
+            await client.setex(key, ttl, data_bytes)
+        except Exception as e:
+            self._logger.warning(
+                "Redis cache set failed",
+                key=key,
+                error=str(e),
+            )
+
+    async def delete(self, key: str) -> bool:
+        try:
+            client = await self._get_client()
+            result = await client.delete(key)
+            return bool(result > 0)
+        except Exception as e:
+            self._logger.warning(
+                "Redis cache delete failed",
+                key=key,
+                error=str(e),
+            )
+            return False
+
+    async def delete_pattern(self, pattern: str) -> int:
+        try:
+            client = await self._get_client()
+            # Use SCAN to find keys matching the pattern
+            count = 0
+            cursor = 0
+            while True:
+                cursor, keys = await client.scan(
+                    cursor=cursor,
+                    match=f"{pattern}*",
+                    count=100,
+                )
+                if keys:
+                    await client.delete(*keys)
+                    count += len(keys)
+                if cursor == 0:
+                    break
+            return count
+        except Exception as e:
+            self._logger.warning(
+                "Redis cache delete_pattern failed",
+                pattern=pattern,
+                error=str(e),
+            )
+            return 0
+
+    async def clear(self) -> int:
+        # Clear only polymarket keys, not the entire Redis
+        return await self.delete_pattern("polymarket:")
+
+    def size(self) -> int:
+        # Size is not tracked for Redis (would require expensive SCAN)
+        return -1
+
+    async def close(self) -> None:
+        if self._redis is not None:
+            await self._redis.close()
+            self._redis = None
+
+
+class ProxyCache:
+    """Cache for proxied responses with Redis or in-memory backend.
+
+    Supports cache-aside pattern with TTL and stale-while-revalidate.
+    Cache keys follow format: polymarket:{endpoint}:{params_hash}
+
+    Uses Redis if REDIS_URL is configured, otherwise falls back to in-memory.
+    """
+
+    # Stale threshold: how long past TTL we'll still return stale data
+    STALE_THRESHOLD = 60.0  # seconds
+
+    def __init__(
+        self,
+        default_ttl: int = 30,
+        max_size: int = 10000,
+        redis_url: str | None = None,
+    ) -> None:
         """Initialize the cache.
 
         Args:
             default_ttl: Default TTL in seconds.
-            max_size: Maximum number of entries before eviction.
+            max_size: Maximum entries for in-memory cache (ignored for Redis).
+            redis_url: Redis connection URL. If None, uses in-memory cache.
         """
-        self._cache: dict[str, CacheEntry] = {}
         self._default_ttl = default_ttl
-        self._max_size = max_size
         self._hits = 0
         self._misses = 0
+        self._logger = get_logger(__name__)
+
+        # Choose backend based on redis_url
+        if redis_url:
+            self._backend: CacheBackend = RedisCacheBackend(redis_url)
+            self._backend_type = "redis"
+            self._logger.info("Using Redis cache backend", redis_url=redis_url[:30] + "...")
+        else:
+            self._backend = InMemoryCacheBackend(max_size=max_size)
+            self._backend_type = "memory"
+            self._logger.info("Using in-memory cache backend")
 
     def _make_key(self, endpoint: str, params: dict[str, Any] | None = None) -> str:
-        """Generate cache key from endpoint and params."""
-        key_parts = [endpoint]
+        """Generate cache key from endpoint and params.
+
+        Format: polymarket:{endpoint}:{params_hash}
+        """
+        # Normalize endpoint (remove leading slash)
+        normalized_endpoint = endpoint.lstrip("/")
+
         if params:
             # Sort params for consistent hashing
             sorted_params = sorted(params.items())
             params_str = str(sorted_params)
             params_hash = hashlib.md5(params_str.encode()).hexdigest()[:12]
-            key_parts.append(params_hash)
-        return ":".join(key_parts)
+            return f"polymarket:{normalized_endpoint}:{params_hash}"
+        return f"polymarket:{normalized_endpoint}"
 
-    def get(
+    async def get(
         self, endpoint: str, params: dict[str, Any] | None = None
     ) -> tuple[dict[str, Any] | None, str]:
         """Get cached value if available.
@@ -167,25 +444,48 @@ class ProxyCache:
             "HIT", "MISS", "STALE".
         """
         key = self._make_key(endpoint, params)
-        entry = self._cache.get(key)
+        data, expires_at = await self._backend.get(key)
 
-        if entry is None:
+        if data is None:
             self._misses += 1
+            self._logger.debug(
+                "Cache miss",
+                key=key,
+                cache_status="MISS",
+            )
             return None, "MISS"
 
-        if entry.is_expired():
-            if entry.is_stale():
+        now = time.monotonic()
+
+        # Check if expired
+        if expires_at is not None and expires_at <= now:
+            # Check if within stale threshold
+            if expires_at + self.STALE_THRESHOLD > now:
                 self._hits += 1
-                return entry.data, "STALE"
-            # Too old, remove it
-            del self._cache[key]
+                self._logger.debug(
+                    "Cache stale hit",
+                    key=key,
+                    cache_status="STALE",
+                )
+                return data, "STALE"
+            # Too old, treat as miss (but don't delete, backend will handle expiry)
             self._misses += 1
+            self._logger.debug(
+                "Cache expired miss",
+                key=key,
+                cache_status="MISS",
+            )
             return None, "MISS"
 
         self._hits += 1
-        return entry.data, "HIT"
+        self._logger.debug(
+            "Cache hit",
+            key=key,
+            cache_status="HIT",
+        )
+        return data, "HIT"
 
-    def set(
+    async def set(
         self,
         endpoint: str,
         params: dict[str, Any] | None,
@@ -200,56 +500,48 @@ class ProxyCache:
             data: Response data to cache.
             ttl: TTL in seconds (uses default if not specified).
         """
-        # Evict if over max size
-        if len(self._cache) >= self._max_size:
-            self._evict_expired()
-            if len(self._cache) >= self._max_size:
-                # Still over, remove oldest entries
-                self._evict_oldest(len(self._cache) - self._max_size + 100)
-
         key = self._make_key(endpoint, params)
         ttl = ttl or self._default_ttl
-        now = time.monotonic()
-        self._cache[key] = CacheEntry(data=data, expires_at=now + ttl)
+        await self._backend.set(key, data, ttl)
+        self._logger.debug(
+            "Cache set",
+            key=key,
+            ttl=ttl,
+        )
 
-    def invalidate(self, pattern: str | None = None) -> int:
+    async def invalidate(self, pattern: str | None = None) -> int:
         """Invalidate cache entries matching pattern.
 
         Args:
-            pattern: Key prefix to match (None = clear all).
+            pattern: Key prefix to match (None = clear all polymarket keys).
 
         Returns:
             Number of entries removed.
         """
         if pattern is None:
-            count = len(self._cache)
-            self._cache.clear()
-            return count
+            count = await self._backend.clear()
+        else:
+            # Ensure pattern starts with polymarket: prefix
+            if not pattern.startswith("polymarket:"):
+                pattern = f"polymarket:{pattern}"
+            count = await self._backend.delete_pattern(pattern)
 
-        keys_to_remove = [k for k in self._cache if k.startswith(pattern)]
-        for key in keys_to_remove:
-            del self._cache[key]
-        return len(keys_to_remove)
+        self._logger.info(
+            "Cache invalidated",
+            pattern=pattern,
+            count=count,
+        )
+        return count
 
-    def _evict_expired(self) -> None:
-        """Remove all expired entries."""
-        keys_to_remove = [k for k, v in self._cache.items() if v.is_expired()]
-        for key in keys_to_remove:
-            del self._cache[key]
-
-    def _evict_oldest(self, count: int) -> None:
-        """Remove the oldest entries."""
-        if count <= 0:
-            return
-        sorted_keys = sorted(self._cache.keys(), key=lambda k: self._cache[k].created_at)
-        for key in sorted_keys[:count]:
-            del self._cache[key]
+    async def close(self) -> None:
+        """Close the cache backend connection."""
+        await self._backend.close()
 
     @property
-    def stats(self) -> dict[str, int | float]:
+    def stats(self) -> dict[str, int | float | str]:
         """Return cache statistics."""
         return {
-            "size": len(self._cache),
+            "size": self._backend.size(),
             "hits": self._hits,
             "misses": self._misses,
             "hit_rate": (
@@ -257,6 +549,7 @@ class ProxyCache:
                 if (self._hits + self._misses) > 0
                 else 0.0
             ),
+            "backend": self._backend_type,
         }
 
 
@@ -288,12 +581,14 @@ class PolymarketProxyClient:
         *,
         cache_ttl: int | None = None,
         timeout: float | None = None,
+        redis_url: str | None = None,
     ) -> None:
         """Initialize the proxy client.
 
         Args:
             cache_ttl: Default cache TTL in seconds.
             timeout: Request timeout in seconds.
+            redis_url: Redis URL for distributed caching. If None, uses settings or in-memory.
         """
         settings = get_settings()
         self._clob_url = settings.polymarket_clob_url
@@ -316,8 +611,12 @@ class PolymarketProxyClient:
         self._data_circuit = CircuitBreaker()
         self._gamma_circuit = CircuitBreaker()
 
-        # Cache
-        self._cache = ProxyCache(default_ttl=self._cache_ttl)
+        # Cache - use Redis if configured, otherwise in-memory
+        effective_redis_url = redis_url or settings.redis_url
+        self._cache = ProxyCache(
+            default_ttl=self._cache_ttl,
+            redis_url=effective_redis_url,
+        )
 
     async def __aenter__(self) -> PolymarketProxyClient:
         """Enter async context manager."""
@@ -550,8 +849,14 @@ class PolymarketProxyClient:
         cache_key = f"clob:{endpoint}"
 
         if not skip_cache:
-            cached, status = self._cache.get(cache_key, params)
+            cached, status = await self._cache.get(cache_key, params)
             if cached is not None and status != "MISS":
+                self._logger.info(
+                    "Cache lookup",
+                    api="clob",
+                    endpoint=endpoint,
+                    cache_status=status,
+                )
                 return cached, status
 
         url = f"{self._clob_url}{endpoint}"
@@ -565,19 +870,26 @@ class PolymarketProxyClient:
             data = response.json()
 
             if not skip_cache:
-                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+                await self._cache.set(cache_key, params, data, ttl=cache_ttl)
 
+            self._logger.info(
+                "Cache lookup",
+                api="clob",
+                endpoint=endpoint,
+                cache_status="MISS",
+            )
             return data, "MISS"
 
         except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
             # Try to return stale cached data on transient failures
             if stale_on_error and not skip_cache:
-                stale_data, stale_status = self._cache.get(cache_key, params)
+                stale_data, stale_status = await self._cache.get(cache_key, params)
                 if stale_data is not None:
                     self._logger.info(
                         "Returning stale cached data after error",
                         api="clob",
                         endpoint=endpoint,
+                        cache_status="STALE",
                         error_type=type(e).__name__,
                     )
                     return stale_data, "STALE"
@@ -612,8 +924,14 @@ class PolymarketProxyClient:
         cache_key = f"data:{endpoint}"
 
         if not skip_cache:
-            cached, status = self._cache.get(cache_key, params)
+            cached, status = await self._cache.get(cache_key, params)
             if cached is not None and status != "MISS":
+                self._logger.info(
+                    "Cache lookup",
+                    api="data",
+                    endpoint=endpoint,
+                    cache_status=status,
+                )
                 return cached, status
 
         url = f"{self._data_url}{endpoint}"
@@ -627,19 +945,26 @@ class PolymarketProxyClient:
             data = response.json()
 
             if not skip_cache:
-                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+                await self._cache.set(cache_key, params, data, ttl=cache_ttl)
 
+            self._logger.info(
+                "Cache lookup",
+                api="data",
+                endpoint=endpoint,
+                cache_status="MISS",
+            )
             return data, "MISS"
 
         except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
             # Try to return stale cached data on transient failures
             if stale_on_error and not skip_cache:
-                stale_data, stale_status = self._cache.get(cache_key, params)
+                stale_data, stale_status = await self._cache.get(cache_key, params)
                 if stale_data is not None:
                     self._logger.info(
                         "Returning stale cached data after error",
                         api="data",
                         endpoint=endpoint,
+                        cache_status="STALE",
                         error_type=type(e).__name__,
                     )
                     return stale_data, "STALE"
@@ -674,8 +999,14 @@ class PolymarketProxyClient:
         cache_key = f"gamma:{endpoint}"
 
         if not skip_cache:
-            cached, status = self._cache.get(cache_key, params)
+            cached, status = await self._cache.get(cache_key, params)
             if cached is not None and status != "MISS":
+                self._logger.info(
+                    "Cache lookup",
+                    api="gamma",
+                    endpoint=endpoint,
+                    cache_status=status,
+                )
                 return cached, status
 
         url = f"{self._gamma_url}{endpoint}"
@@ -689,19 +1020,26 @@ class PolymarketProxyClient:
             data = response.json()
 
             if not skip_cache:
-                self._cache.set(cache_key, params, data, ttl=cache_ttl)
+                await self._cache.set(cache_key, params, data, ttl=cache_ttl)
 
+            self._logger.info(
+                "Cache lookup",
+                api="gamma",
+                endpoint=endpoint,
+                cache_status="MISS",
+            )
             return data, "MISS"
 
         except (CircuitOpenError, UpstreamRateLimitError, ProxyError) as e:
             # Try to return stale cached data on transient failures
             if stale_on_error and not skip_cache:
-                stale_data, stale_status = self._cache.get(cache_key, params)
+                stale_data, stale_status = await self._cache.get(cache_key, params)
                 if stale_data is not None:
                     self._logger.info(
                         "Returning stale cached data after error",
                         api="gamma",
                         endpoint=endpoint,
+                        cache_status="STALE",
                         error_type=type(e).__name__,
                     )
                     return stale_data, "STALE"
@@ -719,7 +1057,7 @@ class PolymarketProxyClient:
             "gamma": self._gamma_circuit.state.value,
         }
 
-    def invalidate_cache(self, pattern: str | None = None) -> int:
+    async def invalidate_cache(self, pattern: str | None = None) -> int:
         """Invalidate cache entries.
 
         Args:
@@ -728,7 +1066,7 @@ class PolymarketProxyClient:
         Returns:
             Number of entries removed.
         """
-        return self._cache.invalidate(pattern)
+        return await self._cache.invalidate(pattern)
 
     async def health_check(self) -> dict[str, Any]:
         """Check health of Polymarket APIs.
@@ -804,5 +1142,6 @@ async def close_proxy_client() -> None:
     """
     global _proxy_client
     if _proxy_client is not None:
+        await _proxy_client._cache.close()
         await _proxy_client.__aexit__(None, None, None)
         _proxy_client = None

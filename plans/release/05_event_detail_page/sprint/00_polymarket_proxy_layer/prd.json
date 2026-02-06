@@ -119,7 +119,7 @@
       "Support cache invalidation by pattern",
       "Add X-Cache header to responses (HIT/MISS/STALE)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "frontend_hooks",

@@ -159,6 +159,37 @@
 - Respects user privacy: only shows name if `displayUsernamePublic` is true
 - Response includes cache_status (HIT/MISS/STALE) for debugging
 
+### caching_layer (2026-02-06)
+- Refactored `client.py` to support Redis cache with in-memory fallback:
+  - Created abstract `CacheBackend` base class with async interface
+  - Implemented `InMemoryCacheBackend` for local/development use
+  - Implemented `RedisCacheBackend` for distributed/production caching
+  - Redis is optional - uses in-memory if `redis` package not installed or URL not configured
+- Added `redis_url` setting to `core/config.py`:
+  - `redis_url` (default: None) - when set, enables Redis caching
+  - Example: `redis://localhost:6379/0`
+- Updated cache key format to `polymarket:{endpoint}:{params_hash}`:
+  - Consistent key format across all endpoints
+  - MD5 hash of sorted params for deterministic keys
+  - Prefix enables pattern-based invalidation
+- Added per-request cache hit/miss logging to structlog:
+  - Logs `Cache lookup` message with api, endpoint, cache_status for every request
+  - Debug-level logging for cache get/set operations
+  - Info-level logging for stale data fallbacks
+- Added X-Cache HTTP header to all proxy responses:
+  - Created `set_cache_header()` helper function in `router.py`
+  - Added `Response` parameter to all proxy endpoint functions
+  - Header value matches JSON `cache_status` field (HIT/MISS/STALE)
+- Async cache interface:
+  - All cache operations (get, set, invalidate) are now async
+  - Enables non-blocking Redis operations
+  - Updated `get_clob()`, `get_data()`, `get_gamma()` to use await
+- Cache statistics now include backend type:
+  - `/api/v1/proxy/health` endpoint shows `backend: "memory"` or `backend: "redis"`
+  - Updated `ProxyHealthResponse` schema to support string values in cache_stats
+- Shutdown cleanup:
+  - `close_proxy_client()` now closes cache backend (important for Redis connection)
+
 ## In Progress
 
 

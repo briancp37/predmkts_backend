@@ -1,18 +1,19 @@
 """FastAPI router for Polymarket proxy endpoints.
 
 Provides proxy endpoints for accessing Polymarket API data with:
-- Caching to reduce upstream load
+- Caching to reduce upstream load (Redis or in-memory)
 - Rate limiting to stay under Polymarket limits
 - Circuit breaker for failure protection
 - Token ID resolution from our database
 - Proper error handling with structured responses
+- X-Cache response header indicating cache status (HIT/MISS/STALE)
 """
 
 from enum import Enum
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from prediction_data.api.polymarket_proxy.client import (
     PolymarketProxyClient,
@@ -51,6 +52,16 @@ from prediction_data.core.logging import get_logger
 logger = get_logger(__name__)
 
 router = APIRouter()
+
+
+def set_cache_header(response: Response, cache_status: str) -> None:
+    """Set X-Cache header on the response.
+
+    Args:
+        response: FastAPI Response object.
+        cache_status: Cache status string (HIT, MISS, or STALE).
+    """
+    response.headers["X-Cache"] = cache_status
 
 # Type aliases for dependency injection
 ProxyClient = Annotated[PolymarketProxyClient, Depends(get_proxy_client)]
@@ -153,6 +164,7 @@ async def health_check(
 @limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def get_timeseries(
     request: Request,
+    response: Response,
     token_id: str,
     client: ProxyClient,
     interval: TimeseriesInterval | None = Query(
@@ -251,6 +263,9 @@ async def get_timeseries(
         for point in data.get("history", [])
     ]
 
+    # Set X-Cache header
+    set_cache_header(response, cache_status)
+
     return PriceHistoryResponse(
         token_id=token_id,
         interval=interval.value if interval else None,
@@ -317,6 +332,7 @@ ORDERBOOK_CACHE_TTL = 5  # 5 seconds
 @limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def get_orderbook(
     request: Request,
+    response: Response,
     token_id: str,
     client: ProxyClient,
     depth: int | None = Query(
@@ -408,6 +424,9 @@ async def get_orderbook(
         ask_val = float(best_ask)
         spread = f"{ask_val - bid_val:.6f}".rstrip("0").rstrip(".")
         mid_price = f"{(bid_val + ask_val) / 2:.6f}".rstrip("0").rstrip(".")
+
+    # Set X-Cache header
+    set_cache_header(response, cache_status)
 
     return OrderBookResponse(
         token_id=token_id,
@@ -567,6 +586,7 @@ class TradeSide(str, Enum):
 @limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def get_trades(
     request: Request,
+    response: Response,
     condition_id: str,
     client: ProxyClient,
     limit: int = Query(
@@ -660,6 +680,9 @@ async def get_trades(
         )
         trades.append(trade)
 
+    # Set X-Cache header
+    set_cache_header(response, cache_status)
+
     return RecentTradesResponse(
         token_id=condition_id,
         trades=trades,
@@ -712,6 +735,7 @@ TOP_HOLDERS_CACHE_TTL = 300  # 5 minutes
 @limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def get_top_holders(
     request: Request,
+    response: Response,
     condition_id: str,
     client: ProxyClient,
     limit: int = Query(
@@ -812,6 +836,9 @@ async def get_top_holders(
     all_holders.sort(key=lambda x: float(x.amount), reverse=True)
     all_holders = all_holders[:limit]
 
+    # Set X-Cache header
+    set_cache_header(response, cache_status)
+
     return TopHoldersResponse(
         condition_id=condition_id,
         token_id=None,  # Querying full market, not specific token
@@ -864,6 +891,7 @@ MARKET_INFO_CACHE_TTL = 10  # 10 seconds
 @limiter.limit(CLOB_PROXY_RATE_LIMIT)
 async def get_market_info(
     request: Request,
+    response: Response,
     condition_id: str,
     client: ProxyClient,
 ) -> MarketInfoResponse:
@@ -934,6 +962,9 @@ async def get_market_info(
         )
         for t in tokens_data
     ]
+
+    # Set X-Cache header
+    set_cache_header(response, cache_status)
 
     return MarketInfoResponse(
         condition_id=condition_id,

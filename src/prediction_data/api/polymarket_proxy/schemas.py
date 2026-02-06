@@ -42,10 +42,18 @@ class ProxyHealthResponse(BaseModel):
         ...,
         description="Gamma API health status",
     )
-    cache_stats: dict[str, int] = Field(
+    cache_stats: dict[str, int | float | str] = Field(
         ...,
-        description="Cache statistics (size, hits, misses, hit_rate)",
-        json_schema_extra={"example": {"size": 100, "hits": 500, "misses": 50, "hit_rate": 91}},
+        description="Cache statistics (size, hits, misses, hit_rate, backend)",
+        json_schema_extra={
+            "example": {
+                "size": 100,
+                "hits": 500,
+                "misses": 50,
+                "hit_rate": 91.0,
+                "backend": "memory",
+            }
+        },
     )
     circuit_status: dict[str, str] = Field(
         ...,
