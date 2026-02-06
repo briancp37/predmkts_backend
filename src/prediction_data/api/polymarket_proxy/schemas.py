@@ -149,3 +149,57 @@ class TokenResolverStats(BaseModel):
         description="Cache hit rate percentage",
         json_schema_extra={"example": 96.2},
     )
+
+
+class PricePoint(BaseModel):
+    """Single price point in timeseries data."""
+
+    timestamp: int = Field(
+        ...,
+        description="Unix timestamp (UTC)",
+        json_schema_extra={"example": 1697875200},
+    )
+    price: float = Field(
+        ...,
+        description="Price at this timestamp (0-1 for probability)",
+        json_schema_extra={"example": 0.65},
+    )
+
+
+class PriceHistoryResponse(BaseModel):
+    """Price history timeseries response."""
+
+    token_id: str = Field(
+        ...,
+        description="Polymarket CLOB token ID",
+        json_schema_extra={"example": "71321045679252212594626385532706912750332728571942532289631379312455583286914"},
+    )
+    interval: str | None = Field(
+        None,
+        description="Interval used for the query (1m, 1h, 6h, 1d, 1w, max)",
+        json_schema_extra={"example": "1h"},
+    )
+    fidelity: int | None = Field(
+        None,
+        description="Resolution of the data in minutes",
+        json_schema_extra={"example": 15},
+    )
+    start_ts: int | None = Field(
+        None,
+        description="Start timestamp if date range was specified",
+        json_schema_extra={"example": 1697788800},
+    )
+    end_ts: int | None = Field(
+        None,
+        description="End timestamp if date range was specified",
+        json_schema_extra={"example": 1697875200},
+    )
+    history: list[PricePoint] = Field(
+        ...,
+        description="List of price points in chronological order",
+    )
+    cache_status: str = Field(
+        ...,
+        description="Cache status: HIT, MISS, or STALE",
+        json_schema_extra={"example": "HIT"},
+    )

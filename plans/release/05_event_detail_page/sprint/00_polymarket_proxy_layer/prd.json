@@ -25,7 +25,7 @@
       "Cache responses: 1m interval=30s TTL, 1h interval=5m TTL, 1d interval=1h TTL",
       "Add startTs and endTs param support for date range filtering"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "orderbook_proxy",

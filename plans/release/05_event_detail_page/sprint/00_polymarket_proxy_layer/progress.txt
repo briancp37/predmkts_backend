@@ -46,6 +46,24 @@
 - Token mappings are stable (don't change) so caching is aggressive
 - Handles binary markets (Yes/No) and multi-outcome markets
 
+### timeseries_proxy (2026-02-06)
+- Added `GET /api/v1/proxy/markets/{token_id}/timeseries` endpoint to `router.py`:
+  - Proxies to Polymarket CLOB `/prices-history` endpoint
+  - Supports interval parameter: 1m, 5m, 15m, 1h, 6h, 1d, 1w, max
+  - Supports fidelity parameter (1-60 minutes) for data resolution
+  - Supports startTs/endTs for custom date range queries
+  - Returns PriceHistoryResponse with transformed data
+- Added new schemas to `schemas.py`:
+  - `PricePoint` - single price point with timestamp and price
+  - `PriceHistoryResponse` - full timeseries response with metadata
+- Implemented interval-based cache TTL:
+  - 1m: 30s, 5m: 60s, 15m: 2min, 1h: 5min
+  - 6h/1d/1w/max: 1 hour
+  - Date range queries: 60s default
+- Added TimeseriesInterval enum for validation
+- Proper error handling with 502 (upstream failure) and 503 (circuit breaker)
+- Response includes cache_status (HIT/MISS/STALE) for debugging
+
 ## In Progress
 
 

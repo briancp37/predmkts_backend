@@ -7,9 +7,10 @@ Provides proxy endpoints for accessing Polymarket API data with:
 - Token ID resolution from our database
 """
 
+from enum import Enum
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from prediction_data.api.polymarket_proxy.client import (
     PolymarketProxyClient,
@@ -17,6 +18,8 @@ from prediction_data.api.polymarket_proxy.client import (
 )
 from prediction_data.api.polymarket_proxy.schemas import (
     MarketTokensResponse,
+    PriceHistoryResponse,
+    PricePoint,
     ProxyHealthResponse,
     ProxyHealthStatus,
     TokenInfo,
@@ -33,6 +36,36 @@ router = APIRouter()
 # Type aliases for dependency injection
 ProxyClient = Annotated[PolymarketProxyClient, Depends(get_proxy_client)]
 TokenResolverDep = Annotated[TokenResolver, Depends(get_token_resolver)]
+
+
+class TimeseriesInterval(str, Enum):
+    """Valid interval options for timeseries queries."""
+
+    ONE_MINUTE = "1m"
+    FIVE_MINUTES = "5m"
+    FIFTEEN_MINUTES = "15m"
+    ONE_HOUR = "1h"
+    SIX_HOURS = "6h"
+    ONE_DAY = "1d"
+    ONE_WEEK = "1w"
+    MAX = "max"
+
+
+# Cache TTL mapping based on interval volatility
+# More granular intervals = shorter cache TTL
+INTERVAL_CACHE_TTL: dict[str, int] = {
+    "1m": 30,     # 30 seconds for 1-minute data
+    "5m": 60,     # 1 minute for 5-minute data
+    "15m": 120,   # 2 minutes for 15-minute data
+    "1h": 300,    # 5 minutes for hourly data
+    "6h": 600,    # 10 minutes for 6-hour data
+    "1d": 3600,   # 1 hour for daily data
+    "1w": 3600,   # 1 hour for weekly data
+    "max": 3600,  # 1 hour for max range
+}
+
+# Default TTL for date range queries (no interval)
+DATE_RANGE_CACHE_TTL = 60
 
 
 @router.get(
@@ -59,6 +92,152 @@ async def health_check(
         gamma=ProxyHealthStatus(**health["gamma"]),
         cache_stats=client.get_cache_stats(),
         circuit_status=client.get_circuit_status(),
+    )
+
+
+@router.get(
+    "/markets/{token_id}/timeseries",
+    response_model=PriceHistoryResponse,
+    summary="Get price history for a token",
+    description=(
+        "Get historical price data for a Polymarket CLOB token. "
+        "Use either interval (1m, 5m, 15m, 1h, 6h, 1d, 1w, max) OR startTs/endTs for date range. "
+        "Response is cached with TTL based on interval granularity."
+    ),
+    responses={
+        502: {
+            "description": "Upstream Polymarket API error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Polymarket API request failed",
+                        "code": "PROXY_ERROR",
+                        "status": 502,
+                    }
+                }
+            },
+        },
+        503: {
+            "description": "Circuit breaker open",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Circuit breaker open for clob API",
+                        "code": "SERVICE_UNAVAILABLE",
+                        "retry_after": 30,
+                    }
+                }
+            },
+        },
+    },
+)
+@limiter.limit(CLOB_PROXY_RATE_LIMIT)
+async def get_timeseries(
+    request: Request,
+    token_id: str,
+    client: ProxyClient,
+    interval: TimeseriesInterval | None = Query(
+        None,
+        description="Time interval for data points. Mutually exclusive with startTs/endTs.",
+    ),
+    fidelity: int | None = Query(
+        None,
+        ge=1,
+        le=60,
+        description="Resolution in minutes (1-60). Controls data granularity.",
+    ),
+    start_ts: int | None = Query(
+        None,
+        alias="startTs",
+        description="Start Unix timestamp (UTC). Use with endTs for custom date range.",
+    ),
+    end_ts: int | None = Query(
+        None,
+        alias="endTs",
+        description="End Unix timestamp (UTC). Use with startTs for custom date range.",
+    ),
+) -> PriceHistoryResponse:
+    """Get price history timeseries for a token.
+
+    Proxies to Polymarket CLOB `/prices-history` endpoint with caching.
+
+    **Usage modes:**
+    1. **Interval mode:** Specify `interval` (1m, 5m, 15m, 1h, 6h, 1d, 1w, max)
+    2. **Date range mode:** Specify `startTs` and `endTs` timestamps
+
+    The `fidelity` parameter controls data resolution in minutes. Higher values
+    return fewer data points. Use lower fidelity for broader time ranges.
+
+    **Cache TTL by interval:**
+    - 1m: 30s, 5m: 60s, 15m: 2min, 1h: 5min, 6h/1d/1w/max: 1h
+    - Date range queries: 60s
+    """
+    # Build query params for upstream
+    params: dict[str, str | int] = {"market": token_id}
+
+    if interval is not None:
+        params["interval"] = interval.value
+    if fidelity is not None:
+        params["fidelity"] = fidelity
+    if start_ts is not None:
+        params["startTs"] = start_ts
+    if end_ts is not None:
+        params["endTs"] = end_ts
+
+    # Determine cache TTL
+    if interval is not None:
+        cache_ttl = INTERVAL_CACHE_TTL.get(interval.value, DATE_RANGE_CACHE_TTL)
+    else:
+        cache_ttl = DATE_RANGE_CACHE_TTL
+
+    try:
+        data, cache_status = await client.get_clob(
+            "/prices-history",
+            params,
+            cache_ttl=cache_ttl,
+        )
+    except RuntimeError as e:
+        # Circuit breaker open
+        if "Circuit breaker open" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": str(e),
+                    "code": "SERVICE_UNAVAILABLE",
+                    "retry_after": 30,
+                },
+                headers={"Retry-After": "30"},
+            )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Polymarket API request failed: {e}",
+                "code": "PROXY_ERROR",
+            },
+        )
+
+    # Transform response
+    history = [
+        PricePoint(timestamp=point["t"], price=point["p"])
+        for point in data.get("history", [])
+    ]
+
+    return PriceHistoryResponse(
+        token_id=token_id,
+        interval=interval.value if interval else None,
+        fidelity=fidelity,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        history=history,
+        cache_status=cache_status,
     )
 
 
