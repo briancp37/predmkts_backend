@@ -11,7 +11,7 @@
       "Log errors with structlog including request context",
       "Ensure stack traces not exposed in production (check DEBUG env var)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Request Validation",

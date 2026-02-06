@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 30
 
+    # API debug mode (exposes stack traces in error responses)
+    debug: bool = False
+
     @property
     def postgres_url(self) -> str:
         """Get async PostgreSQL connection URL."""

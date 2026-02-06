@@ -129,3 +129,65 @@ class ValidationError(APIError):
     status_code = status.HTTP_400_BAD_REQUEST
     code = "VALIDATION_ERROR"
     message = "Validation failed"
+
+
+class AuthenticationError(APIError):
+    """Authentication error (401).
+
+    Used when authentication credentials are invalid or expired.
+    Distinct from UnauthorizedError which is for missing credentials.
+    """
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "AUTHENTICATION_FAILED"
+    message = "Authentication failed"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        **extra: Any,
+    ) -> None:
+        """Initialize authentication error with WWW-Authenticate header."""
+        super().__init__(message=message, **extra)
+        self.headers = {"WWW-Authenticate": "Bearer"}
+
+
+class AuthorizationError(APIError):
+    """Authorization error (403).
+
+    Used when user is authenticated but lacks permission for the resource.
+    """
+
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "FORBIDDEN"
+    message = "Access denied"
+
+
+class RateLimitError(APIError):
+    """Rate limit exceeded error (429).
+
+    Used when a client has exceeded their rate limit.
+    """
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    code = "RATE_LIMIT_EXCEEDED"
+    message = "Rate limit exceeded"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        retry_after: int | None = None,
+        **extra: Any,
+    ) -> None:
+        """Initialize rate limit error with retry information.
+
+        Args:
+            message: Human-readable error message.
+            retry_after: Seconds until the client can retry.
+            **extra: Additional fields.
+        """
+        if retry_after is not None:
+            extra["retry_after"] = retry_after
+        super().__init__(message=message, **extra)
+        if retry_after is not None:
+            self.headers = {"Retry-After": str(retry_after)}

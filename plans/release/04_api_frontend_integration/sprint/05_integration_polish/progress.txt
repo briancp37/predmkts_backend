@@ -1,8 +1,25 @@
 # Sprint 05: Integration & Polish - Progress
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed
+
+### Error Handling Standardization (2026-02-05)
+- Added missing exception classes to `src/prediction_data/api/exceptions.py`:
+  - `AuthenticationError` (401) - for invalid/expired credentials
+  - `AuthorizationError` (403) - for permission denied
+  - `RateLimitError` (429) - for rate limit exceeded with Retry-After header
+- Added global exception handlers to `src/prediction_data/api/main.py`:
+  - `@app.exception_handler(APIError)` - handles all custom API errors with consistent JSON format
+  - `@app.exception_handler(RequestValidationError)` - handles Pydantic validation with field-level errors
+  - `@app.exception_handler(Exception)` - catches unhandled exceptions, logs with structlog, hides stack traces in production
+- Added `DEBUG` env var to `src/prediction_data/core/config.py` (defaults to false)
+- All error responses now include:
+  - `X-Request-ID` header for tracing
+  - Consistent JSON format: `{detail: str, code: str, status: int}`
+  - Additional fields when applicable (errors array, retry_after, etc.)
+- Stack traces only exposed when `DEBUG=true`
+- Updated `.env.example` with `DEBUG` variable
 
 ## In Progress
 
