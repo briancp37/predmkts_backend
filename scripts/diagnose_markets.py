@@ -228,7 +228,7 @@ class MarketsDiagnostics:
                 latest_manifest = manifests[0]
 
                 ingestion_ts = latest_manifest.get("ingestion_ts", "")
-                record_count = latest_manifest.get("record_count", 0)
+                record_count = latest_manifest.get("row_count", latest_manifest.get("record_count", 0))
                 snapshot_type = latest_manifest.get("snapshot_type", "unknown")
 
                 # Parse timestamp and calculate age
@@ -465,7 +465,7 @@ class MarketsDiagnostics:
                 print_status("API Response", "OK", f"HTTP {resp.status_code}")
 
                 data = resp.json()
-                markets = data.get("data", [])
+                markets = data.get("items", data.get("data", []))
                 total = data.get("total", 0)
 
                 print_status("Total Markets", "INFO", f"{total:,}")
