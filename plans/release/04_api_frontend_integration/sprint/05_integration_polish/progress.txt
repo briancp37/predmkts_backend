@@ -21,6 +21,28 @@
 - Stack traces only exposed when `DEBUG=true`
 - Updated `.env.example` with `DEBUG` variable
 
+### Request Validation (2026-02-05)
+- Created `src/prediction_data/api/validators.py` with reusable validators:
+  - `validate_ethereum_address()` - validates 0x + 40 hex chars, normalizes to lowercase
+  - `validate_market_id()` - validates Polymarket condition ID format (0x + 64 hex chars)
+  - `validate_date_string()` - validates ISO 8601 YYYY-MM-DD format
+  - `validate_password_strength()` - validates minimum 8 characters
+  - `validate_date_range()` - validates startDate <= endDate
+- Added Annotated types for reuse: `EthereumAddress`, `MarketId`, `DateString`, `Password`
+- Updated `src/prediction_data/api/auth/schemas.py`:
+  - `UserCreate.password` now uses `Password` type (min 8 chars validation)
+- Updated `src/prediction_data/api/tracked_traders/schemas.py`:
+  - `TrackedTraderBase.traderAddress` now uses `EthereumAddress` type
+  - `TrackedTraderCreate.traderAddress` now uses `EthereumAddress` type
+  - `ActivityFilters` now validates date format and date range order
+- Updated `src/prediction_data/api/watchlist/schemas.py`:
+  - `WatchlistAddRequest.marketId` now uses `MarketId` type
+- Updated `src/prediction_data/api/traders/schemas.py`:
+  - `TradeFilters` now validates date format and date range order
+- Pagination already validated via `Field(ge=1, le=X)` and `Field(ge=0)` constraints
+- Email validation already handled via `EmailStr` type
+- All validation errors return 422 with field-level error details (via existing RequestValidationError handler)
+
 ## In Progress
 
 ## Blockers

@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from prediction_data.api.validators import MarketId
+
 
 class WatchlistItem(BaseModel):
     """Base watchlist item schema."""
@@ -29,7 +31,7 @@ class WatchlistItemWithMarket(WatchlistItem):
 class WatchlistAddRequest(BaseModel):
     """Request body for adding to watchlist."""
 
-    marketId: str
+    marketId: MarketId
 
 
 class WatchlistResponse(BaseModel):

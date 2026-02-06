@@ -3,22 +3,27 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from prediction_data.api.traders.schemas import TradeResponse
+from prediction_data.api.validators import (
+    DateString,
+    EthereumAddress,
+    validate_date_range,
+)
 
 
 class TrackedTraderBase(BaseModel):
     """Base tracked trader schema."""
 
-    traderAddress: str
+    traderAddress: EthereumAddress
     customName: str | None = None
 
 
 class TrackedTraderCreate(BaseModel):
     """Request body for adding a tracked trader."""
 
-    traderAddress: str
+    traderAddress: EthereumAddress
     customName: str | None = None
 
 
@@ -67,5 +72,11 @@ class ActivityFilters(BaseModel):
     """Query parameters for activity feed."""
 
     limit: int = Field(default=50, ge=1, le=200)
-    startDate: str | None = None
-    endDate: str | None = None
+    startDate: DateString | None = None
+    endDate: DateString | None = None
+
+    @model_validator(mode="after")
+    def validate_date_range_order(self) -> "ActivityFilters":
+        """Ensure startDate <= endDate when both are provided."""
+        validate_date_range(self.startDate, self.endDate)
+        return self

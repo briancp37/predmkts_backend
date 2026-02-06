@@ -2,7 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from prediction_data.api.validators import DateString, validate_date_range
 
 
 class TraderPosition(BaseModel):
@@ -133,9 +135,15 @@ class TradeFilters(BaseModel):
 
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)
-    startDate: str | None = None
-    endDate: str | None = None
+    startDate: DateString | None = None
+    endDate: DateString | None = None
     marketId: str | None = None
+
+    @model_validator(mode="after")
+    def validate_date_range_order(self) -> "TradeFilters":
+        """Ensure startDate <= endDate when both are provided."""
+        validate_date_range(self.startDate, self.endDate)
+        return self
 
 
 class LeaderboardEntry(BaseModel):

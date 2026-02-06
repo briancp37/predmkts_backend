@@ -5,6 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr
 
+from prediction_data.api.validators import Password
 from prediction_data.db.models.user import UserTier
 
 
@@ -12,7 +13,7 @@ class UserCreate(BaseModel):
     """Schema for user registration."""
 
     email: EmailStr
-    password: str
+    password: Password  # Validates minimum 8 characters
     name: str | None = None
 
 
