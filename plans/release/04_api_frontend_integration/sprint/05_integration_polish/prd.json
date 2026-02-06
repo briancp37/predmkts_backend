@@ -84,7 +84,7 @@
       "Consider Accept-Version header support (future)",
       "Add version to OpenAPI info"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "OpenAPI Documentation Polish",

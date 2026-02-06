@@ -119,6 +119,22 @@
   - Removed old simple `/health` endpoint stub
 - API version constant `API_VERSION = "0.1.0"` included in health response
 
+### API Versioning (2026-02-05)
+- Verified all API endpoints use `/api/v1/` prefix (auth, markets, traders, watchlist, tracked-traders, trades, events)
+- Health endpoints correctly not versioned (at `/health`, `/health/ready`, `/health/live`)
+- OpenAPI spec already has version 0.1.0 in `info.version`
+- Documented versioning strategy in `CLAUDE.md`:
+  - Added new "REST API" section with:
+    - Running the API instructions (uvicorn command)
+    - API documentation URLs (/docs, /redoc, /openapi.json)
+    - Full versioning strategy documentation (URL-based versioning)
+    - Version migration policy (breaking changes require new version, 6-month deprecation notice)
+    - Endpoint structure overview
+    - API rate limits table
+    - API-specific environment variables
+- Version migration policy documented: breaking changes require new version (v2, v3), non-breaking additions allowed in existing version
+- Future considerations documented: Accept-Version header support can be added when needed
+
 ## In Progress
 
 ## Blockers

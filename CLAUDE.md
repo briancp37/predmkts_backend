@@ -113,6 +113,70 @@ Detailed endpoint parameters, response schemas, and pagination details are in `d
 | `POLYMARKET_BUILDER_SECRET` | For CLOB | Base64-encoded Builder API secret |
 | `POLYMARKET_BUILDER_PASSPHRASE` | For CLOB | Builder API passphrase |
 
+## REST API
+
+The project exposes a REST API for frontend integration, built with FastAPI.
+
+### Running the API
+
+```bash
+# Start the API server (development)
+uvicorn prediction_data.api.main:app --reload
+
+# API will be available at http://localhost:8000
+# Interactive docs (Swagger UI): http://localhost:8000/docs
+# ReDoc documentation: http://localhost:8000/redoc
+# OpenAPI JSON: http://localhost:8000/openapi.json
+```
+
+### API Versioning Strategy
+
+All API endpoints follow URL-based versioning with `/api/v1/` prefix:
+
+- **Current version:** `v1` (0.1.0)
+- **Versioning scheme:** URL path prefix (`/api/v1/`, `/api/v2/`, etc.)
+- **Health endpoints:** Not versioned (available at `/health`, `/health/ready`, `/health/live`)
+
+**Endpoint structure:**
+```
+/api/v1/auth/*           # Authentication (register, login, refresh, me)
+/api/v1/markets/*        # Market data and search
+/api/v1/traders/*        # Trader profiles and leaderboards
+/api/v1/watchlist/*      # User watchlist management
+/api/v1/tracked-traders/* # Tracked traders management
+/api/v1/trades/*         # Trade data (smart money, whales)
+/api/v1/events/*         # Event data
+/health                  # Health checks (not versioned)
+```
+
+**Version migration policy:**
+- Breaking changes require a new version (`v2`, `v3`, etc.)
+- Non-breaking additions (new fields, endpoints) can be added to existing version
+- Old versions will be maintained for at least 6 months after deprecation notice
+- Deprecation will be communicated via `Deprecation` header and documentation
+
+### API Rate Limits
+
+| Endpoint Category | Rate Limit | Notes |
+|---|---|---|
+| Auth endpoints | 10 req/min per IP | Brute force prevention |
+| Public read endpoints | 100 req/min per IP | Markets, traders, events |
+| Authenticated endpoints | 200 req/min per user | Watchlist, tracked traders |
+| CLOB proxy endpoints | 50 req/min | Stay under Polymarket limits |
+
+Rate limit headers returned: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` (on 429).
+
+### Environment Variables (API)
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET_KEY` | Yes | Secret for JWT signing (min 32 chars) |
+| `JWT_ALGORITHM` | No | JWT algorithm (default: HS256) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token TTL (default: 30) |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token TTL (default: 7) |
+| `DEBUG` | No | Enable debug mode with stack traces (default: false) |
+
 ## Backfill CLI
 
 ```bash
