@@ -541,6 +541,46 @@ Concurrency is scoped per entity type (`silver-{platform}-{entity}`) so differen
 - Snapshot-supersedes-deltas: for catalog entities (markets, events), a snapshot manifest supersedes earlier delta manifests for the same day.
 - Quality checks: non-null, uniqueness, timestamp range checks run by default; use `--skip-quality-checks` to bypass.
 
+**Full Silver Reprocessing (schema fixes, backfills):**
+
+When normalization logic changes (e.g., fixing field derivation), ALL historical
+Silver data may need reprocessing. Polymarket data goes back to 2013, so this is
+a large job that **must run on ECS, not locally**.
+
+```bash
+# Full reprocessing of catalog entities (run on ECS, not locally!)
+prediction-data silver process --platform polymarket --entity markets \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+prediction-data silver process --platform polymarket --entity events \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+# After Silver reprocessing, reload Gold dimensions
+prediction-data gold load-dims
+```
+
+**Running on ECS:**
+
+```bash
+aws ecs run-task \
+    --cluster prediction-data \
+    --task-definition prediction-data-silver \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
+    --overrides '{
+        "containerOverrides": [{
+            "name": "silver",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--start-date", "2013-01-01", "--end-date", "2026-02-06", "--force-reprocess"]
+        }]
+    }'
+```
+
+**Warning:** Do NOT run full reprocessing locally — it will consume significant
+memory and CPU. Always use ECS for large backfill jobs spanning months or years.
+
+See `plans/release/02_silver_level/hotfixes.md` for documented schema fixes and
+their recovery procedures.
+
 ## Gold CLI
 
 ```bash

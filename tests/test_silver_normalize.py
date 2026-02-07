@@ -496,7 +496,7 @@ class TestNullHandling:
         assert result["question"] is None
         assert result["description"] is None
         assert result["market_slug"] is None
-        assert result["status"] is None
+        assert result["status"] == "unknown"  # No status fields → "unknown"
         assert result["outcome"] is None
         assert result["tokens"] is None
         assert result["event_id"] is None
@@ -510,7 +510,7 @@ class TestNullHandling:
         assert result["title"] is None
         assert result["description"] is None
         assert result["slug"] is None
-        assert result["status"] is None
+        assert result["status"] == "unknown"  # No status fields → "unknown"
         assert result["category"] is None
         assert result["bronze_run_id"] is None
 

@@ -40,3 +40,121 @@ manifest selection logic.
 day for upsert.  The idempotency guarantee is preserved by `SilverStateStore`
 (skips already-processed manifests).  Periodic compaction
 (`silver maintain --op compact`) merges small append files.
+
+---
+
+## 2026-02-06: Fix Polymarket status field derivation (markets & events)
+
+**Problem:** The frontend was showing stale markets (ended 6+ days ago) because
+the API filter `status != 'resolved'` was not working correctly. All 386,588
+markets in `dim_market` had `status = 'True'` (string) instead of meaningful
+values like "active", "closed", or "resolved".
+
+**Root cause:** In `normalize.py`, the markets normalizer had:
+```python
+"status": _safe_str(record.get("status") or record.get("active")),
+```
+
+The Polymarket API does not return a `status` field. It returns:
+- `active`: boolean (True if market is tradeable)
+- `closed`: boolean (True if market is closed)
+- `umaResolutionStatus`: string ("resolved", "proposed", etc.)
+
+Since `record.get("status")` returned `None`, the code fell back to
+`record.get("active")` which was boolean `True`. Then `_safe_str(True)`
+converted it to the string `"True"`.
+
+The same issue affected the events normalizer, which only checked for a
+non-existent `status` field.
+
+**Fix:** Added `_derive_polymarket_status()` helper that properly derives
+status from Polymarket API fields:
+
+```python
+def _derive_polymarket_status(record: dict[str, Any]) -> str:
+    # Check for explicit resolution status first
+    uma_status = record.get("umaResolutionStatus")
+    if uma_status and isinstance(uma_status, str) and uma_status.strip():
+        return uma_status.strip().lower()
+
+    # Derive from boolean flags
+    closed = record.get("closed")
+    active = record.get("active")
+
+    if closed is True:
+        return "closed"
+    if active is True:
+        return "active"
+    if active is False:
+        return "inactive"
+
+    return "unknown"
+```
+
+Updated both `PolymarketMarketsNormalizer` and `PolymarketEventsNormalizer`
+to use this helper.
+
+**Files changed:**
+
+| File | Change |
+|---|---|
+| `src/prediction_data/silver/normalize.py` | Added `_derive_polymarket_status()` helper; updated markets normalizer (line 285); updated events normalizer (line 351) |
+
+**Recovery steps:**
+
+After deploying this fix, ALL Silver data must be reprocessed to populate
+correct status values. Polymarket data goes back to 2013, so this is a large
+job that should run on ECS (not locally).
+
+**Full all-time reprocessing (run on ECS):**
+
+```bash
+# Reprocess ALL markets from 2013 to present
+prediction-data silver process --platform polymarket --entity markets \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+# Reprocess ALL events from 2013 to present
+prediction-data silver process --platform polymarket --entity events \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+# Reload Gold dimension tables
+prediction-data gold load-dims
+```
+
+**Running on ECS:**
+
+Use the ECS task definition to run the reprocessing job:
+
+```bash
+# Run markets reprocessing on ECS
+aws ecs run-task \
+    --cluster prediction-data \
+    --task-definition prediction-data-silver \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
+    --overrides '{
+        "containerOverrides": [{
+            "name": "silver",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--start-date", "2013-01-01", "--end-date", "2026-02-06", "--force-reprocess"]
+        }]
+    }'
+
+# Run events reprocessing on ECS (after markets complete)
+aws ecs run-task \
+    --cluster prediction-data \
+    --task-definition prediction-data-silver \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
+    --overrides '{
+        "containerOverrides": [{
+            "name": "silver",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "events", "--start-date", "2013-01-01", "--end-date", "2026-02-06", "--force-reprocess"]
+        }]
+    }'
+```
+
+**Warning:** Do NOT run full reprocessing locally — it will consume significant
+memory and CPU. Always use ECS for large backfill jobs.
+
+**Impact:** Once reprocessed, the API will correctly filter markets by status,
+showing only active/tradeable markets instead of stale resolved ones.

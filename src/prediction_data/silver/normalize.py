@@ -177,6 +177,36 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
+def _derive_polymarket_status(record: dict[str, Any]) -> str:
+    """Derive market/event status from Polymarket API fields.
+
+    Polymarket API returns:
+      - active: bool - whether market is currently tradeable
+      - closed: bool - whether market is closed for trading
+      - umaResolutionStatus: str - resolution status (e.g., "resolved", "proposed")
+
+    Returns:
+        Status string: "active", "closed", "resolved", or the umaResolutionStatus value.
+    """
+    # Check for explicit resolution status first
+    uma_status = record.get("umaResolutionStatus")
+    if uma_status and isinstance(uma_status, str) and uma_status.strip():
+        return uma_status.strip().lower()
+
+    # Derive from boolean flags
+    closed = record.get("closed")
+    active = record.get("active")
+
+    if closed is True:
+        return "closed"
+    if active is True:
+        return "active"
+    if active is False:
+        return "inactive"
+
+    return "unknown"
+
+
 def _content_hash(*fields: Any) -> str:
     """SHA-256 content hash over field values."""
     payload = json.dumps(fields, sort_keys=True, default=str)
@@ -252,7 +282,7 @@ class PolymarketMarketsNormalizer(Normalizer):
             "question": _safe_str(record.get("question")),
             "description": _safe_str(record.get("description")),
             "market_slug": _safe_str(record.get("market_slug") or record.get("slug")),
-            "status": _safe_str(record.get("status") or record.get("active")),
+            "status": _derive_polymarket_status(record),
             "outcome": _safe_str(record.get("outcomes") or record.get("outcome")),
             "tokens": tokens_str,
             "event_id": _safe_str(event_id),
@@ -318,7 +348,7 @@ class PolymarketEventsNormalizer(Normalizer):
             "title": _safe_str(record.get("title")),
             "description": _safe_str(record.get("description")),
             "slug": _safe_str(record.get("slug")),
-            "status": _safe_str(record.get("status")),
+            "status": _derive_polymarket_status(record),
             "category": _safe_str(record.get("category")),
             "updated_at": updated_at,
             "bronze_run_id": bronze_run_id,
