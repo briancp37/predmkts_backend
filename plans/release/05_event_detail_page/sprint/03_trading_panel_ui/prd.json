@@ -36,7 +36,7 @@
       "Store direction in component state",
       "Add keyboard shortcut hints (B for Buy, S for Sell)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "amount_input",

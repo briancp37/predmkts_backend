@@ -49,6 +49,34 @@
   - Price color coding
 - All 27 outcome-selector tests pass
 
+### trade_direction_toggle (2026-02-06)
+- Created TradeDirectionToggle component in web/src/components/event/trade-direction-toggle.tsx
+- Implemented segmented control with Buy/Sell options
+- Color coded buttons: Buy=green (bg-green-500), Sell=red (bg-red-500)
+- Unselected buttons show neutral gray with hover states for respective colors
+- Full keyboard support:
+  - B key to select Buy
+  - S key to select Sell
+  - ArrowLeft/ArrowRight to toggle between options
+- Keyboard shortcut hints displayed as small kbd elements on desktop (hidden on mobile)
+- Integrated TradeDirectionToggle into TradingPanel component
+  - TradingPanel manages tradeDirection state internally
+  - Replaced placeholder with actual TradeDirectionToggle component
+  - Direction state passed down to TradingPanelContent
+- Added proper ARIA attributes (radiogroup, radio, aria-checked, aria-label with shortcut hints)
+- Roving tabindex pattern for proper focus management
+- Disabled state with reduced opacity and cursor-not-allowed
+- Exported TradeDirectionToggle and TradeDirection type from components/event/index.ts
+- Created comprehensive test suite with 25 tests covering:
+  - Rendering Buy/Sell buttons and keyboard hints
+  - Selection behavior and color styling
+  - Keyboard shortcuts (B, S, ArrowLeft, ArrowRight)
+  - Disabled state behavior
+  - Accessibility attributes
+  - Color coding verification
+- All 25 trade-direction-toggle tests pass
+- All 237 project tests pass
+
 
 ## In Progress
 
@@ -58,8 +86,10 @@
 
 ## Notes
 - TradingPanel now includes OutcomeSelector with real outcome data from API
-- Remaining placeholders for trade direction, amount input, and trade summary
+- TradingPanel now includes TradeDirectionToggle with keyboard shortcut support
+- Remaining placeholders for amount input and trade summary
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
 - For events with multiple markets, the first market's outcomes are shown in the trading panel
-- OutcomeSelector uses memo for performance optimization
+- OutcomeSelector and TradeDirectionToggle both use memo for performance optimization
+- There are pre-existing typecheck errors in activity-feed.tsx and outcome-card.test.tsx (not related to this sprint's work)

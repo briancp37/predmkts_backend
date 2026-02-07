@@ -2,7 +2,7 @@
  * Trading Panel Component
  *
  * Sprint 03 - Trading Panel UI
- * PRD: trading_panel_layout, outcome_selector
+ * PRD: trading_panel_layout, outcome_selector, trade_direction_toggle
  *
  * Features:
  * - Sticky positioning on desktop (below header)
@@ -11,6 +11,7 @@
  * - Expand button for mobile collapsed view
  * - Ensures panel doesn't overlap with footer on scroll
  * - Outcome selector with radio-button style selection
+ * - Trade direction toggle (Buy/Sell) with keyboard shortcuts
  */
 
 'use client';
@@ -20,6 +21,7 @@ import { ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OutcomeSelector, type Outcome } from './outcome-selector';
+import { TradeDirectionToggle, type TradeDirection } from './trade-direction-toggle';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
@@ -55,6 +57,9 @@ export function TradingPanel({
 
   // Selected outcome state
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
+
+  // Trade direction state
+  const [tradeDirection, setTradeDirection] = useState<TradeDirection>('buy');
 
   // Detect mobile viewport
   useEffect(() => {
@@ -167,6 +172,8 @@ export function TradingPanel({
                     outcomes={outcomes}
                     selectedOutcomeId={selectedOutcomeId}
                     onOutcomeSelect={setSelectedOutcomeId}
+                    tradeDirection={tradeDirection}
+                    onDirectionChange={setTradeDirection}
                   >
                     {children}
                   </TradingPanelContent>
@@ -198,13 +205,16 @@ export function TradingPanel({
 }
 
 /**
- * Trading panel content with outcome selector and placeholders for remaining components
+ * Trading panel content with outcome selector, trade direction toggle,
+ * and placeholders for remaining components
  */
 interface TradingPanelContentProps {
   eventSlug: string;
   outcomes: Outcome[];
   selectedOutcomeId: string | null;
   onOutcomeSelect: (outcomeId: string) => void;
+  tradeDirection: TradeDirection;
+  onDirectionChange: (direction: TradeDirection) => void;
   children?: React.ReactNode;
 }
 
@@ -213,6 +223,8 @@ function TradingPanelContent({
   outcomes,
   selectedOutcomeId,
   onOutcomeSelect,
+  tradeDirection,
+  onDirectionChange,
   children,
 }: TradingPanelContentProps) {
   return (
@@ -224,14 +236,14 @@ function TradingPanelContent({
         onOutcomeSelect={onOutcomeSelect}
       />
 
-      {/* Additional children (trade direction, amount input, etc.) */}
-      {children}
+      {/* Trade Direction Toggle */}
+      <TradeDirectionToggle
+        direction={tradeDirection}
+        onDirectionChange={onDirectionChange}
+      />
 
-      {/* Placeholder for trade direction */}
-      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-500">Buy / Sell Toggle</p>
-        <p className="text-xs text-gray-400 mt-1">Choose your trade direction</p>
-      </div>
+      {/* Additional children (amount input, etc.) */}
+      {children}
 
       {/* Placeholder for amount input */}
       <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
