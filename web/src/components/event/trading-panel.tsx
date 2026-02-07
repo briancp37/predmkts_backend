@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OutcomeSelector, type Outcome } from './outcome-selector';
 import { TradeDirectionToggle, type TradeDirection } from './trade-direction-toggle';
 import { TradeAmountInput } from './trade-amount-input';
+import { TradeSummary } from './trade-summary';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
@@ -265,11 +266,13 @@ function TradingPanelContent({
         disabled={!selectedOutcomeId}
       />
 
-      {/* Placeholder for trade summary */}
-      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-500">Trade Summary</p>
-        <p className="text-xs text-gray-400 mt-1">Review your order details</p>
-      </div>
+      {/* Trade Summary */}
+      <TradeSummary
+        outcomeName={selectedOutcome?.outcomeName ?? null}
+        direction={tradeDirection}
+        amount={amount}
+        price={selectedOutcome?.currentPrice ?? 0.5}
+      />
 
       {/* Placeholder submit button */}
       <button

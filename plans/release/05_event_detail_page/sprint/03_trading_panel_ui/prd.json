@@ -63,7 +63,7 @@
       "Show total cost/proceeds",
       "Update summary in real-time as inputs change"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "dummy_trade_button",

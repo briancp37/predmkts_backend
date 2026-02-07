@@ -110,6 +110,44 @@
 - All 36 trade-amount-input tests pass
 - All 273 project tests pass
 
+### trade_summary (2026-02-06)
+- Created TradeSummary component in web/src/components/event/trade-summary.tsx
+- Displays complete order details with clear layout:
+  - Outcome name from selected outcome
+  - Direction (Buy/Sell) with color coding (green/red)
+  - Amount formatted as USD currency
+  - Shares calculation (amount / price)
+  - Average price displayed as cents (e.g., "50¢")
+- Shows potential return with:
+  - Dollar amount with +/- prefix and green/red color
+  - ROI percentage with color coding
+- Includes estimated fees line with "(placeholder)" label
+  - Defaults to $0.00 with grayed out style when no fees
+  - Subtracts fees from potential return when provided
+- Shows total cost (for buy) or total proceeds (for sell)
+  - Includes amount + fees in total
+- Placeholder states for incomplete data:
+  - "Select an outcome to see order summary" when no outcome selected
+  - "Enter an amount to see order summary" when no amount entered
+- Loading state with skeleton animation and aria-busy attribute
+- Real-time updates as TradingPanel state changes
+- Uses memo for performance optimization
+- Integrated TradeSummary into TradingPanel component
+  - Replaced placeholder with actual TradeSummary component
+  - Connected to selectedOutcome, tradeDirection, amount, and price state
+- Exported TradeSummary and TradeSummaryProps from components/event/index.ts
+- Created comprehensive test suite with 37 tests covering:
+  - Placeholder states (no outcome, no amount, zero amount)
+  - Complete summary rendering (all fields)
+  - Calculations (shares, ROI, potential return)
+  - Fees handling (zero fees, actual fees, included in total)
+  - Direction labels (Total Cost vs Total Proceeds)
+  - Loading state with skeleton
+  - Edge cases (boundary prices, decimal amounts, long names)
+  - Accessibility (region role, aria-label, semantic heading)
+- All 37 trade-summary tests pass
+- All 357 project tests pass
+
 
 ## In Progress
 
@@ -121,9 +159,10 @@
 - TradingPanel now includes OutcomeSelector with real outcome data from API
 - TradingPanel now includes TradeDirectionToggle with keyboard shortcut support
 - TradingPanel now includes TradeAmountInput with validation and calculations
-- Remaining placeholders for trade summary and submit button
+- TradingPanel now includes TradeSummary showing complete order details
+- Remaining placeholder for submit button
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
 - For events with multiple markets, the first market's outcomes are shown in the trading panel
-- OutcomeSelector, TradeDirectionToggle, and TradeAmountInput all use memo for performance optimization
+- OutcomeSelector, TradeDirectionToggle, TradeAmountInput, and TradeSummary all use memo for performance optimization
 - Pre-existing typecheck issues have been resolved - all typechecks pass
