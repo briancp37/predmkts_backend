@@ -2,10 +2,26 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### 2026-02-06: probability_display category
+- Created `web/src/components/event/probability-display.tsx` with:
+  - `formatProbability()` - formats 0.12 -> "12%" with configurable decimals
+  - `formatProbabilityAsCents()` - formats 0.12 -> "12¢"
+  - `getProbabilityColor()` - returns color classes based on probability value
+    - 70-100%: green
+    - 50-69%: emerald
+    - 30-49%: yellow
+    - 15-29%: orange
+    - 0-14%: red
+  - `ProbabilityBadge` - inline badge component with size variants (sm/md/lg)
+  - `ProbabilityBar` - visual progress bar with animation support
+  - `LargeProbabilityDisplay` - large percentage display for headers
+  - `ProbabilityChange` - displays 24h change with up/down arrows
+- Added 36 tests in `web/tests/probability-display.test.tsx`
+- All typecheck and tests passing
 
 ## In Progress
 
@@ -14,4 +30,9 @@
 
 
 ## Notes
+- These probability components are foundational - they will be used by event_header
+  and outcome_cards categories
+- The color gradient uses a 5-tier system matching the existing codebase patterns
+- Animation uses CSS transitions with 500ms ease-out for smooth bar fills
+- Components are memoized for performance when rendering multiple outcomes
 

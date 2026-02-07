@@ -38,7 +38,7 @@
       "Add animation for probability changes",
       "Create helper function for probability formatting (0.12 -> 12%)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "market_details_panel",
