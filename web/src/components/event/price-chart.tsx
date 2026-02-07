@@ -2,7 +2,7 @@
  * Price Chart Component
  *
  * Sprint 04 - Data Visualization
- * PRD: price_chart_component
+ * PRD: price_chart_component, chart_loading_states
  *
  * Features:
  * - Line chart with area fill using Recharts
@@ -11,6 +11,8 @@
  * - X-axis with time formatting
  * - Enhanced tooltip with price change from previous period
  * - Gradient area fill under the line
+ * - Reusable loading, empty, and error states
+ * - Subtle refetch indicator on range change (not full skeleton)
  */
 
 'use client';
@@ -30,6 +32,12 @@ import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { useTimeseries, type TimeseriesInterval, type PricePoint } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { ChartTooltip } from './chart-tooltip';
+import {
+  ChartLoadingSkeleton,
+  ChartEmpty,
+  ChartError,
+  ChartRefetchIndicator,
+} from './chart-loading-states';
 
 export interface PriceChartProps {
   /** Token ID to fetch timeseries data for */
@@ -124,69 +132,6 @@ function transformData(
   });
 }
 
-/**
- * Loading skeleton for the price chart
- */
-function PriceChartSkeleton({ height }: { height: number }) {
-  return (
-    <div
-      className="flex items-center justify-center bg-gray-50 rounded-lg animate-pulse"
-      style={{ height }}
-      data-testid="price-chart-loading"
-    >
-      <div className="flex flex-col items-center gap-2">
-        <div className="h-8 w-8 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
-        <span className="text-sm text-gray-400">Loading chart...</span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Empty state when no data is available
- */
-function PriceChartEmpty({ height, message }: { height: number; message?: string }) {
-  return (
-    <div
-      className="flex items-center justify-center bg-gray-50 rounded-lg text-gray-500"
-      style={{ height }}
-      data-testid="price-chart-empty"
-    >
-      {message || 'No price data available'}
-    </div>
-  );
-}
-
-/**
- * Error state with retry option
- */
-function PriceChartError({
-  height,
-  error,
-  onRetry,
-}: {
-  height: number;
-  error: string;
-  onRetry?: () => void;
-}) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center bg-gray-50 rounded-lg text-gray-500 gap-2"
-      style={{ height }}
-      data-testid="price-chart-error"
-    >
-      <span className="text-sm">{error}</span>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="text-xs text-indigo-600 hover:text-indigo-700 underline"
-        >
-          Retry
-        </button>
-      )}
-    </div>
-  );
-}
 
 /**
  * PriceChart Component
@@ -221,24 +166,25 @@ export function PriceChart({
   const {
     data: timeseriesData,
     isLoading,
+    isFetching,
     error,
     refetch,
   } = useTimeseries(tokenId, { interval, enabled: !!tokenId });
 
   // Early return for missing token ID
   if (!tokenId) {
-    return <PriceChartEmpty height={height} message="Select an outcome to view price history" />;
+    return <ChartEmpty height={height} message="Select an outcome to view price history" />;
   }
 
-  // Loading state
+  // Initial loading state (no cached data) - show full skeleton
   if (isLoading) {
-    return <PriceChartSkeleton height={height} />;
+    return <ChartLoadingSkeleton height={height} />;
   }
 
   // Error state
   if (error) {
     return (
-      <PriceChartError
+      <ChartError
         height={height}
         error={error instanceof Error ? error.message : 'Failed to load chart data'}
         onRetry={() => refetch()}
@@ -248,7 +194,7 @@ export function PriceChart({
 
   // Empty data state
   if (!timeseriesData?.history || timeseriesData.history.length === 0) {
-    return <PriceChartEmpty height={height} />;
+    return <ChartEmpty height={height} />;
   }
 
   const chartData = transformData(timeseriesData.history, interval);
@@ -264,12 +210,17 @@ export function PriceChart({
   // Create gradient ID unique to this chart instance
   const gradientId = React.useId();
 
+  // Subtle loading indicator for refetch (range change) - isFetching is true during refetch,
+  // but isLoading is false because we have cached data. Show the chart with an overlay indicator.
+  const isRefetching = isFetching && !isLoading;
+
   return (
     <div
-      className={cn('w-full', className)}
+      className={cn('relative w-full', className)}
       style={{ height }}
       data-testid="price-chart"
     >
+      <ChartRefetchIndicator isRefetching={isRefetching} />
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={chartData}

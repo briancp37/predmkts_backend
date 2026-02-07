@@ -90,7 +90,7 @@
       "Maintain chart dimensions during loading to prevent layout shift",
       "Show subtle loading indicator on range change (not full skeleton)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "orderbook_loading_states",

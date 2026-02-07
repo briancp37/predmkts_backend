@@ -50,6 +50,22 @@
   in the future, the component can be extended.
 - Typecheck passes, all 175 tests pass
 
+### 2026-02-06: chart_loading_states
+- Created `web/src/components/event/chart-loading-states.tsx` with reusable loading state components:
+  - `ChartLoadingSkeleton`: Animated placeholder for initial chart loading with configurable height
+  - `ChartEmpty`: "No data available" state with customizable message
+  - `ChartError`: Error state with retry button and accessible focus styles
+  - `ChartRefetchIndicator`: Subtle overlay indicator for data refetch (range change)
+  - `ChartContainer`: Convenience wrapper with refetch indicator positioning
+- Updated `price-chart.tsx` to use new reusable components:
+  - Replaced inline loading states with imports from `chart-loading-states.tsx`
+  - Added `isFetching` from useTimeseries hook to detect refetch vs initial load
+  - Shows `ChartRefetchIndicator` overlay when fetching but not loading (i.e., on range change)
+  - Maintains chart visibility during refetch with subtle "Updating..." indicator
+- All components maintain chart dimensions via `style={{ height }}` to prevent layout shift
+- Exported all components and their prop types from `web/src/components/event/index.ts`
+- Typecheck passes, all 175 tests pass
+
 ## In Progress
 
 
@@ -67,7 +83,7 @@
   in the event response.
 - TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
   to get the interval from URL and pass to PriceChart's `interval` prop.
-- Next task should be volume_overlay, orderbook_component, or chart_loading_states.
+- Next task should be volume_overlay, orderbook_component, or orderbook_loading_states.
 - **API limitation**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}`
   (timestamp, price) data points. True OHLC candlestick data or per-period volume would
   require either aggregating from trade data or waiting for a candlestick API endpoint.
