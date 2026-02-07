@@ -39,6 +39,11 @@ export {
 } from './top-holders-tab';
 
 export {
+  CommentsTab,
+  type CommentsTabProps,
+} from './comments-tab';
+
+export {
   TradingPanel,
   type TradingPanelProps,
 } from './trading-panel';
@@ -47,6 +52,12 @@ export {
   PriceChart,
   type PriceChartProps,
 } from './price-chart';
+
+export {
+  ChartTooltip,
+  type ChartTooltipProps,
+  type ChartDataPoint,
+} from './chart-tooltip';
 
 export {
   formatProbability,

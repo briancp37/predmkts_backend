@@ -32,6 +32,24 @@
 - Exported from `web/src/components/event/index.ts`
 - Typecheck passes, all 118 tests pass
 
+### 2026-02-06: chart_tooltip
+- Created `web/src/components/event/chart-tooltip.tsx` as separate reusable component
+- Styled container with rounded corners, shadow, and border
+- Displays date (MMM d, yyyy) and time (HH:mm) on separate lines for clarity
+- Shows price as both percentage (e.g., "65.5%") and cents (e.g., "66¢")
+- Shows outcome name when provided (e.g., "Yes")
+- **Price change from previous period**: Calculates and displays absolute change (in cents)
+  and percentage change with directional indicator (green up arrow, red down arrow, gray minus)
+- Uses lucide-react icons (ArrowUp, ArrowDown, Minus) for change direction
+- Smart edge positioning: Detects proximity to chart edges and adjusts tooltip position
+- Updated `price-chart.tsx` to include `previousPrice` in chart data for change calculation
+- Exported `ChartTooltip`, `ChartTooltipProps`, `ChartDataPoint` from `index.ts`
+- **Note**: OHLC (Open, High, Low, Close) and volume data not available from Polymarket
+  timeseries API (which returns only simple `{t, p}` points). The tooltip focuses on what's
+  available: current price and change from previous period. If OHLC data becomes available
+  in the future, the component can be extended.
+- Typecheck passes, all 175 tests pass
+
 ## In Progress
 
 
@@ -49,5 +67,8 @@
   in the event response.
 - TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
   to get the interval from URL and pass to PriceChart's `interval` prop.
-- Next task should be chart_tooltip (enhanced OHLC/volume tooltip) or orderbook_component.
+- Next task should be volume_overlay, orderbook_component, or chart_loading_states.
+- **API limitation**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}`
+  (timestamp, price) data points. True OHLC candlestick data or per-period volume would
+  require either aggregating from trade data or waiting for a candlestick API endpoint.
 

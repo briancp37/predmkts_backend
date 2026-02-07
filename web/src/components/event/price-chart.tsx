@@ -9,7 +9,7 @@
  * - Uses useTimeseries hook for data fetching
  * - Y-axis formatted as percentage (0-100%)
  * - X-axis with time formatting
- * - Crosshair tooltip with exact price/time
+ * - Enhanced tooltip with price change from previous period
  * - Gradient area fill under the line
  */
 
@@ -29,6 +29,7 @@ import {
 import { format, isToday, isThisWeek, isThisYear } from 'date-fns';
 import { useTimeseries, type TimeseriesInterval, type PricePoint } from '@/hooks';
 import { cn } from '@/lib/utils';
+import { ChartTooltip } from './chart-tooltip';
 
 export interface PriceChartProps {
   /** Token ID to fetch timeseries data for */
@@ -87,13 +88,6 @@ function formatXAxis(timestamp: number, interval: TimeseriesInterval): string {
 }
 
 /**
- * Format price as percentage (0-100%)
- */
-function formatPrice(price: number): string {
-  return `${(price * 100).toFixed(1)}%`;
-}
-
-/**
  * Format price for Y-axis tick (shorter format)
  */
 function formatYAxisTick(value: number): string {
@@ -101,73 +95,33 @@ function formatYAxisTick(value: number): string {
 }
 
 /**
- * Custom tooltip component for the price chart
- */
-interface TooltipPayloadItem {
-  value: number;
-  payload: ChartDataPoint;
-}
-
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: TooltipPayloadItem[];
-  outcomeName?: string;
-}
-
-function CustomTooltip({ active, payload, outcomeName }: CustomTooltipProps) {
-  if (!active || !payload || payload.length === 0) {
-    return null;
-  }
-
-  const data = payload[0];
-  if (!data) {
-    return null;
-  }
-
-  const point = data.payload;
-  const date = new Date(point.timestamp * 1000);
-
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg">
-      <div className="text-xs text-gray-500 mb-1">
-        {format(date, 'MMM d, yyyy HH:mm')}
-      </div>
-      <div className="flex items-center gap-2">
-        {outcomeName && (
-          <span className="text-sm text-gray-600">{outcomeName}:</span>
-        )}
-        <span className="text-base font-semibold text-gray-900">
-          {formatPrice(data.value)}
-        </span>
-      </div>
-      <div className="text-xs text-gray-400 mt-0.5">
-        {Math.round(data.value * 100)}¢
-      </div>
-    </div>
-  );
-}
-
-/**
- * Chart data point with timestamp
+ * Chart data point with timestamp and optional previous price for change calculation
  */
 interface ChartDataPoint {
   timestamp: number;
   price: number;
   formattedTime: string;
+  /** Price from the previous data point (for calculating change) */
+  previousPrice?: number;
 }
 
 /**
  * Transform API response to chart data format
+ * Includes previousPrice for each point to enable price change calculation in tooltip
  */
 function transformData(
   history: PricePoint[],
   interval: TimeseriesInterval
 ): ChartDataPoint[] {
-  return history.map((point) => ({
-    timestamp: point.timestamp,
-    price: point.price,
-    formattedTime: formatXAxis(point.timestamp, interval),
-  }));
+  return history.map((point, index) => {
+    const prevPoint = index > 0 ? history[index - 1] : undefined;
+    return {
+      timestamp: point.timestamp,
+      price: point.price,
+      formattedTime: formatXAxis(point.timestamp, interval),
+      previousPrice: prevPoint?.price,
+    };
+  });
 }
 
 /**
@@ -364,7 +318,7 @@ export function PriceChart({
           )}
 
           <Tooltip
-            content={<CustomTooltip outcomeName={outcomeName} />}
+            content={<ChartTooltip outcomeName={outcomeName} />}
             cursor={{
               stroke: '#6366f1',
               strokeWidth: 1,

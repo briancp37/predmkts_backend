@@ -11,7 +11,7 @@
       "Display end date with relative time (e.g., 'Ends Jun 30, 2026')",
       "Add watchlist toggle button for authenticated users"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "outcome_cards",

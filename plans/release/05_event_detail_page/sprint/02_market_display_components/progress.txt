@@ -23,6 +23,27 @@
 - Added 36 tests in `web/tests/probability-display.test.tsx`
 - All typecheck and tests passing
 
+### 2026-02-06: event_header category
+- Created `web/src/components/event/event-header.tsx` with:
+  - `formatVolume()` - formats currency with K/M suffixes (e.g., "$66.1K Vol.")
+  - `formatEndDate()` - formats dates with relative time (e.g., "Ends Jun 30, 2026")
+  - `getCategoryColors()` - maps category names to predefined color classes
+  - `CategoryBadge` - colored badge component with predefined color mapping
+    - Politics=blue, Crypto=orange, Tech=purple, Sports=green, etc.
+  - `WatchlistButton` - toggle button for authenticated users with optimistic updates
+  - `EventHeader` - main header component combining all elements:
+    - Title with text-2xl/3xl bold typography
+    - Category badge with color coding
+    - Resolved badge indicator
+    - Large probability display with "chance" suffix
+    - 24h probability change with arrows
+    - Volume display with proper formatting
+    - End date with relative time
+    - Watchlist toggle for authenticated users
+- Exported all components and types via `web/src/components/event/index.ts`
+- Added 30 tests in `web/tests/event-header.test.tsx`
+- All 175 frontend tests passing
+
 ## In Progress
 
 
