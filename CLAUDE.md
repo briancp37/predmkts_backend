@@ -608,24 +608,39 @@ prediction-data silver process --platform polymarket --entity events \
 prediction-data gold load-dims
 ```
 
-**Running on ECS:**
+**Running on ECS (requires 16GB+ memory):**
+
+Catalog entity reprocessing (markets, events) loads ~386K records into memory
+during PyIceberg writes. The default 512MB task definition will OOM. Override
+with at least 16GB:
 
 ```bash
 aws ecs run-task \
-    --cluster prediction-data \
-    --task-definition prediction-data-silver \
+    --cluster prediction-data-prod \
+    --task-definition prediction-data-ingest-prod \
     --launch-type FARGATE \
-    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}" \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-64b44845],securityGroups=[sg-1d625733],assignPublicIp=ENABLED}" \
     --overrides '{
+        "cpu": "4096",
+        "memory": "16384",
         "containerOverrides": [{
-            "name": "silver",
-            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--start-date", "2013-01-01", "--end-date", "2026-02-06", "--force-reprocess"]
+            "name": "prediction-data",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--start-date", "2013-01-01", "--end-date", "2026-02-07", "--force-reprocess"]
         }]
-    }'
+    }' \
+    --region us-east-1
 ```
 
+**Memory requirements by entity:**
+
+| Entity | Compressed Size | Memory Required |
+|--------|-----------------|-----------------|
+| markets | ~163MB/day | 16GB+ |
+| events | ~165MB/day | 16GB+ |
+| trades | ~varies | 4GB (stream entity) |
+
 **Warning:** Do NOT run full reprocessing locally — it will consume significant
-memory and CPU. Always use ECS for large backfill jobs spanning months or years.
+memory and CPU. Always use ECS for large backfill jobs.
 
 See `plans/release/02_silver_level/hotfixes.md` for documented schema fixes and
 their recovery procedures.
