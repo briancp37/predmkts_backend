@@ -11,7 +11,7 @@
       "Show time on X-axis with appropriate formatting per range",
       "Add crosshair with tooltip showing exact price/time"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "chart_time_range_selector",

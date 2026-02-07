@@ -2,16 +2,38 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### 2026-02-06: price_chart_component
+- Created `web/src/components/event/price-chart.tsx` using Recharts
+- Uses `useTimeseries` hook from `use-polymarket-proxy.ts` for data fetching
+- Implemented AreaChart with gradient fill (indigo color scheme)
+- Y-axis formatted as percentage (0-100%) with dynamic domain based on price range
+- X-axis with smart time formatting per interval (1m, 5m, 1h, 1d, 1w, max)
+- Custom tooltip showing date/time, price as percentage, and price as cents
+- Crosshair cursor on hover
+- 50% reference line for quick probability reading
+- Loading skeleton, empty state, and error state with retry button
+- Exported from `web/src/components/event/index.ts`
+- Tests pass (82 tests)
 
 ## In Progress
 
 
 ## Blockers/Issues
 
+- Pre-existing TypeScript error in `event/[slug]/page.tsx` - unused `TradingPanel` import
+  added by previous work. Not related to this sprint task.
 
 ## Notes
+
+- The existing `web/src/components/ui/price-chart.tsx` uses `lightweight-charts` library.
+  The new event PriceChart uses Recharts as specified in the PRD for consistency with
+  other chart components (VolumeChart, etc).
+- The PriceChart accepts a `tokenId` prop which comes from `EventMarketOutcome.tokenId`
+  in the event response.
+- Next task should be chart_time_range_selector or chart_loading_states (already partially
+  implemented in PriceChart).
 
