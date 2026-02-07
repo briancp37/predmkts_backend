@@ -18,11 +18,11 @@
 'use client';
 
 import { use, useEffect } from 'react';
-import { Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
+import { Tag, TrendingUp, TrendingDown, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
-import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError } from '@/components/event';
+import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel } from '@/components/event';
 
 interface EventPageProps {
   params: Promise<{ slug: string }>;
@@ -210,33 +210,14 @@ function OutcomesList({
 }
 
 /**
- * Trading Panel Sidebar Component (Placeholder)
+ * Trading Panel Sidebar Component
+ * Uses the TradingPanel component for the trading interface
  */
 function TradingPanelSidebar({ eventSlug }: { eventSlug: string }) {
   return (
     <div className="space-y-4">
-      {/* Quick Trade Card */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Trade</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <SectionPlaceholder
-            title="Trading Panel"
-            description="Buy/Sell interface coming soon"
-            minHeight="min-h-[120px]"
-          />
-          <a
-            href={`https://polymarket.com/event/${eventSlug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-          >
-            Trade on Polymarket
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </CardContent>
-      </Card>
+      {/* Trading Panel - sticky on desktop, collapsible on mobile */}
+      <TradingPanel eventSlug={eventSlug} />
 
       {/* Market Stats Card */}
       <Card>
@@ -362,19 +343,11 @@ export default function EventDetailPage({ params }: EventPageProps) {
         </CardContent>
       </Card>
 
-      {/* Activity Feed Placeholder */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SectionPlaceholder
-            title="Activity Feed"
-            description="Recent trades and position changes"
-            minHeight="min-h-[200px]"
-          />
-        </CardContent>
-      </Card>
+      {/* Activity Tabs - Comments, Top Holders, Activity Feed */}
+      <ActivityTabs
+        defaultTab="activity"
+        conditionId={event.markets?.[0]?.id}
+      />
     </EventDetailLayout>
   );
 }

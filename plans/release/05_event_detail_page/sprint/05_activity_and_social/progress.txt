@@ -2,10 +2,20 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
 
+### activity_tabs (2026-02-06)
+- Created ActivityTabs component in web/src/components/event/activity-tabs.tsx
+- Implemented tab navigation using Radix UI Tabs: Comments, Top Holders, Activity
+- Added URL hash persistence for active tab state (syncs with browser history)
+- Added smooth transitions via Radix data-state attributes and CSS transitions
+- Implemented activity count badge on Activity tab (shows count, caps at 99+)
+- Made tabs scrollable on mobile with overflow-x-auto
+- Integrated component into event detail page, replacing the Activity Feed placeholder
+- Added placeholder content for each tab (Comments, Top Holders, Activity Feed)
+- Exported component from web/src/components/event/index.ts
 
 ## In Progress
 
@@ -14,4 +24,8 @@
 
 
 ## Notes
+- The component uses Radix UI Tabs which was already installed in the project
+- Placeholder components are included for each tab content area (CommentsPlaceholder, TopHoldersPlaceholder, ActivityFeedPlaceholder)
+- The conditionId prop is passed through for future data fetching integration with useTopHolders and useMarketTrades hooks
+- Default tab is 'activity' since that's the primary content users will want to see
 

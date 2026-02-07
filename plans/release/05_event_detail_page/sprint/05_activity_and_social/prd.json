@@ -10,7 +10,7 @@
       "Show count badge on Activity tab (recent trades count)",
       "Make tabs scrollable on mobile if needed"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "comments_placeholder",
