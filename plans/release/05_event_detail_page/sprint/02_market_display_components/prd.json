@@ -77,6 +77,6 @@
       "Add hover tooltip with full category name",
       "Support multiple tags per event"
     ],
-    "passes": false
+    "passes": true
   }
 ]

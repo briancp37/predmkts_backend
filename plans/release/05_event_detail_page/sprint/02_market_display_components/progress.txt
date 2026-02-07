@@ -2,7 +2,7 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -118,6 +118,34 @@
 - Added 31 tests in `web/tests/resolution-rules.test.tsx`
 - All 388 frontend tests passing, typecheck clean
 
+### 2026-02-06: category_tags category
+- Created `web/src/components/event/category-tag.tsx` with:
+  - `CATEGORY_COLORS` - predefined color mapping for 14 categories:
+    - Politics=blue, Crypto=orange, Tech=purple, Sports=green,
+    - Entertainment=pink, Science=cyan, Economics=emerald, Finance=yellow,
+    - World=indigo, Business=slate, Climate=teal, Health=rose, Legal=amber, Culture=fuchsia
+  - `CATEGORY_FULL_NAMES` - maps short names to descriptive names for tooltips
+    - e.g., "Tech" -> "Technology & Innovation"
+  - `getCategoryTagColors()` - returns bg/text/border/hoverBg classes for a category
+  - `getCategoryFullName()` - returns full descriptive name for tooltips
+  - `CategoryTag` - individual tag component:
+    - Renders as `<span>` when not clickable, `<Link>` when clickable
+    - Click navigates to `/markets?category={category}` by default
+    - Custom `href` prop allows overriding navigation URL
+    - Hover tooltip shows full category name (e.g., "Technology & Innovation")
+    - Clickable tags show enhanced tooltip with navigation hint
+    - Size variants (sm/md)
+    - Proper aria-label for accessibility
+  - `CategoryTagList` - renders multiple CategoryTag components:
+    - Supports `maxVisible` prop to truncate with "+N more" indicator
+    - Hidden categories shown in "+N more" tooltip
+    - Passes clickable/size props to all tags
+    - Returns null for empty categories array
+- Exported all components, types, and helpers via `web/src/components/event/index.ts`
+- Added 54 tests in `web/tests/category-tag.test.tsx`
+- All 485 frontend tests passing (excluding pre-existing trade-submit-button timeout issues)
+- Typecheck clean
+
 ## In Progress
 
 
@@ -133,6 +161,8 @@
 - MarketDetailsPanel uses Lucide icons for visual consistency
 - Clipboard copy uses native browser API with fallback error handling
 - Relative time formatting supports years/months/weeks/days/hours/minutes/just now
-- Remaining categories: category_tags (partially done - CategoryBadge exists in
-  event-header.tsx, needs clickable navigation and hover tooltip)
+- CategoryTag is separate from CategoryBadge (in event-header.tsx) - CategoryTag
+  supports clickable navigation and multiple tags, while CategoryBadge is simpler
+  for inline use in headers
+- All 6 PRD categories now complete. Sprint is finished.
 
