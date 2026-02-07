@@ -36,7 +36,7 @@
       "Show loading skeleton during fetch",
       "Show empty state if no holders"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "top_holders_item",
@@ -50,7 +50,7 @@
       "Format value with $ prefix",
       "Add hover state with full details tooltip"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "activity_feed",

@@ -35,6 +35,26 @@
 - Updated ActivityTabs to use real ActivityFeed when conditionId is provided
 - Exported ActivityFeed, ActivityItem, ActivitySkeleton from index.ts
 
+### top_holders_tab, top_holders_item (2026-02-06)
+- Created TopHoldersTab component in web/src/components/event/top-holders-tab.tsx
+- Uses useTopHolders hook from use-polymarket-proxy.ts for data fetching
+- Displays table with columns: Rank, Wallet (truncated), Position, Value
+- Added medal icons for top 3 positions (🥇 🥈 🥉)
+- Wallet addresses are clickable links to trader profile (/traders/{address})
+- Added copy-to-clipboard button for wallet addresses (appears on hover)
+- Created TopHolderRow component for individual holder display
+- Uses colored circle avatar based on outcome (green for Yes, red for No)
+- Truncates wallet addresses with ellipsis using shortenAddress utility
+- Formats position size in shares using formatNumber utility (1.2K, 3.4M, etc.)
+- Formats estimated value in dollars ($1.2k, $45.00, etc.)
+- Shows outcome badge (Yes/No) with appropriate coloring
+- Created TopHoldersSkeleton with animated loading placeholder
+- Shows "No holders found for this market" empty state
+- Added error state with retry button
+- Added manual refresh button at bottom
+- Updated ActivityTabs to use real TopHoldersTab when conditionId is provided
+- Exported TopHoldersTab, TopHolderRow, TopHoldersSkeleton from index.ts
+
 ## In Progress
 
 
@@ -47,7 +67,9 @@
 - The conditionId prop is passed through for future data fetching integration with useTopHolders and useMarketTrades hooks
 - Default tab is 'activity' since that's the primary content users will want to see
 - ActivityFeed is prioritized as highest priority because it's the default tab content users will see
-- Note: Wallet avatars (jazzicon/blockie) deferred - using colored circles for now based on buy/sell side
+- Note: Wallet avatars (jazzicon/blockie) deferred - using colored circles for now based on outcome or buy/sell side
 - Note: Stale data indicator (>1m old) not implemented - would require additional tracking
 - Note: Animation on new items appearing not implemented - would require tracking previous trade IDs
+- Note: Top holders value is estimated using 50¢ average price - real value calculation would require price data integration
+- Note: Hover tooltip with full details not implemented - would add complexity; basic hover state with visible copy/link buttons implemented instead
 

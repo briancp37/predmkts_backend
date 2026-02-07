@@ -20,6 +20,7 @@ import { MessageCircle, Users, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { ActivityFeed } from './activity-feed';
+import { TopHoldersTab } from './top-holders-tab';
 
 export type TabValue = 'comments' | 'holders' | 'activity';
 
@@ -129,7 +130,11 @@ export function ActivityTabs({
             value="holders"
             className="p-6 focus:outline-none data-[state=inactive]:hidden"
           >
-            <TopHoldersPlaceholder conditionId={conditionId} />
+            {conditionId ? (
+              <TopHoldersTab conditionId={conditionId} />
+            ) : (
+              <TopHoldersPlaceholder conditionId={conditionId} />
+            )}
           </Tabs.Content>
 
           <Tabs.Content

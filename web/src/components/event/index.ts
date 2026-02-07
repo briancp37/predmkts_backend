@@ -31,6 +31,14 @@ export {
 } from './activity-feed';
 
 export {
+  TopHoldersTab,
+  TopHolderRow,
+  TopHoldersSkeleton,
+  type TopHoldersTabProps,
+  type TopHolderRowProps,
+} from './top-holders-tab';
+
+export {
   TradingPanel,
   type TradingPanelProps,
 } from './trading-panel';
@@ -69,3 +77,12 @@ export {
   type Outcome,
   type OutcomeSelectorProps,
 } from './outcome-selector';
+
+export {
+  EventHeader,
+  CategoryBadge,
+  formatVolume,
+  formatEndDate,
+  type EventHeaderProps,
+  type CategoryBadgeProps,
+} from './event-header';
