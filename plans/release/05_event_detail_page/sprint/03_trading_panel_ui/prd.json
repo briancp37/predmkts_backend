@@ -102,6 +102,6 @@
       "Add 'Close Position' button placeholder",
       "Show position only if user has non-zero position"
     ],
-    "passes": false
+    "passes": true
   }
 ]

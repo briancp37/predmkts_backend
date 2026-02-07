@@ -225,6 +225,55 @@
 - All 23 trading-panel-auth tests pass
 - All 508 project tests pass
 
+### position_display (2026-02-06)
+- Created PositionDisplay component in web/src/components/event/position-display.tsx
+- Displays user's current position in the market with all required fields:
+  - Shares held with appropriate formatting (commas for large numbers)
+  - Average cost displayed as cents (e.g., "45¢")
+  - Current value calculated from shares * currentPrice
+  - P&L (unrealized + realized) with +/- prefix
+- Color coding for PnL:
+  - Green border (border-green-200) and text (text-green-600) for positive PnL
+  - Red border (border-red-200) and text (text-red-600) for negative PnL
+  - TrendingUp/TrendingDown icons based on profitability
+- Close Position button placeholder:
+  - Disabled by default (no onClosePosition handler)
+  - Enabled when onClosePosition callback is provided
+  - Styled as secondary action with border
+- Component only renders when:
+  - Position is not null
+  - Position has non-zero quantity
+- Loading state with skeleton animation and aria-busy
+- Integrated PositionDisplay into TradingPanel component:
+  - Added position prop to TradingPanelProps
+  - Position passed through to TradingPanelContent
+  - PositionDisplay rendered above OutcomeSelector for authenticated users
+- Exported PositionDisplay, Position type, and PositionDisplayProps from components/event/index.ts
+- Created comprehensive test suite with 42 tests covering:
+  - Render behavior (null position, zero quantity, non-zero position)
+  - Position details (header, outcome, shares, avg cost, value, P&L)
+  - PnL color coding (green/red for positive/negative)
+  - Close Position button (click handler, disabled state)
+  - Loading state (skeleton, aria-busy)
+  - Calculations (current value, total PnL, mixed PnL)
+  - Edge cases (large positions, small prices, fractional shares)
+  - Accessibility (region role, aria-label)
+  - Styling (border, background, padding)
+- All 42 position-display tests pass
+- All 550 project tests pass
+
+## Sprint Complete (2026-02-06)
+
+All 8 PRD categories have been implemented and pass:
+- trading_panel_layout
+- outcome_selector
+- trade_direction_toggle
+- amount_input
+- trade_summary
+- dummy_trade_button
+- authentication_gate
+- position_display
+
 
 ## In Progress
 
@@ -244,4 +293,6 @@
 - For events with multiple markets, the first market's outcomes are shown in the trading panel
 - OutcomeSelector, TradeDirectionToggle, TradeAmountInput, TradeSummary, AuthLoadingState, and LoginPrompt all use memo for performance optimization
 - Pre-existing typecheck issues have been resolved - all typechecks pass
-- Note: The "Display user's current position" step from the PRD is a placeholder pending the position_display feature implementation
+- PositionDisplay component accepts position data as a prop (API integration to fetch user positions is a separate feature)
+- Position data structure matches TraderPosition from existing hooks/use-traders.ts
+- PositionDisplay uses memo for performance optimization

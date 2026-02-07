@@ -119,6 +119,12 @@ export {
 } from './trade-submit-button';
 
 export {
+  PositionDisplay,
+  type Position,
+  type PositionDisplayProps,
+} from './position-display';
+
+export {
   EventHeader,
   CategoryBadge,
   formatVolume,

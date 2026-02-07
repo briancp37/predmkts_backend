@@ -2,7 +2,7 @@
  * Trading Panel Component
  *
  * Sprint 03 - Trading Panel UI
- * PRD: trading_panel_layout, outcome_selector, trade_direction_toggle, authentication_gate
+ * PRD: trading_panel_layout, outcome_selector, trade_direction_toggle, authentication_gate, position_display
  *
  * Features:
  * - Sticky positioning on desktop (below header)
@@ -13,6 +13,7 @@
  * - Outcome selector with radio-button style selection
  * - Trade direction toggle (Buy/Sell) with keyboard shortcuts
  * - Authentication gate: shows login prompt for unauthenticated users
+ * - Position display: shows user's current position if they have one
  */
 
 'use client';
@@ -29,12 +30,15 @@ import { TradeDirectionToggle, type TradeDirection } from './trade-direction-tog
 import { TradeAmountInput } from './trade-amount-input';
 import { TradeSummary } from './trade-summary';
 import { TradeSubmitButton } from './trade-submit-button';
+import { PositionDisplay, type Position } from './position-display';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
   eventSlug: string;
   /** Outcomes available for trading */
   outcomes?: Outcome[];
+  /** User's current position in this market (null if no position) */
+  position?: Position | null;
   /** Optional initial expanded state for mobile (default: false) */
   defaultExpanded?: boolean;
   /** Optional className for additional styling */
@@ -57,6 +61,7 @@ export interface TradingPanelProps {
 export function TradingPanel({
   eventSlug,
   outcomes = [],
+  position = null,
   defaultExpanded = false,
   className,
   children,
@@ -202,6 +207,7 @@ export function TradingPanel({
                   <TradingPanelContent
                     eventSlug={eventSlug}
                     outcomes={outcomes}
+                    position={position}
                     selectedOutcomeId={selectedOutcomeId}
                     onOutcomeSelect={setSelectedOutcomeId}
                     tradeDirection={tradeDirection}
@@ -322,6 +328,7 @@ const LoginPrompt = memo(function LoginPrompt({ loginUrl, eventSlug }: LoginProm
 interface TradingPanelContentProps {
   eventSlug: string;
   outcomes: Outcome[];
+  position: Position | null;
   selectedOutcomeId: string | null;
   onOutcomeSelect: (outcomeId: string) => void;
   tradeDirection: TradeDirection;
@@ -334,6 +341,7 @@ interface TradingPanelContentProps {
 function TradingPanelContent({
   eventSlug,
   outcomes,
+  position,
   selectedOutcomeId,
   onOutcomeSelect,
   tradeDirection,
@@ -346,6 +354,9 @@ function TradingPanelContent({
   const selectedOutcome = outcomes.find((o) => o.id === selectedOutcomeId);
   return (
     <div className="space-y-4">
+      {/* User's Current Position (only shown if they have one) */}
+      <PositionDisplay position={position} />
+
       {/* Outcome Selector */}
       <OutcomeSelector
         outcomes={outcomes}
