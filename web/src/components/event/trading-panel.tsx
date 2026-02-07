@@ -2,7 +2,7 @@
  * Trading Panel Component
  *
  * Sprint 03 - Trading Panel UI
- * PRD: trading_panel_layout, outcome_selector, trade_direction_toggle
+ * PRD: trading_panel_layout, outcome_selector, trade_direction_toggle, authentication_gate
  *
  * Features:
  * - Sticky positioning on desktop (below header)
@@ -12,13 +12,17 @@
  * - Ensures panel doesn't overlap with footer on scroll
  * - Outcome selector with radio-button style selection
  * - Trade direction toggle (Buy/Sell) with keyboard shortcuts
+ * - Authentication gate: shows login prompt for unauthenticated users
  */
 
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
+import { useState, useCallback, useEffect, memo } from 'react';
+import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { ChevronUp, ChevronDown, TrendingUp, LogIn, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/providers';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OutcomeSelector, type Outcome } from './outcome-selector';
 import { TradeDirectionToggle, type TradeDirection } from './trade-direction-toggle';
@@ -44,6 +48,11 @@ export interface TradingPanelProps {
  *
  * On desktop: Displays as a sticky card in the sidebar
  * On mobile: Displays as a collapsible card that can be expanded/collapsed
+ *
+ * Authentication gate:
+ * - Shows loading spinner while checking auth status
+ * - Shows "Log in to trade" button for unauthenticated users
+ * - Shows full trading panel for authenticated users
  */
 export function TradingPanel({
   eventSlug,
@@ -52,6 +61,13 @@ export function TradingPanel({
   className,
   children,
 }: TradingPanelProps) {
+  // Authentication state
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const isAuthenticated = !!user;
+
+  // Get current pathname for login redirect
+  const pathname = usePathname();
+
   // Mobile expanded/collapsed state
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
@@ -96,6 +112,9 @@ export function TradingPanel({
     },
     [toggleExpanded]
   );
+
+  // Build login URL with callback to return to current event page
+  const loginUrl = `/login?callbackUrl=${encodeURIComponent(pathname)}`;
 
   return (
     <div
@@ -172,7 +191,14 @@ export function TradingPanel({
             {/* Trading panel content (outcome selector, amount input, etc.) */}
             {(!isMobile || isExpanded) && (
               <>
-                {outcomes.length > 0 ? (
+                {/* Auth loading state */}
+                {isAuthLoading ? (
+                  <AuthLoadingState />
+                ) : !isAuthenticated ? (
+                  /* Unauthenticated: Show login prompt */
+                  <LoginPrompt loginUrl={loginUrl} eventSlug={eventSlug} />
+                ) : outcomes.length > 0 ? (
+                  /* Authenticated with outcomes: Show full trading panel */
                   <TradingPanelContent
                     eventSlug={eventSlug}
                     outcomes={outcomes}
@@ -186,6 +212,7 @@ export function TradingPanel({
                     {children}
                   </TradingPanelContent>
                 ) : (
+                  /* Authenticated without outcomes: Show placeholder */
                   <TradingPanelPlaceholder eventSlug={eventSlug} />
                 )}
               </>
@@ -211,6 +238,82 @@ export function TradingPanel({
     </div>
   );
 }
+
+/**
+ * Loading state shown while authentication status is being checked
+ */
+const AuthLoadingState = memo(function AuthLoadingState() {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-8 text-gray-500"
+      role="status"
+      aria-label="Loading authentication status"
+    >
+      <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+      <span className="sr-only">Checking authentication...</span>
+    </div>
+  );
+});
+
+/**
+ * Login prompt shown for unauthenticated users
+ */
+interface LoginPromptProps {
+  loginUrl: string;
+  eventSlug: string;
+}
+
+const LoginPrompt = memo(function LoginPrompt({ loginUrl, eventSlug }: LoginPromptProps) {
+  return (
+    <div className="space-y-4" data-testid="login-prompt">
+      {/* Login message */}
+      <div className="text-center py-4">
+        <div className="mx-auto w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-3">
+          <LogIn className="h-6 w-6 text-indigo-600" />
+        </div>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">
+          Log in to trade
+        </h3>
+        <p className="text-xs text-gray-500">
+          Create an account or log in to start trading on this market
+        </p>
+      </div>
+
+      {/* Login button */}
+      <Link
+        href={loginUrl}
+        className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        data-testid="login-to-trade-button"
+      >
+        <LogIn className="h-4 w-4" />
+        Log in to trade
+      </Link>
+
+      {/* Link to Polymarket as fallback */}
+      <a
+        href={`https://polymarket.com/event/${eventSlug}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium border border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition-colors"
+      >
+        Trade on Polymarket
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+          />
+        </svg>
+      </a>
+    </div>
+  );
+});
 
 /**
  * Trading panel content with outcome selector, trade direction toggle,

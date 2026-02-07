@@ -89,7 +89,7 @@
       "Show full trading panel for authenticated users",
       "Display user's current position if they have one"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "position_display",

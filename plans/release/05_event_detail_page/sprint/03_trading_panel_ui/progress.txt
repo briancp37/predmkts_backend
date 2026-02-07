@@ -191,6 +191,40 @@
 - All 43 trade-submit-button tests pass
 - All 485 project tests pass
 
+### authentication_gate (2026-02-06)
+- Implemented authentication checking in TradingPanel using useAuth hook from providers
+- Added loading state with spinner while authentication status is being checked
+  - Shows Loader2 spinning icon with aria-label for accessibility
+  - Uses role="status" for screen readers
+  - Screen reader text "Checking authentication..."
+- For unauthenticated users:
+  - Shows LoginPrompt component with "Log in to trade" heading
+  - Displays LogIn icon and descriptive text
+  - "Log in to trade" button links to /login with callbackUrl parameter
+  - callbackUrl is properly URI-encoded using encodeURIComponent
+  - After login, user is redirected back to the event page they were viewing
+  - Shows "Trade on Polymarket" as fallback external link
+- For authenticated users:
+  - Shows full trading panel with OutcomeSelector, TradeDirectionToggle, etc.
+  - When no outcomes, shows placeholder
+- Uses usePathname from next/navigation to get current URL for redirect
+- Added memo optimization for AuthLoadingState and LoginPrompt components
+- Updated trading-panel.tsx imports to include:
+  - usePathname from next/navigation
+  - Link from next/link
+  - LogIn, Loader2 from lucide-react
+  - useAuth from @/components/providers
+- Created comprehensive test suite with 23 tests covering:
+  - Loading state (spinner display, screen reader text, no content during load)
+  - Unauthenticated state (login prompt, button text, callback URL, Polymarket link)
+  - Authenticated state (full panel, components visible, no login prompt)
+  - URL encoding (special characters, query params, unicode)
+  - Panel header (shows "Trade" in all states)
+  - Accessibility (link element, role="status", aria-label)
+- Fixed pre-existing typecheck issue (unused waitFor import in trade-submit-button.test.tsx)
+- All 23 trading-panel-auth tests pass
+- All 508 project tests pass
+
 
 ## In Progress
 
@@ -204,8 +238,10 @@
 - TradingPanel now includes TradeAmountInput with validation and calculations
 - TradingPanel now includes TradeSummary showing complete order details
 - TradingPanel now includes TradeSubmitButton with dummy action and confetti feedback
+- TradingPanel now includes authentication gate with login prompt for unauthenticated users
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
 - For events with multiple markets, the first market's outcomes are shown in the trading panel
-- OutcomeSelector, TradeDirectionToggle, TradeAmountInput, and TradeSummary all use memo for performance optimization
+- OutcomeSelector, TradeDirectionToggle, TradeAmountInput, TradeSummary, AuthLoadingState, and LoginPrompt all use memo for performance optimization
 - Pre-existing typecheck issues have been resolved - all typechecks pass
+- Note: The "Display user's current position" step from the PRD is a placeholder pending the position_display feature implementation
