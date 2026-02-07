@@ -100,6 +100,6 @@
       "Pause polling when tab is not visible (document.hidden)",
       "Add manual refresh button"
     ],
-    "passes": false
+    "passes": true
   }
 ]

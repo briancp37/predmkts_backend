@@ -44,6 +44,28 @@
 - Added 30 tests in `web/tests/event-header.test.tsx`
 - All 175 frontend tests passing
 
+### 2026-02-06: outcome_cards category
+- Created `web/src/components/event/outcome-card.tsx` with:
+  - `OutcomeCardData` - type for outcome data with id, tokenId, outcomeName, currentPrice, volume, priceChange24h
+  - `OutcomeCard` - individual outcome card component:
+    - Displays outcome name (Yes/No or custom names)
+    - Shows probability as percentage with color coding via `getProbabilityColor()`
+    - Displays price in cents (e.g., "65¢")
+    - Shows 24h change with up/down arrow and color (green/red)
+    - Hover state with subtle background change (`hover:bg-gray-100`)
+    - Clickable with selection state (indigo border/background when selected)
+    - Keyboard accessible (Enter/Space to select)
+    - Size variants (sm/md)
+    - Memoized for performance
+  - `OutcomeCardList` - renders multiple OutcomeCards:
+    - Vertical or horizontal layout options
+    - Handles selection state across cards
+    - Empty state message when no outcomes
+    - Passes size/clickable props to all cards
+- Exported components and types via `web/src/components/event/index.ts`
+- Added 37 tests in `web/tests/outcome-card.test.tsx`
+- All 237 frontend tests passing
+
 ## In Progress
 
 

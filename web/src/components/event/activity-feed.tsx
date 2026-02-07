@@ -2,7 +2,7 @@
  * Activity Feed Component
  *
  * Sprint 05 - Activity and Social
- * PRD: activity_feed, activity_item, activity_loading
+ * PRD: activity_feed, activity_item, activity_loading, polling_updates
  *
  * Features:
  * - Display recent trades for a market using useMarketTrades hook
@@ -11,14 +11,53 @@
  * - Loading skeleton during fetch
  * - Empty state when no trades
  * - Load more button for additional trades
+ * - Auto-polling every 30s with pause when tab is hidden
+ * - "New activity" banner when new trades arrive
+ * - Manual refresh button
  */
 
 'use client';
 
 import * as React from 'react';
-import { ArrowUp, ArrowDown, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowUp, ArrowDown, RefreshCw, AlertCircle, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMarketTrades, Trade } from '@/hooks/use-polymarket-proxy';
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Polling interval for activity feed (30 seconds) */
+const POLLING_INTERVAL_MS = 30 * 1000;
+
+// =============================================================================
+// Custom Hooks
+// =============================================================================
+
+/**
+ * Hook to detect document visibility state
+ * Returns false when tab is hidden, true when visible
+ */
+function useDocumentVisibility(): boolean {
+  const [isVisible, setIsVisible] = React.useState(() => {
+    // SSR-safe: default to true, will be updated on mount
+    if (typeof document === 'undefined') return true;
+    return !document.hidden;
+  });
+
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  return isVisible;
+}
 
 // =============================================================================
 // Types
@@ -31,6 +70,10 @@ export interface ActivityFeedProps {
   initialLimit?: number;
   /** Optional className for the container */
   className?: string;
+  /** Enable auto-polling for updates (default: true) */
+  enablePolling?: boolean;
+  /** Polling interval in milliseconds (default: 30000) */
+  pollingInterval?: number;
 }
 
 export interface ActivityItemProps {
@@ -285,18 +328,64 @@ function ErrorState({ message = 'Failed to load activity', onRetry }: ErrorState
 }
 
 // =============================================================================
+// New Activity Banner
+// =============================================================================
+
+interface NewActivityBannerProps {
+  count: number;
+  onClick: () => void;
+}
+
+/**
+ * NewActivityBanner - Shows when new trades have arrived since last view
+ */
+function NewActivityBanner({ count, onClick }: NewActivityBannerProps) {
+  if (count <= 0) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full flex items-center justify-center gap-2 py-2 px-4',
+        'bg-blue-50 text-blue-600 text-sm font-medium',
+        'hover:bg-blue-100 transition-colors',
+        'rounded-lg mb-2 animate-pulse'
+      )}
+    >
+      <Bell className="h-4 w-4" />
+      {count === 1 ? '1 new trade' : `${count} new trades`}
+      <span className="text-blue-500">- Click to view</span>
+    </button>
+  );
+}
+
+// =============================================================================
 // Activity Feed Component
 // =============================================================================
 
 /**
  * ActivityFeed - Recent trades activity feed
+ *
+ * Supports auto-polling with visibility detection to pause when tab is hidden.
  */
 export function ActivityFeed({
   conditionId,
   initialLimit = 20,
   className,
+  enablePolling = true,
+  pollingInterval = POLLING_INTERVAL_MS,
 }: ActivityFeedProps) {
   const [limit, setLimit] = React.useState(initialLimit);
+
+  // Track seen trade IDs to detect new trades
+  const [seenTradeIds, setSeenTradeIds] = React.useState<Set<string>>(new Set());
+  const [newTradeCount, setNewTradeCount] = React.useState(0);
+  const [showNewTrades, setShowNewTrades] = React.useState(true);
+
+  // Pause polling when tab is hidden
+  const isVisible = useDocumentVisibility();
+  const shouldPoll = enablePolling && isVisible;
 
   const {
     data,
@@ -304,10 +393,43 @@ export function ActivityFeed({
     isError,
     error,
     refetch,
-  } = useMarketTrades(conditionId, { limit });
+    dataUpdatedAt,
+  } = useMarketTrades(conditionId, {
+    limit,
+    refetchInterval: shouldPoll ? pollingInterval : false,
+  });
 
   const trades = data?.trades ?? [];
   const hasMore = data?.hasMore ?? false;
+
+  // Track new trades that appear after initial load
+  React.useEffect(() => {
+    if (!trades.length) return;
+
+    const currentTradeIds = new Set(trades.map((t) => t.id));
+
+    // On first load, just record all IDs as seen
+    if (seenTradeIds.size === 0) {
+      setSeenTradeIds(currentTradeIds);
+      return;
+    }
+
+    // Count trades we haven't seen before
+    const newTrades = trades.filter((t) => !seenTradeIds.has(t.id));
+
+    if (newTrades.length > 0 && !showNewTrades) {
+      // Only show banner if user hasn't dismissed it
+      setNewTradeCount(newTrades.length);
+    }
+  }, [trades, seenTradeIds, showNewTrades]);
+
+  // Handle clicking the "new activity" banner
+  const handleViewNewTrades = () => {
+    // Mark all current trades as seen
+    setSeenTradeIds(new Set(trades.map((t) => t.id)));
+    setNewTradeCount(0);
+    setShowNewTrades(true);
+  };
 
   // Handle load more
   const handleLoadMore = () => {
@@ -317,7 +439,18 @@ export function ActivityFeed({
   // Handle manual refresh
   const handleRefresh = () => {
     refetch();
+    // After manual refresh, show all trades and mark as seen
+    setShowNewTrades(true);
+    setNewTradeCount(0);
+    // We'll update seenTradeIds when the new data arrives
   };
+
+  // When manually refreshing, update seen IDs with new data
+  React.useEffect(() => {
+    if (showNewTrades && trades.length > 0) {
+      setSeenTradeIds(new Set(trades.map((t) => t.id)));
+    }
+  }, [dataUpdatedAt, showNewTrades, trades]);
 
   // Loading state
   if (isLoading && trades.length === 0) {
@@ -349,12 +482,24 @@ export function ActivityFeed({
     );
   }
 
+  // Determine which trades to highlight as new
+  const isNewTrade = (tradeId: string) => !seenTradeIds.has(tradeId) && showNewTrades;
+
   return (
     <div className={cn('space-y-1', className)}>
+      {/* New activity banner */}
+      {newTradeCount > 0 && !showNewTrades && (
+        <NewActivityBanner count={newTradeCount} onClick={handleViewNewTrades} />
+      )}
+
       {/* Trade list */}
       <div className="divide-y divide-gray-100">
         {trades.map((trade) => (
-          <ActivityItem key={trade.id} trade={trade} />
+          <ActivityItem
+            key={trade.id}
+            trade={trade}
+            className={isNewTrade(trade.id) ? 'bg-blue-50/50' : undefined}
+          />
         ))}
       </div>
 

@@ -600,6 +600,8 @@ export interface UseMarketTradesParams {
   maker?: string;
   /** Enable/disable the query (default: true) */
   enabled?: boolean;
+  /** Refetch interval in milliseconds. Set to false to disable. Default: no auto-refetch */
+  refetchInterval?: number | false;
 }
 
 /**
@@ -621,13 +623,14 @@ export function useMarketTrades(
   conditionId: string | undefined | null,
   params: UseMarketTradesParams = {}
 ) {
-  const { enabled = true, ...queryParams } = params;
+  const { enabled = true, refetchInterval, ...queryParams } = params;
 
   return useQuery({
     queryKey: ['proxy', 'trades', conditionId, queryParams],
     queryFn: () => fetchTrades(conditionId!, queryParams),
     enabled: enabled && !!conditionId,
     staleTime: TRADES_STALE_TIME,
+    refetchInterval: refetchInterval === false ? undefined : refetchInterval,
   });
 }
 

@@ -2,7 +2,7 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -68,6 +68,19 @@
 - Styling consistent with TopHoldersTab and ActivityFeed components
 - All typecheck and tests pass (175 tests)
 
+### polling_updates (2026-02-06)
+- Added 30-second polling interval via React Query refetchInterval to ActivityFeed
+- Created useDocumentVisibility hook to detect tab visibility (uses document.hidden API)
+- Polling automatically pauses when tab is not visible to save resources
+- Added NewActivityBanner component that shows when new trades arrive since last view
+- Banner shows count of new trades (e.g., "3 new trades - Click to view")
+- New trades are highlighted with subtle blue background when banner is dismissed
+- Tracks seen trade IDs using React state to detect which trades are new
+- Updated useMarketTrades hook to support refetchInterval parameter
+- ActivityFeed accepts enablePolling (default: true) and pollingInterval (default: 30s) props
+- Manual refresh button was already implemented, kept in place
+- All typecheck and tests pass (237 tests)
+
 ## In Progress
 
 
@@ -82,7 +95,7 @@
 - ActivityFeed is prioritized as highest priority because it's the default tab content users will see
 - Note: Wallet avatars (jazzicon/blockie) deferred - using colored circles for now based on outcome or buy/sell side
 - Note: Stale data indicator (>1m old) not implemented - would require additional tracking
-- Note: Animation on new items appearing not implemented - would require tracking previous trade IDs
+- Note: Animation on new items appearing implemented via polling_updates - new trades are highlighted with blue background
 - Note: Top holders value is estimated using 50¢ average price - real value calculation would require price data integration
 - Note: Hover tooltip with full details not implemented - would add complexity; basic hover state with visible copy/link buttons implemented instead
 
