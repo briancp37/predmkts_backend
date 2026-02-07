@@ -10,7 +10,7 @@
       "Add expand button for mobile collapsed view",
       "Ensure panel doesn't overlap with footer on scroll"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "outcome_selector",

@@ -2,9 +2,24 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: Not Started
+## Status: In Progress
 
 ## Completed Tasks
+
+### trading_panel_layout (2026-02-06)
+- Created TradingPanel component in web/src/components/event/trading-panel.tsx
+- Implemented sticky positioning on desktop with lg:sticky lg:top-24
+- Added max-height constraint lg:max-h-[calc(100vh-8rem)] to prevent footer overlap
+- Added overflow-auto for tall content
+- Implemented collapsed/expanded state for mobile with useState
+- Added expand/collapse button with ChevronUp/ChevronDown icons
+- Created mobile-specific "Open Trading Panel" button when collapsed
+- Integrated Card, CardHeader, CardTitle, CardContent from UI components
+- Added keyboard navigation support (Enter/Space to toggle)
+- Added ARIA attributes for accessibility (aria-expanded, aria-controls)
+- Updated event detail page to use TradingPanel in sidebar
+- Exported TradingPanel from components/event/index.ts
+- All typechecks pass, all 82 tests pass
 
 
 ## In Progress
@@ -14,4 +29,9 @@
 
 
 ## Notes
-
+- TradingPanel currently shows placeholder content for outcome selector,
+  trade direction, amount input, and trade summary
+- The placeholders will be replaced with actual trading components in
+  subsequent PRD categories (outcome_selector, trade_direction_toggle, etc.)
+- Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
+- The component accepts children prop for composition of trading sub-components
