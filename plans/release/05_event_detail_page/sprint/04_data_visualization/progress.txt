@@ -19,6 +19,19 @@
 - Exported from `web/src/components/event/index.ts`
 - Tests pass (82 tests)
 
+### 2026-02-06: chart_time_range_selector
+- Created `web/src/components/event/time-range-selector.tsx`
+- Button group with 1H, 6H, 1D, 1W, 1M, ALL options
+- Maps user-friendly ranges to Polymarket API intervals:
+  - 1H → 1m, 6H → 5m, 1D → 15m, 1W → 1h, 1M → 6h, ALL → max
+- Selected range highlighted with indigo accent color (consistent with other components)
+- Supports both controlled and uncontrolled modes
+- URL query param persistence via `?range=1W` (uses Next.js useSearchParams)
+- Loading indicator on selected button during data fetch (Loader2 spinner)
+- Helper hooks: `useTimeRangeFromUrl()` and `useTimeseriesIntervalFromUrl()`
+- Exported from `web/src/components/event/index.ts`
+- Typecheck passes, all 118 tests pass
+
 ## In Progress
 
 
@@ -34,6 +47,7 @@
   other chart components (VolumeChart, etc).
 - The PriceChart accepts a `tokenId` prop which comes from `EventMarketOutcome.tokenId`
   in the event response.
-- Next task should be chart_time_range_selector or chart_loading_states (already partially
-  implemented in PriceChart).
+- TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
+  to get the interval from URL and pass to PriceChart's `interval` prop.
+- Next task should be chart_tooltip (enhanced OHLC/volume tooltip) or orderbook_component.
 
