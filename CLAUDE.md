@@ -305,6 +305,55 @@ docker compose --profile api --profile cache up -d  # all services
 
 For production, skip the override file: `docker compose -f docker-compose.yml up -d`
 
+### Docker Images for ECS
+
+The ECS tasks run on AWS Fargate which requires **linux/amd64** architecture. When building on Apple Silicon (M1/M2/M3), you must cross-compile.
+
+**ECR Repository:** `434552667190.dkr.ecr.us-east-1.amazonaws.com/prediction-data`
+
+**Build and push workflow:**
+
+```bash
+# 1. Login to ECR (token valid for 12 hours)
+aws ecr get-login-password --region us-east-1 | \
+    docker login --username AWS --password-stdin 434552667190.dkr.ecr.us-east-1.amazonaws.com
+
+# 2. Build for linux/amd64 (required for Fargate)
+#    IMPORTANT: Use buildx with --platform flag on Apple Silicon
+docker buildx build --platform linux/amd64 --load -t prediction-data:latest .
+
+# 3. Tag and push
+docker tag prediction-data:latest 434552667190.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest
+docker push 434552667190.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest
+```
+
+**Common errors:**
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `CannotPullContainerError: image Manifest does not contain descriptor matching platform 'linux/amd64'` | Built for ARM64 (Apple Silicon default) | Use `docker buildx build --platform linux/amd64 --load` |
+| `403 Forbidden` on push | ECR login expired | Re-run `aws ecr get-login-password ...` |
+| `No output specified with docker-container driver` | Missing `--load` flag | Add `--load` to load image into Docker |
+
+**Task Definition:** `prediction-data-ingest-prod` (container name: `prediction-data`)
+
+**Running ECS tasks manually:**
+
+```bash
+aws ecs run-task \
+    --cluster prediction-data-prod \
+    --task-definition prediction-data-ingest-prod \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-64b44845],securityGroups=[sg-1d625733],assignPublicIp=ENABLED}" \
+    --overrides '{
+        "containerOverrides": [{
+            "name": "prediction-data",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--dt", "2026-02-07"]
+        }]
+    }' \
+    --region us-east-1
+```
+
 ### Running Everything Locally
 
 ```bash
