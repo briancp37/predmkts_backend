@@ -17,6 +17,24 @@
 - Added placeholder content for each tab (Comments, Top Holders, Activity Feed)
 - Exported component from web/src/components/event/index.ts
 
+### activity_feed, activity_item, activity_loading (2026-02-06)
+- Created ActivityFeed component in web/src/components/event/activity-feed.tsx
+- Uses useMarketTrades hook from use-polymarket-proxy.ts for data fetching
+- Displays trade items with: wallet address (truncated), side (bought/sold), shares, price, outcome
+- Shows relative time (e.g., "2 min ago", "Just now")
+- Color codes: green for buy (ArrowUp icon), red for sell (ArrowDown icon)
+- Added "Load More" button for pagination (increases limit by 20)
+- Shows trade size in dollars with proper formatting ($1.2k, $45.00, etc.)
+- Created ActivityItem component for individual trade display
+- Uses ArrowUp/ArrowDown icons for buy/sell indication
+- Truncates wallet addresses with ellipsis (0x1234...5678)
+- Created ActivitySkeleton with animated placeholder items
+- Shows "No recent trades for this market" empty state
+- Added retry button on fetch failure with error message
+- Manual refresh button always visible
+- Updated ActivityTabs to use real ActivityFeed when conditionId is provided
+- Exported ActivityFeed, ActivityItem, ActivitySkeleton from index.ts
+
 ## In Progress
 
 
@@ -28,4 +46,8 @@
 - Placeholder components are included for each tab content area (CommentsPlaceholder, TopHoldersPlaceholder, ActivityFeedPlaceholder)
 - The conditionId prop is passed through for future data fetching integration with useTopHolders and useMarketTrades hooks
 - Default tab is 'activity' since that's the primary content users will want to see
+- ActivityFeed is prioritized as highest priority because it's the default tab content users will see
+- Note: Wallet avatars (jazzicon/blockie) deferred - using colored circles for now based on buy/sell side
+- Note: Stale data indicator (>1m old) not implemented - would require additional tracking
+- Note: Animation on new items appearing not implemented - would require tracking previous trade IDs
 

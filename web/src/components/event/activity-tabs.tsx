@@ -19,6 +19,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { MessageCircle, Users, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
+import { ActivityFeed } from './activity-feed';
 
 export type TabValue = 'comments' | 'holders' | 'activity';
 
@@ -135,7 +136,11 @@ export function ActivityTabs({
             value="activity"
             className="p-6 focus:outline-none data-[state=inactive]:hidden"
           >
-            <ActivityFeedPlaceholder conditionId={conditionId} />
+            {conditionId ? (
+              <ActivityFeed conditionId={conditionId} />
+            ) : (
+              <ActivityFeedPlaceholder conditionId={conditionId} />
+            )}
           </Tabs.Content>
         </CardContent>
       </Tabs.Root>

@@ -23,6 +23,14 @@ export {
 } from './activity-tabs';
 
 export {
+  ActivityFeed,
+  ActivityItem,
+  ActivitySkeleton,
+  type ActivityFeedProps,
+  type ActivityItemProps,
+} from './activity-feed';
+
+export {
   TradingPanel,
   type TradingPanelProps,
 } from './trading-panel';

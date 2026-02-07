@@ -64,7 +64,7 @@
       "Add infinite scroll or 'Load more' button",
       "Show trade size in dollars"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "activity_item",
@@ -77,7 +77,7 @@
       "Handle long wallet names with truncation",
       "Make wallet address clickable to trader profile"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "activity_loading",
@@ -88,7 +88,7 @@
       "Add retry button on fetch failure",
       "Show stale indicator if data is older than 1m"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "polling_updates",
