@@ -114,6 +114,11 @@ export {
 } from './trade-summary';
 
 export {
+  TradeSubmitButton,
+  type TradeSubmitButtonProps,
+} from './trade-submit-button';
+
+export {
   EventHeader,
   CategoryBadge,
   formatVolume,
@@ -156,3 +161,8 @@ export {
   truncateAddress,
   type MarketDetailsPanelProps,
 } from './market-details-panel';
+
+export {
+  ResolutionRules,
+  type ResolutionRulesProps,
+} from './resolution-rules';

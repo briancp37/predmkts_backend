@@ -91,6 +91,33 @@
 - Added 47 tests in `web/tests/market-details-panel.test.tsx`
 - All typecheck and tests passing
 
+### 2026-02-06: resolution_rules category
+- Created `web/src/components/event/resolution-rules.tsx` with:
+  - `parseResolutionCriteria()` - parses description text to extract:
+    - Main text (paragraphs)
+    - Key resolution criteria (bullet points, numbered lists)
+  - `shouldCollapse()` - determines if text exceeds collapse threshold (~480 chars)
+  - `ResolutionCriteriaList` - displays extracted criteria in highlighted blue box
+    - Uses Scale icon from Lucide
+    - Renders bullet points with proper styling
+  - `DescriptionText` - handles text display with truncation
+    - Splits into paragraphs for proper rendering
+    - Truncates at word boundaries for collapsed state
+  - `ResolverInfo` - displays resolver type and source information
+    - Conditional rendering when data is provided
+    - Labeled display format (Resolver:, Source:)
+  - `ResolutionRules` - main component with:
+    - Resolved status banner (green background when resolved)
+    - Description with collapsible long text (Show more/less)
+    - Key Resolution Criteria section (highlighted bullet points)
+    - Resolver Information section
+    - Disabled "Propose Resolution" button placeholder with "coming soon" text
+    - Uses Card component for consistent styling
+    - All sub-components memoized for performance
+- Exported `ResolutionRules` and `ResolutionRulesProps` via `web/src/components/event/index.ts`
+- Added 31 tests in `web/tests/resolution-rules.test.tsx`
+- All 388 frontend tests passing, typecheck clean
+
 ## In Progress
 
 
@@ -106,6 +133,6 @@
 - MarketDetailsPanel uses Lucide icons for visual consistency
 - Clipboard copy uses native browser API with fallback error handling
 - Relative time formatting supports years/months/weeks/days/hours/minutes/just now
-- Remaining categories: resolution_rules, category_tags (category_tags partially
-  done - CategoryBadge exists in event-header.tsx)
+- Remaining categories: category_tags (partially done - CategoryBadge exists in
+  event-header.tsx, needs clickable navigation and hover tooltip)
 

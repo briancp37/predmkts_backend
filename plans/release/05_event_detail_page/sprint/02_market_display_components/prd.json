@@ -65,7 +65,7 @@
       "Add 'Propose Resolution' button placeholder (disabled)",
       "Show resolver type and source information"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "category_tags",
