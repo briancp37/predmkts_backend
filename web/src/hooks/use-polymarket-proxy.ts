@@ -554,30 +554,36 @@ export interface UseOrderbookParams {
   refetchInterval?: number;
   /** Enable/disable the query (default: true) */
   enabled?: boolean;
+  /** Number of retry attempts on failure. Default: 3 */
+  retryCount?: number;
 }
 
 /**
  * Hook to fetch L2 order book for a token
  *
  * Automatically refetches every 5 seconds by default for real-time updates.
+ * Implements exponential backoff retry on failure (1s, 2s, 4s).
  *
  * @example
  * ```tsx
  * // Fetch order book with default 5s refetch
- * const { data, isLoading, error } = useOrderbook('token123');
+ * const { data, isLoading, error, dataUpdatedAt } = useOrderbook('token123');
  *
  * // Limit depth and customize refetch interval
  * const { data } = useOrderbook('token123', { depth: 10, refetchInterval: 2000 });
  *
  * // Disable refetching
  * const { data } = useOrderbook('token123', { refetchInterval: false });
+ *
+ * // Check if data is stale (older than 10s)
+ * const isStale = dataUpdatedAt && Date.now() - dataUpdatedAt > 10000;
  * ```
  */
 export function useOrderbook(
   tokenId: string | undefined | null,
   params: UseOrderbookParams = {}
 ) {
-  const { enabled = true, refetchInterval = 5000, depth } = params;
+  const { enabled = true, refetchInterval = 5000, depth, retryCount = 3 } = params;
 
   return useQuery({
     queryKey: ['proxy', 'orderbook', tokenId, depth],
@@ -585,6 +591,8 @@ export function useOrderbook(
     enabled: enabled && !!tokenId,
     staleTime: ORDERBOOK_STALE_TIME,
     refetchInterval: refetchInterval || undefined,
+    retry: retryCount,
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 8000),
   });
 }
 

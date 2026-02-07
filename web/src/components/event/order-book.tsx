@@ -2,7 +2,7 @@
  * Order Book Component
  *
  * Sprint 04 - Data Visualization
- * PRD: orderbook_component
+ * PRD: orderbook_component, orderbook_loading_states
  *
  * Features:
  * - Uses useOrderbook hook for real-time L2 order book data
@@ -12,12 +12,18 @@
  * - Green for bids, red for asks (market convention)
  * - Configurable number of levels (default 5)
  * - Loading, empty, and error states
+ * - Auto-retry with exponential backoff on failure
+ * - Stale data indicator when data is older than 10s
  */
 
 'use client';
 
+import { AlertCircle } from 'lucide-react';
 import { useOrderbook, type OrderLevel } from '@/hooks';
 import { cn } from '@/lib/utils';
+
+/** Threshold in milliseconds after which data is considered stale */
+const STALE_THRESHOLD_MS = 10000;
 
 /**
  * Props for OrderBook component
@@ -245,6 +251,40 @@ export function OrderBookEmpty({
 }
 
 /**
+ * Props for OrderBookStaleIndicator component
+ */
+export interface OrderBookStaleIndicatorProps {
+  /** Whether the data is stale */
+  isStale: boolean;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * OrderBookStaleIndicator - Visual indicator when order book data is stale
+ */
+export function OrderBookStaleIndicator({
+  isStale,
+  className,
+}: OrderBookStaleIndicatorProps) {
+  if (!isStale) return null;
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-1 text-xs text-amber-600',
+        className
+      )}
+      data-testid="orderbook-stale-indicator"
+      title="Order book data may be outdated"
+    >
+      <AlertCircle className="h-3 w-3" />
+      <span>Stale</span>
+    </div>
+  );
+}
+
+/**
  * Single order level row
  */
 interface OrderLevelRowProps {
@@ -315,6 +355,7 @@ export function OrderBook({
     isLoading,
     error,
     refetch,
+    dataUpdatedAt,
   } = useOrderbook(tokenId, { depth: levels, refetchInterval, enabled: !!tokenId });
 
   // Early return for missing token ID
@@ -342,6 +383,9 @@ export function OrderBook({
   if (!data || (data.bids.length === 0 && data.asks.length === 0)) {
     return <OrderBookEmpty className={className} />;
   }
+
+  // Determine if data is stale (older than 10 seconds)
+  const isStale = dataUpdatedAt ? Date.now() - dataUpdatedAt > STALE_THRESHOLD_MS : false;
 
   // Get the levels we want to display
   const displayAsks = data.asks.slice(0, levels);
@@ -383,9 +427,12 @@ export function OrderBook({
       className={cn('rounded-lg border border-gray-200 bg-white p-4', className)}
       data-testid="orderbook"
     >
-      {/* Header with title and mid price */}
+      {/* Header with title, stale indicator, and mid price */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-900">Order Book</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-900">Order Book</h3>
+          <OrderBookStaleIndicator isStale={isStale} />
+        </div>
         {data.midPrice && (
           <span className="text-xs text-gray-500">
             Mid: <span className="font-medium text-gray-700">{formatPriceAsPercent(data.midPrice)}</span>

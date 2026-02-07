@@ -109,6 +109,11 @@ export {
 } from './trade-amount-input';
 
 export {
+  TradeSummary,
+  type TradeSummaryProps,
+} from './trade-summary';
+
+export {
   EventHeader,
   CategoryBadge,
   formatVolume,
@@ -135,10 +140,12 @@ export {
   OrderBookSkeleton,
   OrderBookError,
   OrderBookEmpty,
+  OrderBookStaleIndicator,
   type OrderBookProps,
   type OrderBookSkeletonProps,
   type OrderBookErrorProps,
   type OrderBookEmptyProps,
+  type OrderBookStaleIndicatorProps,
 } from './order-book';
 
 export {

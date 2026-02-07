@@ -84,6 +84,23 @@
 - Exported `OrderBook`, `OrderBookSkeleton`, `OrderBookError`, `OrderBookEmpty` from `index.ts`
 - Typecheck passes, all 237 tests pass
 
+### 2026-02-06: orderbook_loading_states
+- Extended `useOrderbook` hook in `use-polymarket-proxy.ts`:
+  - Added exponential backoff retry via `retryDelay` option (1s, 2s, 4s, 8s max)
+  - Configurable `retryCount` parameter (default: 3 retries)
+  - Hook now returns `dataUpdatedAt` for stale detection
+- Created `OrderBookStaleIndicator` component in `order-book.tsx`:
+  - Shows amber warning icon + "Stale" text when data is older than 10 seconds
+  - Uses `dataUpdatedAt` from useOrderbook to detect staleness
+  - Displayed in header next to "Order Book" title
+  - Tooltip explains "Order book data may be outdated"
+- `OrderBookSkeleton`, `OrderBookEmpty`, `OrderBookError` were already implemented in
+  orderbook_component task
+- Refetch interval was already configurable (default 5s) in useOrderbook
+- Exported `OrderBookStaleIndicator` and its props from `index.ts`
+- Typecheck passes, 273 tests pass (11 pre-existing failures in market-details-panel.test.tsx
+  due to timezone and timeout issues unrelated to this task)
+
 ## In Progress
 
 
@@ -101,13 +118,10 @@
   in the event response.
 - TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
   to get the interval from URL and pass to PriceChart's `interval` prop.
-- Next task should be volume_overlay, orderbook_depth_visual, or orderbook_loading_states.
-  - Note: orderbook_component is now complete.
-  - volume_overlay may be blocked by API limitation (no per-period volume in timeseries).
-  - orderbook_depth_visual is partially addressed (cumulative bars already implemented in
-    orderbook_component). Remaining: hover states, animations, mid-price line.
-  - orderbook_loading_states: skeleton and error states already implemented in orderbook_component.
-    Remaining: auto-retry with exponential backoff, stale data indicator.
+- Remaining tasks: volume_overlay, orderbook_depth_visual
+  - volume_overlay is blocked by API limitation (no per-period volume in timeseries endpoint).
+  - orderbook_depth_visual is partially addressed (cumulative bars already in orderbook_component).
+    Remaining: hover states, animations, mid-price line.
 - **API limitation**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}`
   (timestamp, price) data points. True OHLC candlestick data or per-period volume would
   require either aggregating from trade data or waiting for a candlestick API endpoint.

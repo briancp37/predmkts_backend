@@ -102,6 +102,7 @@
       "Show stale indicator if data is older than 10s",
       "Configure refetch interval (5s default)"
     ],
-    "passes": false
+    "passes": true,
+    "notes": "OrderBookSkeleton and error states were implemented in orderbook_component. This task added: (1) exponential backoff retry via retryDelay in useOrderbook hook (1s, 2s, 4s, 8s max), (2) OrderBookStaleIndicator component showing amber warning when data >10s old, (3) configurable retryCount parameter."
   }
 ]
