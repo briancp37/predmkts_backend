@@ -50,7 +50,7 @@
       "Display potential payout: shares * $1 (for winning outcome)",
       "Show ROI percentage: (payout - amount) / amount * 100"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "trade_summary",

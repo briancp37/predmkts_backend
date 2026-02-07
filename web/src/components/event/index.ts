@@ -104,6 +104,11 @@ export {
 } from './trade-direction-toggle';
 
 export {
+  TradeAmountInput,
+  type TradeAmountInputProps,
+} from './trade-amount-input';
+
+export {
   EventHeader,
   CategoryBadge,
   formatVolume,
@@ -135,3 +140,12 @@ export {
   type OrderBookErrorProps,
   type OrderBookEmptyProps,
 } from './order-book';
+
+export {
+  MarketDetailsPanel,
+  formatCurrency,
+  formatFullDateTime,
+  formatRelativeTime,
+  truncateAddress,
+  type MarketDetailsPanelProps,
+} from './market-details-panel';

@@ -77,6 +77,39 @@
 - All 25 trade-direction-toggle tests pass
 - All 237 project tests pass
 
+### amount_input (2026-02-06)
+- Created TradeAmountInput component in web/src/components/event/trade-amount-input.tsx
+- Implemented numeric input with USD prefix ($) indicator
+- Input uses inputMode="decimal" for mobile keyboard optimization
+- Quick-select buttons for common amounts: $10, $50, $100, $500
+  - Buttons visually highlight when amount matches
+  - Buttons disabled if amount exceeds maxAmount
+- Input validation with error messages:
+  - Minimum amount: $1
+  - Maximum amount: configurable via maxAmount prop (default $10,000)
+  - Non-numeric input rejected
+  - Aria-invalid and describedby for accessibility
+- Real-time calculations displayed when valid amount entered:
+  - Shares calculation: amount / price = shares
+  - Potential payout: shares * $1 (each share pays $1 on win)
+  - ROI percentage: (payout - amount) / amount * 100 with color coding
+- Integrated TradeAmountInput into TradingPanel component
+  - TradingPanel manages amount state internally
+  - Price derived from selected outcome
+  - Input disabled when no outcome is selected
+  - Replaced placeholder with actual TradeAmountInput component
+- Exported TradeAmountInput and TradeAmountInputProps from components/event/index.ts
+- Created comprehensive test suite with 36 tests covering:
+  - Rendering input and quick amount buttons
+  - Input handling and validation
+  - Shares, payout, and ROI calculations
+  - Quick amount button selection
+  - Disabled state behavior
+  - Accessibility attributes
+  - Edge cases (boundary prices, large amounts, external updates)
+- All 36 trade-amount-input tests pass
+- All 273 project tests pass
+
 
 ## In Progress
 
@@ -87,9 +120,10 @@
 ## Notes
 - TradingPanel now includes OutcomeSelector with real outcome data from API
 - TradingPanel now includes TradeDirectionToggle with keyboard shortcut support
-- Remaining placeholders for amount input and trade summary
+- TradingPanel now includes TradeAmountInput with validation and calculations
+- Remaining placeholders for trade summary and submit button
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
 - For events with multiple markets, the first market's outcomes are shown in the trading panel
-- OutcomeSelector and TradeDirectionToggle both use memo for performance optimization
-- There are pre-existing typecheck errors in activity-feed.tsx and outcome-card.test.tsx (not related to this sprint's work)
+- OutcomeSelector, TradeDirectionToggle, and TradeAmountInput all use memo for performance optimization
+- Pre-existing typecheck issues have been resolved - all typechecks pass

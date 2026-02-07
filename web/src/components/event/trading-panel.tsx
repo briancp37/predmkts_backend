@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { OutcomeSelector, type Outcome } from './outcome-selector';
 import { TradeDirectionToggle, type TradeDirection } from './trade-direction-toggle';
+import { TradeAmountInput } from './trade-amount-input';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
@@ -60,6 +61,9 @@ export function TradingPanel({
 
   // Trade direction state
   const [tradeDirection, setTradeDirection] = useState<TradeDirection>('buy');
+
+  // Trade amount state
+  const [amount, setAmount] = useState<number | null>(null);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -174,6 +178,8 @@ export function TradingPanel({
                     onOutcomeSelect={setSelectedOutcomeId}
                     tradeDirection={tradeDirection}
                     onDirectionChange={setTradeDirection}
+                    amount={amount}
+                    onAmountChange={setAmount}
                   >
                     {children}
                   </TradingPanelContent>
@@ -215,6 +221,8 @@ interface TradingPanelContentProps {
   onOutcomeSelect: (outcomeId: string) => void;
   tradeDirection: TradeDirection;
   onDirectionChange: (direction: TradeDirection) => void;
+  amount: number | null;
+  onAmountChange: (amount: number | null) => void;
   children?: React.ReactNode;
 }
 
@@ -225,8 +233,12 @@ function TradingPanelContent({
   onOutcomeSelect,
   tradeDirection,
   onDirectionChange,
+  amount,
+  onAmountChange,
   children,
 }: TradingPanelContentProps) {
+  // Find the selected outcome to get its price
+  const selectedOutcome = outcomes.find((o) => o.id === selectedOutcomeId);
   return (
     <div className="space-y-4">
       {/* Outcome Selector */}
@@ -245,11 +257,13 @@ function TradingPanelContent({
       {/* Additional children (amount input, etc.) */}
       {children}
 
-      {/* Placeholder for amount input */}
-      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
-        <p className="text-sm text-gray-500">Amount Input</p>
-        <p className="text-xs text-gray-400 mt-1">Enter trade amount</p>
-      </div>
+      {/* Trade Amount Input */}
+      <TradeAmountInput
+        amount={amount}
+        onAmountChange={onAmountChange}
+        price={selectedOutcome?.currentPrice ?? 0.5}
+        disabled={!selectedOutcomeId}
+      />
 
       {/* Placeholder for trade summary */}
       <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
