@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { ActivityFeed } from './activity-feed';
 import { TopHoldersTab } from './top-holders-tab';
+import { CommentsTab } from './comments-tab';
 
 export type TabValue = 'comments' | 'holders' | 'activity';
 
@@ -123,7 +124,7 @@ export function ActivityTabs({
             value="comments"
             className="p-6 focus:outline-none data-[state=inactive]:hidden"
           >
-            <CommentsPlaceholder />
+            <CommentsTab />
           </Tabs.Content>
 
           <Tabs.Content
@@ -150,22 +151,6 @@ export function ActivityTabs({
         </CardContent>
       </Tabs.Root>
     </Card>
-  );
-}
-
-/**
- * Comments Tab Placeholder
- * Will be replaced with full implementation in comments_placeholder category
- */
-function CommentsPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <MessageCircle className="h-12 w-12 text-gray-300 mb-4" />
-      <h3 className="text-lg font-medium text-gray-900 mb-2">Comments Coming Soon</h3>
-      <p className="text-sm text-gray-500 max-w-sm">
-        Join the discussion about this market. Community features are on the way.
-      </p>
-    </div>
   );
 }
 

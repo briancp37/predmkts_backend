@@ -55,6 +55,19 @@
 - Updated ActivityTabs to use real TopHoldersTab when conditionId is provided
 - Exported TopHoldersTab, TopHolderRow, TopHoldersSkeleton from index.ts
 
+### comments_placeholder (2026-02-06)
+- Created CommentsTab component in web/src/components/event/comments-tab.tsx
+- Displays "Comments Coming Soon" message with large MessageCircle icon
+- Implemented FakeCommentInput component showing disabled input with avatar, placeholder text, and send button
+- Added "Coming Soon" overlay on the disabled input to clearly indicate the feature isn't available yet
+- Created CommunityCTA component with call-to-action to join community/Discord
+- CTA includes styled card with icon, descriptive text, and "Join Community" button linking to Discord
+- Accepts optional communityUrl prop for customizable community links (defaults to Polymarket Discord)
+- Updated ActivityTabs to use the new CommentsTab component instead of inline placeholder
+- Exported CommentsTab and CommentsTabProps from web/src/components/event/index.ts
+- Styling consistent with TopHoldersTab and ActivityFeed components
+- All typecheck and tests pass (175 tests)
+
 ## In Progress
 
 

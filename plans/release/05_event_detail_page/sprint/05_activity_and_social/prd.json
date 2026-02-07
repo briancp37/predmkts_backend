@@ -22,7 +22,7 @@
       "Add call-to-action to join community/Discord",
       "Style consistently with other tabs"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "top_holders_tab",

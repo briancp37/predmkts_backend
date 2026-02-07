@@ -22,7 +22,7 @@ import { Tag, TrendingUp, TrendingDown, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
-import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel } from '@/components/event';
+import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel, type Outcome } from '@/components/event';
 
 interface EventPageProps {
   params: Promise<{ slug: string }>;
@@ -213,11 +213,17 @@ function OutcomesList({
  * Trading Panel Sidebar Component
  * Uses the TradingPanel component for the trading interface
  */
-function TradingPanelSidebar({ eventSlug }: { eventSlug: string }) {
+function TradingPanelSidebar({
+  eventSlug,
+  outcomes,
+}: {
+  eventSlug: string;
+  outcomes: Outcome[];
+}) {
   return (
     <div className="space-y-4">
       {/* Trading Panel - sticky on desktop, collapsible on mobile */}
-      <TradingPanel eventSlug={eventSlug} />
+      <TradingPanel eventSlug={eventSlug} outcomes={outcomes} />
 
       {/* Market Stats Card */}
       <Card>
@@ -313,10 +319,19 @@ export default function EventDetailPage({ params }: EventPageProps) {
     { label: event.title },
   ];
 
+  // Extract outcomes from the first market for the trading panel
+  // For events with multiple markets, we show the first market's outcomes
+  const tradingOutcomes: Outcome[] = (event.markets?.[0]?.outcomes ?? []).map((outcome) => ({
+    id: outcome.id,
+    tokenId: outcome.tokenId,
+    outcomeName: outcome.outcomeName,
+    currentPrice: outcome.currentPrice,
+  }));
+
   return (
     <EventDetailLayout
       breadcrumbs={breadcrumbs}
-      sidebar={<TradingPanelSidebar eventSlug={slug} />}
+      sidebar={<TradingPanelSidebar eventSlug={slug} outcomes={tradingOutcomes} />}
     >
       {/* Event Header */}
       <EventHeader

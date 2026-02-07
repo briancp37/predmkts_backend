@@ -23,7 +23,7 @@
       "Support keyboard navigation between outcomes",
       "Emit selected outcome ID on change"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "trade_direction_toggle",

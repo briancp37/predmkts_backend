@@ -2,7 +2,7 @@
  * Trading Panel Component
  *
  * Sprint 03 - Trading Panel UI
- * PRD: trading_panel_layout
+ * PRD: trading_panel_layout, outcome_selector
  *
  * Features:
  * - Sticky positioning on desktop (below header)
@@ -10,6 +10,7 @@
  * - Collapsed/expanded state for mobile
  * - Expand button for mobile collapsed view
  * - Ensures panel doesn't overlap with footer on scroll
+ * - Outcome selector with radio-button style selection
  */
 
 'use client';
@@ -18,15 +19,18 @@ import { useState, useCallback, useEffect } from 'react';
 import { ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { OutcomeSelector, type Outcome } from './outcome-selector';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
   eventSlug: string;
+  /** Outcomes available for trading */
+  outcomes?: Outcome[];
   /** Optional initial expanded state for mobile (default: false) */
   defaultExpanded?: boolean;
   /** Optional className for additional styling */
   className?: string;
-  /** Children components (outcome selector, amount input, etc.) */
+  /** Children components (amount input, trade summary, etc.) */
   children?: React.ReactNode;
 }
 
@@ -38,6 +42,7 @@ export interface TradingPanelProps {
  */
 export function TradingPanel({
   eventSlug,
+  outcomes = [],
   defaultExpanded = false,
   className,
   children,
@@ -47,6 +52,9 @@ export function TradingPanel({
 
   // Track if we're on mobile for conditional rendering
   const [isMobile, setIsMobile] = useState(false);
+
+  // Selected outcome state
+  const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -150,10 +158,19 @@ export function TradingPanel({
               </div>
             )}
 
-            {/* Trading panel children (outcome selector, amount input, etc.) */}
+            {/* Trading panel content (outcome selector, amount input, etc.) */}
             {(!isMobile || isExpanded) && (
               <>
-                {children || (
+                {outcomes.length > 0 ? (
+                  <TradingPanelContent
+                    eventSlug={eventSlug}
+                    outcomes={outcomes}
+                    selectedOutcomeId={selectedOutcomeId}
+                    onOutcomeSelect={setSelectedOutcomeId}
+                  >
+                    {children}
+                  </TradingPanelContent>
+                ) : (
                   <TradingPanelPlaceholder eventSlug={eventSlug} />
                 )}
               </>
@@ -181,7 +198,90 @@ export function TradingPanel({
 }
 
 /**
- * Placeholder content for the trading panel
+ * Trading panel content with outcome selector and placeholders for remaining components
+ */
+interface TradingPanelContentProps {
+  eventSlug: string;
+  outcomes: Outcome[];
+  selectedOutcomeId: string | null;
+  onOutcomeSelect: (outcomeId: string) => void;
+  children?: React.ReactNode;
+}
+
+function TradingPanelContent({
+  eventSlug,
+  outcomes,
+  selectedOutcomeId,
+  onOutcomeSelect,
+  children,
+}: TradingPanelContentProps) {
+  return (
+    <div className="space-y-4">
+      {/* Outcome Selector */}
+      <OutcomeSelector
+        outcomes={outcomes}
+        selectedOutcomeId={selectedOutcomeId}
+        onOutcomeSelect={onOutcomeSelect}
+      />
+
+      {/* Additional children (trade direction, amount input, etc.) */}
+      {children}
+
+      {/* Placeholder for trade direction */}
+      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
+        <p className="text-sm text-gray-500">Buy / Sell Toggle</p>
+        <p className="text-xs text-gray-400 mt-1">Choose your trade direction</p>
+      </div>
+
+      {/* Placeholder for amount input */}
+      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
+        <p className="text-sm text-gray-500">Amount Input</p>
+        <p className="text-xs text-gray-400 mt-1">Enter trade amount</p>
+      </div>
+
+      {/* Placeholder for trade summary */}
+      <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-4 text-center">
+        <p className="text-sm text-gray-500">Trade Summary</p>
+        <p className="text-xs text-gray-400 mt-1">Review your order details</p>
+      </div>
+
+      {/* Placeholder submit button */}
+      <button
+        type="button"
+        disabled
+        className="w-full py-2.5 px-4 rounded-lg bg-gray-200 text-gray-500 text-sm font-medium cursor-not-allowed"
+      >
+        Trading Coming Soon
+      </button>
+
+      {/* Link to Polymarket */}
+      <a
+        href={`https://polymarket.com/event/${eventSlug}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium border border-indigo-600 text-indigo-600 hover:bg-indigo-50 transition-colors"
+      >
+        Trade on Polymarket
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+          />
+        </svg>
+      </a>
+    </div>
+  );
+}
+
+/**
+ * Placeholder content for the trading panel (when no outcomes are available)
  * Will be replaced with actual trading components in subsequent sprints
  */
 function TradingPanelPlaceholder({ eventSlug }: { eventSlug: string }) {

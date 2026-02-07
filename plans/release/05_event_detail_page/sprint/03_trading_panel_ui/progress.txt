@@ -21,6 +21,34 @@
 - Exported TradingPanel from components/event/index.ts
 - All typechecks pass, all 82 tests pass
 
+### outcome_selector (2026-02-06)
+- Created OutcomeSelector component in web/src/components/event/outcome-selector.tsx
+- Implemented radio-button style selection with visual radio indicators
+- Displays all outcomes with prices formatted as cents (e.g., "65¢")
+- Highlighted selected outcome with indigo accent color (border + background)
+- Price colors are dynamic based on probability (green/emerald/yellow/orange/red)
+- Full keyboard navigation support:
+  - ArrowUp/ArrowDown/ArrowLeft/ArrowRight for navigation between outcomes
+  - Home/End to jump to first/last outcome
+  - Enter/Space to select focused outcome
+  - Roving tabindex pattern for proper focus management
+- Emits selected outcome ID via onOutcomeSelect callback
+- Added proper ARIA attributes (radiogroup, radio, aria-checked, aria-label)
+- Integrated OutcomeSelector into TradingPanel component
+  - TradingPanel now accepts outcomes prop
+  - Manages selectedOutcomeId state internally
+  - Shows OutcomeSelector when outcomes are provided, placeholder otherwise
+- Updated event detail page to extract outcomes from first market and pass to TradingPanel
+- Exported OutcomeSelector and Outcome type from components/event/index.ts
+- Created comprehensive test suite with 27 tests covering:
+  - Rendering outcomes and prices
+  - Selection behavior
+  - Keyboard navigation
+  - Disabled state
+  - Accessibility attributes
+  - Price color coding
+- All 27 outcome-selector tests pass
+
 
 ## In Progress
 
@@ -29,9 +57,9 @@
 
 
 ## Notes
-- TradingPanel currently shows placeholder content for outcome selector,
-  trade direction, amount input, and trade summary
-- The placeholders will be replaced with actual trading components in
-  subsequent PRD categories (outcome_selector, trade_direction_toggle, etc.)
+- TradingPanel now includes OutcomeSelector with real outcome data from API
+- Remaining placeholders for trade direction, amount input, and trade summary
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
+- For events with multiple markets, the first market's outcomes are shown in the trading panel
+- OutcomeSelector uses memo for performance optimization
