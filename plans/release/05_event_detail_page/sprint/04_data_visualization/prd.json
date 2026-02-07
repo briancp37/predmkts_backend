@@ -78,7 +78,8 @@
       "Animate bar changes on data updates",
       "Show mid-price line between bids and asks"
     ],
-    "passes": false
+    "passes": true,
+    "notes": "Cumulative depth bars and scaled bar widths were already implemented in orderbook_component. This task added: (1) OrderLevelTooltip component with detailed hover state showing side, price (cents and %), size, cumulative size, and notional value; (2) CSS transitions for animated bar width changes (duration-300 ease-out); (3) Visual mid-price line with gradient from green through indigo to red, plus diamond indicator at mid-price; (4) Enhanced spread row with centered bid/mid/ask display in pill container."
   },
   {
     "category": "chart_loading_states",

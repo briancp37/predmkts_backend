@@ -52,7 +52,7 @@
       "Show market ID",
       "Add expandable section for additional metadata"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "resolution_rules",

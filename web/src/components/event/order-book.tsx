@@ -2,7 +2,7 @@
  * Order Book Component
  *
  * Sprint 04 - Data Visualization
- * PRD: orderbook_component, orderbook_loading_states
+ * PRD: orderbook_component, orderbook_loading_states, orderbook_depth_visual
  *
  * Features:
  * - Uses useOrderbook hook for real-time L2 order book data
@@ -14,10 +14,14 @@
  * - Loading, empty, and error states
  * - Auto-retry with exponential backoff on failure
  * - Stale data indicator when data is older than 10s
+ * - Hover state showing exact price and size details
+ * - Animated bar changes on data updates (CSS transitions)
+ * - Mid-price line between bids and asks
  */
 
 'use client';
 
+import { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { useOrderbook, type OrderLevel } from '@/hooks';
 import { cn } from '@/lib/utils';
@@ -294,17 +298,96 @@ interface OrderLevelRowProps {
   maxCumulativeSize: number;
 }
 
+/**
+ * Hover tooltip for order level
+ */
+interface OrderLevelTooltipProps {
+  level: ProcessedLevel;
+  side: 'bid' | 'ask';
+  cumulativeSize: number;
+}
+
+function OrderLevelTooltip({ level, side, cumulativeSize }: OrderLevelTooltipProps) {
+  const isBid = side === 'bid';
+  const sideLabel = isBid ? 'Bid' : 'Ask';
+  const priceValue = parseFloat(level.price);
+  const sizeValue = parseFloat(level.size);
+  const notionalValue = priceValue * sizeValue;
+
+  return (
+    <div
+      className={cn(
+        'absolute z-20 bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 pointer-events-none',
+        'min-w-[180px] -translate-x-1/2 left-1/2',
+        // Position tooltip above the row
+        '-top-2 -translate-y-full'
+      )}
+      data-testid="orderbook-level-tooltip"
+    >
+      {/* Arrow pointing down */}
+      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-2 h-2 bg-gray-900 rotate-45" />
+
+      <div className="space-y-1.5">
+        {/* Side label */}
+        <div className={cn('font-semibold', isBid ? 'text-green-400' : 'text-red-400')}>
+          {sideLabel} Level
+        </div>
+
+        {/* Price details */}
+        <div className="flex justify-between gap-4">
+          <span className="text-gray-400">Price:</span>
+          <span className="font-medium">
+            {formatPriceAsCents(level.price)} ({formatPriceAsPercent(level.price)})
+          </span>
+        </div>
+
+        {/* Size details */}
+        <div className="flex justify-between gap-4">
+          <span className="text-gray-400">Size:</span>
+          <span className="font-medium">{parseFloat(level.size).toLocaleString()} shares</span>
+        </div>
+
+        {/* Cumulative */}
+        <div className="flex justify-between gap-4">
+          <span className="text-gray-400">Cumulative:</span>
+          <span className="font-medium">{cumulativeSize.toLocaleString()} shares</span>
+        </div>
+
+        {/* Notional value */}
+        <div className="flex justify-between gap-4 pt-1 border-t border-gray-700">
+          <span className="text-gray-400">Notional:</span>
+          <span className="font-medium">${notionalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderLevelRow({ level, side, cumulativeSize, maxCumulativeSize }: OrderLevelRowProps) {
+  const [isHovered, setIsHovered] = useState(false);
   const isBid = side === 'bid';
   const barColor = isBid ? 'bg-green-100' : 'bg-red-100';
+  const hoverBarColor = isBid ? 'bg-green-200' : 'bg-red-200';
   const textColor = isBid ? 'text-green-700' : 'text-red-700';
   const cumulativePercent = maxCumulativeSize > 0 ? (cumulativeSize / maxCumulativeSize) * 100 : 0;
 
   return (
-    <div className="relative grid grid-cols-3 gap-2 h-7 items-center text-xs">
-      {/* Background depth bar based on cumulative size */}
+    <div
+      className={cn(
+        'relative grid grid-cols-3 gap-2 h-7 items-center text-xs cursor-pointer',
+        'transition-colors duration-150',
+        isHovered && 'bg-gray-50'
+      )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      data-testid={`orderbook-level-${side}`}
+    >
+      {/* Background depth bar based on cumulative size - with transition animation */}
       <div
-        className={cn('absolute inset-y-0 right-0 opacity-50', barColor)}
+        className={cn(
+          'absolute inset-y-0 right-0 opacity-50 transition-all duration-300 ease-out',
+          isHovered ? hoverBarColor : barColor
+        )}
         style={{ width: `${cumulativePercent}%` }}
       />
 
@@ -322,6 +405,15 @@ function OrderLevelRow({ level, side, cumulativeSize, maxCumulativeSize }: Order
       <span className="relative z-10 text-right text-gray-500">
         {formatSize(cumulativeSize.toString())}
       </span>
+
+      {/* Hover tooltip */}
+      {isHovered && (
+        <OrderLevelTooltip
+          level={level}
+          side={side}
+          cumulativeSize={cumulativeSize}
+        />
+      )}
     </div>
   );
 }
@@ -427,17 +519,12 @@ export function OrderBook({
       className={cn('rounded-lg border border-gray-200 bg-white p-4', className)}
       data-testid="orderbook"
     >
-      {/* Header with title, stale indicator, and mid price */}
+      {/* Header with title and stale indicator */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-gray-900">Order Book</h3>
           <OrderBookStaleIndicator isStale={isStale} />
         </div>
-        {data.midPrice && (
-          <span className="text-xs text-gray-500">
-            Mid: <span className="font-medium text-gray-700">{formatPriceAsPercent(data.midPrice)}</span>
-          </span>
-        )}
       </div>
 
       {/* Column headers */}
@@ -466,35 +553,57 @@ export function OrderBook({
           })}
       </div>
 
-      {/* Spread row - prominently displayed between asks and bids */}
-      <div className="flex items-center justify-center py-2 border-y border-gray-100 bg-gray-50 -mx-4 px-4">
-        <div className="flex items-center gap-4 text-xs">
-          {/* Best Bid */}
-          <div className="flex items-center gap-1">
-            <span className="text-gray-500">Bid:</span>
-            <span className="font-semibold text-green-700">
-              {data.bestBid ? formatPriceAsCents(data.bestBid) : '—'}
-            </span>
-          </div>
+      {/* Mid-price line and spread row - prominently displayed between asks and bids */}
+      <div className="relative" data-testid="orderbook-mid-price-section">
+        {/* Horizontal mid-price line spanning full width */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-green-300 via-indigo-400 to-red-300 opacity-60" />
 
-          {/* Spread */}
-          {spread && (
-            <div className="flex items-center gap-1 text-gray-500">
-              <span>Spread:</span>
-              <span className="font-medium text-gray-700">
-                {spread.cents}¢ ({spread.percent}%)
+        {/* Mid-price indicator diamond */}
+        {data.midPrice && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+            <div className="w-3 h-3 bg-indigo-500 rotate-45 ring-2 ring-white shadow-md" />
+          </div>
+        )}
+
+        {/* Spread info overlay */}
+        <div className="relative flex items-center justify-center py-2.5 -mx-4 px-4">
+          <div className="flex items-center gap-4 text-xs bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm border border-gray-100">
+            {/* Best Bid */}
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">Bid:</span>
+              <span className="font-semibold text-green-700">
+                {data.bestBid ? formatPriceAsCents(data.bestBid) : '—'}
               </span>
             </div>
-          )}
 
-          {/* Best Ask */}
-          <div className="flex items-center gap-1">
-            <span className="text-gray-500">Ask:</span>
-            <span className="font-semibold text-red-700">
-              {data.bestAsk ? formatPriceAsCents(data.bestAsk) : '—'}
-            </span>
+            {/* Mid Price */}
+            {data.midPrice && (
+              <div className="flex items-center gap-1 px-2 border-x border-gray-200">
+                <span className="text-gray-500">Mid:</span>
+                <span className="font-semibold text-indigo-600">
+                  {formatPriceAsCents(data.midPrice)}
+                </span>
+              </div>
+            )}
+
+            {/* Best Ask */}
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500">Ask:</span>
+              <span className="font-semibold text-red-700">
+                {data.bestAsk ? formatPriceAsCents(data.bestAsk) : '—'}
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Spread displayed below */}
+        {spread && (
+          <div className="flex justify-center -mt-1 mb-1">
+            <span className="text-[10px] text-gray-400">
+              Spread: {spread.cents}¢ ({spread.percent}%)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Bid levels */}

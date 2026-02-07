@@ -101,6 +101,29 @@
 - Typecheck passes, 273 tests pass (11 pre-existing failures in market-details-panel.test.tsx
   due to timezone and timeout issues unrelated to this task)
 
+### 2026-02-06: orderbook_depth_visual
+- Extended `web/src/components/event/order-book.tsx` with depth visualization features:
+- **Hover state with tooltip** (`OrderLevelTooltip` component):
+  - Shows detailed info when hovering over any order level row
+  - Displays: Side label (Bid/Ask), Price (cents and %), Size (shares), Cumulative (shares),
+    Notional value (price × size in USD)
+  - Dark tooltip with arrow pointing to the hovered row
+  - Row background highlights on hover (gray-50)
+- **Animated bar changes**:
+  - CSS transitions (duration-300 ease-out) on depth bar width changes
+  - Depth bars smoothly animate when order book data updates
+  - Hover state also transitions bar color (green-100→green-200 for bids, red-100→red-200 for asks)
+- **Mid-price line visual**:
+  - Horizontal gradient line spanning full width between asks and bids
+  - Gradient from green (bid side) through indigo (mid) to red (ask side)
+  - Diamond indicator at center marks the mid-price position
+  - Enhanced spread row with rounded pill container showing Bid | Mid | Ask
+  - Spread value now displayed separately below the mid-price indicator
+- Added `data-testid` attributes for testing: `orderbook-level-tooltip`, `orderbook-level-bid`,
+  `orderbook-level-ask`, `orderbook-mid-price-section`
+- Updated component header comment to reference `orderbook_depth_visual` PRD task
+- Typecheck passes, all 357 tests pass
+
 ## In Progress
 
 
@@ -118,10 +141,8 @@
   in the event response.
 - TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
   to get the interval from URL and pass to PriceChart's `interval` prop.
-- Remaining tasks: volume_overlay, orderbook_depth_visual
+- Remaining task: volume_overlay
   - volume_overlay is blocked by API limitation (no per-period volume in timeseries endpoint).
-  - orderbook_depth_visual is partially addressed (cumulative bars already in orderbook_component).
-    Remaining: hover states, animations, mid-price line.
 - **API limitation**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}`
   (timestamp, price) data points. True OHLC candlestick data or per-period volume would
   require either aggregating from trade data or waiting for a candlestick API endpoint.

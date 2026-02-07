@@ -66,6 +66,31 @@
 - Added 37 tests in `web/tests/outcome-card.test.tsx`
 - All 237 frontend tests passing
 
+### 2026-02-06: market_details_panel category
+- Created `web/src/components/event/market-details-panel.tsx` with:
+  - `formatCurrency()` - formats USD with locale (e.g., "$66,109", "$1.50M", "$2.50B")
+  - `formatFullDateTime()` - formats dates with full date and time (e.g., "Jun 30, 2026, 11:59 PM")
+  - `formatRelativeTime()` - formats dates relative to now (e.g., "2 weeks ago", "3 months ago")
+  - `truncateAddress()` - truncates addresses for display (e.g., "0x1234...5678")
+  - `CopyButton` - copy to clipboard with checkmark feedback (2s timeout)
+  - `DetailRow` - reusable row component with icon, label, value, and optional copy
+  - `MarketDetailsPanel` - main sidebar panel component:
+    - Total volume with currency formatting
+    - Liquidity display
+    - Resolution date with full date/time
+    - Created date with relative time and hover tooltip for full date
+    - Resolver address (truncated) with copy button
+    - Market ID (truncated) with copy button
+    - Expandable "Additional Details" section with:
+      - Condition ID (truncated) with copy button
+      - Slug (truncated if long) with copy button
+    - All fields are optional and only render when provided
+    - Uses Card component for consistent styling
+    - Memoized components for performance
+- Exported all components and helper functions via `web/src/components/event/index.ts`
+- Added 47 tests in `web/tests/market-details-panel.test.tsx`
+- All typecheck and tests passing
+
 ## In Progress
 
 
@@ -78,4 +103,9 @@
 - The color gradient uses a 5-tier system matching the existing codebase patterns
 - Animation uses CSS transitions with 500ms ease-out for smooth bar fills
 - Components are memoized for performance when rendering multiple outcomes
+- MarketDetailsPanel uses Lucide icons for visual consistency
+- Clipboard copy uses native browser API with fallback error handling
+- Relative time formatting supports years/months/weeks/days/hours/minutes/just now
+- Remaining categories: resolution_rules, category_tags (category_tags partially
+  done - CategoryBadge exists in event-header.tsx)
 
