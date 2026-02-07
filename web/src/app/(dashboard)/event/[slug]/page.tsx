@@ -17,7 +17,7 @@
 
 'use client';
 
-import { use } from 'react';
+import { use, useEffect } from 'react';
 import { Tag, TrendingUp, TrendingDown, ExternalLink, Clock, BarChart2 } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -283,6 +283,17 @@ export default function EventDetailPage({ params }: EventPageProps) {
     error,
     refetch,
   } = useEvent(slug);
+
+  // Update page title when event is loaded
+  useEffect(() => {
+    if (event?.title) {
+      document.title = `${event.title} | PredMkts`;
+    }
+    return () => {
+      // Reset to default title when leaving the page
+      document.title = 'PredMkts';
+    };
+  }, [event?.title]);
 
   // Loading state
   if (isLoading) {

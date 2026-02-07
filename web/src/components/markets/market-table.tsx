@@ -82,36 +82,42 @@ export const MarketTable = memo(function MarketTable({
       key: 'question',
       header: 'Market',
       className: 'min-w-[250px] max-w-[400px]',
-      render: (_, market) => (
-        <Link
-          href={`/markets/${market.slug ?? market.polymarketId}`}
-          className="flex items-center gap-3 group"
-        >
-          {/* Market thumbnail */}
-          <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-gray-100">
-            {market.slug ? (
-              <Image
-                src={`https://polymarket.com/images/markets/${market.slug}.png`}
-                alt=""
-                fill
-                className="object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
-                —
-              </div>
-            )}
-          </div>
-          {/* Market question */}
-          <span className="line-clamp-2 text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors">
-            {market.question}
-          </span>
-        </Link>
-      ),
+      render: (_, market) => {
+        // Link to event detail page if eventSlug is available, otherwise use market slug
+        const href = market.eventSlug
+          ? `/event/${market.eventSlug}`
+          : `/markets/${market.slug ?? market.polymarketId}`;
+        return (
+          <Link
+            href={href}
+            className="flex items-center gap-3 group"
+          >
+            {/* Market thumbnail */}
+            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-gray-100">
+              {market.slug ? (
+                <Image
+                  src={`https://polymarket.com/images/markets/${market.slug}.png`}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
+                  —
+                </div>
+              )}
+            </div>
+            {/* Market question */}
+            <span className="line-clamp-2 text-sm font-medium text-gray-900 group-hover:text-indigo-600 transition-colors">
+              {market.question}
+            </span>
+          </Link>
+        );
+      },
     },
     {
       key: 'priceChange24h',

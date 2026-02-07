@@ -288,10 +288,11 @@ export const MarketCard = memo(function MarketCard({
     </div>
   );
 
-  // Wrap in Link if onClick is not provided
-  if (!onClick && market.slug) {
+  // Wrap in Link if onClick is not provided - link to event detail page
+  const eventLink = market.eventSlug ? `/event/${market.eventSlug}` : null;
+  if (!onClick && eventLink) {
     return (
-      <Link href={`/markets/${market.slug}`} className="block h-full">
+      <Link href={eventLink} className="block h-full">
         {cardContent}
       </Link>
     );

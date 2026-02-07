@@ -15,7 +15,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface BreadcrumbItem {
@@ -80,8 +80,18 @@ export function EventDetailLayout({
 }: EventDetailLayoutProps) {
   return (
     <div className={cn('space-y-4', className)}>
-      {/* Breadcrumb Navigation */}
-      <Breadcrumbs items={breadcrumbs} />
+      {/* Back Navigation and Breadcrumbs */}
+      <div className="flex items-center gap-4">
+        <Link
+          href="/markets"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Back to Markets</span>
+        </Link>
+        <div className="hidden sm:block h-4 w-px bg-gray-300" />
+        <Breadcrumbs items={breadcrumbs} />
+      </div>
 
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

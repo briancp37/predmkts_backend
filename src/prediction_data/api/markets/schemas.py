@@ -62,6 +62,11 @@ class MarketBase(BaseModel):
         description="URL-friendly market slug",
         json_schema_extra={"example": "will-bitcoin-reach-100k-by-2025"},
     )
+    eventSlug: str | None = Field(
+        default=None,
+        description="URL-friendly event slug for navigation to event detail page",
+        json_schema_extra={"example": "us-presidential-election-2024"},
+    )
     question: str = Field(
         ...,
         description="Market question",

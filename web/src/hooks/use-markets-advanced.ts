@@ -37,6 +37,7 @@ export interface AdvancedMarket {
   polymarketId: string;
   conditionId: string | null;
   slug: string | null;
+  eventSlug: string | null;
   question: string;
   description: string | null;
   category: string | null;

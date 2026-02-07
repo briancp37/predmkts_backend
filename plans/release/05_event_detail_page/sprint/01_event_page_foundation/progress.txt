@@ -2,7 +2,7 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: In Progress
+## Status: Complete
 
 ## Completed Tasks
 
@@ -94,6 +94,32 @@
 - All TypeScript type checks pass (npm run typecheck)
 - All tests pass (npm run test - 82 tests)
 
+### navigation_update (2026-02-06)
+- Added eventSlug field to MarketBase schema in src/prediction_data/api/markets/schemas.py
+- Updated all market queries in src/prediction_data/api/markets/service.py to include e.slug AS eventSlug:
+  - get_markets() query
+  - get_market_by_id() query
+  - get_markets_advanced() query
+  - get_markets_screener() query
+- Updated all response builders to include eventSlug field
+- Regenerated TypeScript types from OpenAPI spec (npm run generate-api)
+- Updated AdvancedMarket interface in web/src/hooks/use-markets-advanced.ts to include eventSlug
+- Updated MarketCard component (web/src/components/markets/market-card.tsx):
+  - Now links to /event/{eventSlug} instead of /markets/{slug}
+  - Falls back gracefully when eventSlug is not available
+- Updated MarketTable component (web/src/components/markets/market-table.tsx):
+  - Market question column now links to /event/{eventSlug}
+  - Falls back to /markets/{slug} when eventSlug is not available
+- Added back navigation button to EventDetailLayout:
+  - ArrowLeft icon with "Back to Markets" text
+  - Visible on all screen sizes (text hidden on mobile)
+  - Positioned next to breadcrumb navigation with separator
+- Added dynamic page title update in event detail page:
+  - Uses useEffect to set document.title to "{event.title} | PredMkts"
+  - Resets to "PredMkts" when leaving the page
+- All TypeScript type checks pass (npm run typecheck)
+- All tests pass (npm run test - 82 tests)
+
 ## In Progress
 
 
@@ -107,5 +133,6 @@
 - page_layout feature is complete with two-column responsive layout and breadcrumb navigation
 - loading_states feature is complete - skeleton components are modular and reusable
 - error_handling feature is complete - dedicated components for 404 and generic errors with retry functionality
-- Next task should be navigation_update to link MarketCard and MarketTable rows to event detail page
+- navigation_update feature is complete - MarketCard and MarketTable now link to event detail pages
+- Sprint 01 is now complete. All 6 features implemented and tested.
 

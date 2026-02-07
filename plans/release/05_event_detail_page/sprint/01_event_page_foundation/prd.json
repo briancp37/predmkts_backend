@@ -72,6 +72,6 @@
       "Add back navigation button on event detail page",
       "Ensure page title updates with event name"
     ],
-    "passes": false
+    "passes": true
   }
 ]

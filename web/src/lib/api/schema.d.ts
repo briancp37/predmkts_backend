@@ -1156,6 +1156,12 @@ export interface components {
              */
             slug?: string | null;
             /**
+             * Eventslug
+             * @description URL-friendly event slug for navigation to event detail page
+             * @example us-presidential-election-2024
+             */
+            eventSlug?: string | null;
+            /**
              * Question
              * @description Market question
              * @example Will Bitcoin reach $100,000 by end of 2025?
@@ -1410,6 +1416,12 @@ export interface components {
              * @example will-bitcoin-reach-100k-by-2025
              */
             slug?: string | null;
+            /**
+             * Eventslug
+             * @description URL-friendly event slug for navigation to event detail page
+             * @example us-presidential-election-2024
+             */
+            eventSlug?: string | null;
             /**
              * Question
              * @description Market question
@@ -1684,6 +1696,12 @@ export interface components {
              */
             slug?: string | null;
             /**
+             * Eventslug
+             * @description URL-friendly event slug for navigation to event detail page
+             * @example us-presidential-election-2024
+             */
+            eventSlug?: string | null;
+            /**
              * Question
              * @description Market question
              * @example Will Bitcoin reach $100,000 by end of 2025?
@@ -1890,50 +1908,40 @@ export interface components {
         };
         /**
          * PriceHistoryResponse
-         * @description Price history timeseries response.
+         * @description Response for price history endpoint.
          */
         PriceHistoryResponse: {
             /**
-             * Token Id
-             * @description Polymarket CLOB token ID
-             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             * Items
+             * @description Price history data points
              */
-            token_id: string;
+            items: components["schemas"]["PriceHistoryPoint"][];
+            /**
+             * Marketid
+             * @description Market ID for this history
+             */
+            marketId: string;
+            /**
+             * Outcomeid
+             * @description Specific outcome ID if filtered
+             */
+            outcomeId?: string | null;
             /**
              * Interval
-             * @description Interval used for the query (1m, 1h, 6h, 1d, 1w, max)
-             * @example 1h
+             * @description Time interval (daily, hourly)
+             * @example daily
              */
-            interval?: string | null;
+            interval: string;
             /**
-             * Fidelity
-             * @description Resolution of the data in minutes
-             * @example 15
+             * Startdate
+             * @description Start of date range
              */
-            fidelity?: number | null;
+            startDate?: string | null;
             /**
-             * Start Ts
-             * @description Start timestamp if date range was specified
-             * @example 1697788800
+             * Enddate
+             * @description End of date range
              */
-            start_ts?: number | null;
-            /**
-             * End Ts
-             * @description End timestamp if date range was specified
-             * @example 1697875200
-             */
-            end_ts?: number | null;
-            /**
-             * History
-             * @description List of price points in chronological order
-             */
-            history: components["schemas"]["PricePoint"][];
-            /**
-             * Cache Status
-             * @description Cache status: HIT, MISS, or STALE
-             * @example HIT
-             */
-            cache_status: string;
+            endDate?: string | null;
         };
         /**
          * PricePoint
@@ -3384,43 +3392,6 @@ export interface components {
             totalWalletValue: number;
         };
         /**
-         * PriceHistoryResponse
-         * @description Response for price history endpoint.
-         */
-        prediction_data__api__markets__schemas__PriceHistoryResponse: {
-            /**
-             * Items
-             * @description Price history data points
-             */
-            items: components["schemas"]["PriceHistoryPoint"][];
-            /**
-             * Marketid
-             * @description Market ID for this history
-             */
-            marketId: string;
-            /**
-             * Outcomeid
-             * @description Specific outcome ID if filtered
-             */
-            outcomeId?: string | null;
-            /**
-             * Interval
-             * @description Time interval (daily, hourly)
-             * @example daily
-             */
-            interval: string;
-            /**
-             * Startdate
-             * @description Start of date range
-             */
-            startDate?: string | null;
-            /**
-             * Enddate
-             * @description End of date range
-             */
-            endDate?: string | null;
-        };
-        /**
          * TradeResponse
          * @description Trade record for a market.
          */
@@ -3494,6 +3465,53 @@ export interface components {
             timestamp: string;
         };
         /**
+         * PriceHistoryResponse
+         * @description Price history timeseries response.
+         */
+        prediction_data__api__polymarket_proxy__schemas__PriceHistoryResponse: {
+            /**
+             * Token Id
+             * @description Polymarket CLOB token ID
+             * @example 71321045679252212594626385532706912750332728571942532289631379312455583286914
+             */
+            token_id: string;
+            /**
+             * Interval
+             * @description Interval used for the query (1m, 1h, 6h, 1d, 1w, max)
+             * @example 1h
+             */
+            interval?: string | null;
+            /**
+             * Fidelity
+             * @description Resolution of the data in minutes
+             * @example 15
+             */
+            fidelity?: number | null;
+            /**
+             * Start Ts
+             * @description Start timestamp if date range was specified
+             * @example 1697788800
+             */
+            start_ts?: number | null;
+            /**
+             * End Ts
+             * @description End timestamp if date range was specified
+             * @example 1697875200
+             */
+            end_ts?: number | null;
+            /**
+             * History
+             * @description List of price points in chronological order
+             */
+            history: components["schemas"]["PricePoint"][];
+            /**
+             * Cache Status
+             * @description Cache status: HIT, MISS, or STALE
+             * @example HIT
+             */
+            cache_status: string;
+        };
+        /**
          * TradeListResponse
          * @description Paginated list of trades.
          */
@@ -3518,38 +3536,6 @@ export interface components {
              * @description Results per page
              */
             limit: number;
-        };
-        /**
-         * @example {
-         *       "detail": "Resource not found",
-         *       "code": "NOT_FOUND",
-         *       "status": 404
-         *     }
-         */
-        ErrorResponse: {
-            /** @description Human-readable error message */
-            detail: string;
-            /** @description Machine-readable error code */
-            code: string;
-            /** @description HTTP status code */
-            status: number;
-        };
-        /**
-         * @example {
-         *       "detail": "Rate limit exceeded",
-         *       "code": "RATE_LIMIT_EXCEEDED",
-         *       "status": 429,
-         *       "retry_after": 60
-         *     }
-         */
-        RateLimitResponse: {
-            detail: string;
-            /** @enum {string} */
-            code: "RATE_LIMIT_EXCEEDED";
-            /** @enum {integer} */
-            status: 429;
-            /** @description Seconds until rate limit resets */
-            retry_after: number;
         };
     };
     responses: never;
@@ -4052,7 +4038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["prediction_data__api__markets__schemas__PriceHistoryResponse"];
+                    "application/json": components["schemas"]["PriceHistoryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4872,7 +4858,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PriceHistoryResponse"];
+                    "application/json": components["schemas"]["prediction_data__api__polymarket_proxy__schemas__PriceHistoryResponse"];
                 };
             };
             /** @description Validation Error */
