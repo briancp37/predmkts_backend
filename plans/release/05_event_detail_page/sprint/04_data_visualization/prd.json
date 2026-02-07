@@ -52,7 +52,9 @@
       "Scale volume axis independently from price",
       "Include volume in tooltip"
     ],
-    "passes": false
+    "passes": false,
+    "blocked": true,
+    "notes": "BLOCKED: Polymarket CLOB /prices-history API only returns {t, p} (timestamp, price) data points. No per-period volume data is available. The Gamma API provides aggregate volume metrics (volume24hr, volume1wk, etc.) but not time-bucketed volume suitable for chart overlay. Implementing this would require aggregating from individual trades (expensive API calls) which is outside the scope of this task. This task can be unblocked if Polymarket adds OHLCV data to their timeseries endpoint."
   },
   {
     "category": "orderbook_component",

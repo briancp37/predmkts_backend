@@ -2,7 +2,7 @@
 # Release: 05_event_detail_page
 # Created: 2026-02-06
 
-## Status: In Progress
+## Status: Complete (with 1 blocked task)
 
 ## Completed Tasks
 
@@ -124,13 +124,20 @@
 - Updated component header comment to reference `orderbook_depth_visual` PRD task
 - Typecheck passes, all 357 tests pass
 
-## In Progress
+## Blocked Tasks
 
-
-## Blockers/Issues
-
-- Pre-existing TypeScript error in `event/[slug]/page.tsx` - unused `TradingPanel` import
-  added by previous work. Not related to this sprint task.
+### 2026-02-06: volume_overlay - BLOCKED (External API Limitation)
+- **Status**: Cannot be implemented with current Polymarket API
+- **Reason**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}` (timestamp,
+  price) data points. No per-period volume data is available in the timeseries response.
+- **Alternatives considered**:
+  1. Gamma API provides aggregate volume metrics (volume24hr, volume1wk, etc.) but these are
+     not time-bucketed and cannot be used for a chart overlay
+  2. Aggregating from individual trades via `/data/trades` would be expensive (many API calls
+     to fetch all trades for a time range) and is outside the scope of this task
+- **Resolution**: This task can be unblocked if Polymarket adds OHLCV (Open, High, Low, Close,
+  Volume) data to their timeseries endpoint. Until then, the price chart shows price data only.
+- Updated PRD with `blocked: true` and detailed notes explaining the limitation.
 
 ## Notes
 
@@ -141,9 +148,19 @@
   in the event response.
 - TimeRangeSelector can be composed with PriceChart - use `useTimeseriesIntervalFromUrl()`
   to get the interval from URL and pass to PriceChart's `interval` prop.
-- Remaining task: volume_overlay
-  - volume_overlay is blocked by API limitation (no per-period volume in timeseries endpoint).
 - **API limitation**: The Polymarket CLOB `/prices-history` endpoint only returns `{t, p}`
   (timestamp, price) data points. True OHLC candlestick data or per-period volume would
   require either aggregating from trade data or waiting for a candlestick API endpoint.
+
+## Sprint Completion Summary
+
+All implementable tasks have been completed:
+- price_chart_component ✓
+- chart_time_range_selector ✓
+- chart_tooltip ✓
+- chart_loading_states ✓
+- orderbook_component ✓
+- orderbook_loading_states ✓
+- orderbook_depth_visual ✓
+- volume_overlay ✗ (blocked - external API limitation)
 
