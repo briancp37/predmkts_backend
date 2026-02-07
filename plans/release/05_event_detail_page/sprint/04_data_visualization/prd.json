@@ -66,7 +66,7 @@
       "Use green for bids, red for asks",
       "Show configurable number of levels (default 5)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "orderbook_depth_visual",
