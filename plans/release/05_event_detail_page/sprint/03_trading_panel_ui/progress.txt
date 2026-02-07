@@ -148,6 +148,49 @@
 - All 37 trade-summary tests pass
 - All 357 project tests pass
 
+### dummy_trade_button (2026-02-06)
+- Created TradeSubmitButton component in web/src/components/event/trade-submit-button.tsx
+- Implemented as primary action button with full-width styling
+- Dynamic button text: "Buy [Outcome]" or "Sell [Outcome]" based on direction and selected outcome
+- Falls back to just "Buy" or "Sell" when no outcome is selected
+- Color coded buttons: Buy=green (bg-green-600), Sell=red (bg-red-600)
+- Loading state during submission:
+  - Shows Loader2 spinning icon with "Processing..." text
+  - Button disabled and has aria-busy="true" attribute
+  - 800ms simulated submission delay
+- Toast notification after submission:
+  - Shows "Trading coming soon!" message at bottom of screen
+  - Auto-dismisses after 3 seconds
+  - Has dismiss button for manual close
+  - Uses role="alert" with aria-live="polite" for accessibility
+- Confetti animation on successful submission:
+  - 20 confetti pieces with randomized colors (green, blue, yellow, pink, purple, teal)
+  - CSS animation falls from top to bottom with rotation
+  - Disappears after 2 seconds
+- Button disabled when:
+  - No outcome selected (outcomeName is null)
+  - Amount is invalid (null, 0, or less than $1)
+  - disabled prop is true
+  - Currently in loading state
+- Proper focus ring styling for accessibility (green for buy, red for sell)
+- Integrated TradeSubmitButton into TradingPanel component
+  - Replaced placeholder "Trading Coming Soon" button
+  - Connected to selectedOutcome, tradeDirection, and amount state
+- Exported TradeSubmitButton and TradeSubmitButtonProps from components/event/index.ts
+- Created comprehensive test suite with 43 tests covering:
+  - Button text generation (Buy/Sell with outcome names)
+  - Disabled states (null amount, zero amount, no outcome, disabled prop)
+  - Color coding for buy/sell directions
+  - Loading state (spinner, text, aria-busy, disabled)
+  - Toast notification (display, dismiss button, auto-dismiss, accessibility)
+  - Confetti animation (shows after submission, disappears after 2s)
+  - Click behavior (disabled prevention, no double submission)
+  - Styling (full width, font, rounded corners, custom className)
+  - Accessibility (aria-disabled, button type, focus rings, toast aria-live)
+  - Edge cases (minimum amount, large amounts, special characters)
+- All 43 trade-submit-button tests pass
+- All 485 project tests pass
+
 
 ## In Progress
 
@@ -160,7 +203,7 @@
 - TradingPanel now includes TradeDirectionToggle with keyboard shortcut support
 - TradingPanel now includes TradeAmountInput with validation and calculations
 - TradingPanel now includes TradeSummary showing complete order details
-- Remaining placeholder for submit button
+- TradingPanel now includes TradeSubmitButton with dummy action and confetti feedback
 - Mobile viewport detection uses window.innerWidth < 1024 (lg breakpoint)
 - The component accepts children prop for composition of trading sub-components
 - For events with multiple markets, the first market's outcomes are shown in the trading panel

@@ -166,3 +166,15 @@ export {
   ResolutionRules,
   type ResolutionRulesProps,
 } from './resolution-rules';
+
+export {
+  CategoryTag,
+  CategoryTagList,
+  getCategoryTagColors,
+  getCategoryFullName,
+  CATEGORY_COLORS,
+  CATEGORY_FULL_NAMES,
+  type CategoryTagProps,
+  type CategoryTagListProps,
+  type CategoryColors,
+} from './category-tag';

@@ -24,6 +24,7 @@ import { OutcomeSelector, type Outcome } from './outcome-selector';
 import { TradeDirectionToggle, type TradeDirection } from './trade-direction-toggle';
 import { TradeAmountInput } from './trade-amount-input';
 import { TradeSummary } from './trade-summary';
+import { TradeSubmitButton } from './trade-submit-button';
 
 export interface TradingPanelProps {
   /** The event slug for navigation/API calls */
@@ -274,14 +275,12 @@ function TradingPanelContent({
         price={selectedOutcome?.currentPrice ?? 0.5}
       />
 
-      {/* Placeholder submit button */}
-      <button
-        type="button"
-        disabled
-        className="w-full py-2.5 px-4 rounded-lg bg-gray-200 text-gray-500 text-sm font-medium cursor-not-allowed"
-      >
-        Trading Coming Soon
-      </button>
+      {/* Trade Submit Button */}
+      <TradeSubmitButton
+        outcomeName={selectedOutcome?.outcomeName ?? null}
+        direction={tradeDirection}
+        amount={amount}
+      />
 
       {/* Link to Polymarket */}
       <a

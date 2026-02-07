@@ -77,7 +77,7 @@
       "Add confetti animation or success feedback",
       "Disable button if amount is invalid or no outcome selected"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "authentication_gate",
