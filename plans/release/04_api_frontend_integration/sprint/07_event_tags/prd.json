@@ -100,7 +100,7 @@
       "Emit onChange with selected includeTags and excludeTags arrays",
       "Add search/filter input for large tag lists"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Tag Templates UI",

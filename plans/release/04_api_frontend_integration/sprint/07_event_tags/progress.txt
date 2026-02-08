@@ -140,10 +140,50 @@ ORDER BY event_count DESC
 - OpenAPI spec needs regeneration: `uvicorn prediction_data.api.main:app --reload` then `curl http://localhost:8000/openapi.json > openapi.json`
 - TypeScript types need regeneration: `cd web && npm run generate-api`
 
+### 2026-02-08: Frontend Tag Filter Component (COMPLETE)
+- Created web/src/components/TagFilter.tsx component with full include/exclude support
+- Features implemented:
+  - Modal/drawer that slides in from right (consistent with existing TagsModal)
+  - Fetches available tags from GET /api/v1/markets/tags via useTags hook
+  - Tags displayed as clickable chips with market count badges
+  - Three-state toggle: not selected → include (green) → exclude (red) → clear
+  - Visual distinction: emerald/green for include, red for exclude
+  - Search/filter input for filtering large tag lists
+  - Sort toggle: Popular (by marketCount) vs Alphabetical
+  - Selection summary showing included/excluded counts
+  - Quick clear button on hover for individual tags
+  - Clear All and Apply buttons
+- Exports:
+  - TagFilter component (default and named)
+  - TagFilterSelection interface: { includeTags: string[], excludeTags: string[] }
+  - TagSelectionState type: 'include' | 'exclude' | null
+  - TagFilterProps interface
+- All tests pass (frontend: 550)
+- Type checking passes (tsc --noEmit: no errors)
+
+**Usage example:**
+```tsx
+<TagFilter
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  includeTags={['Sports', 'Basketball']}
+  excludeTags={['Politics']}
+  onApply={({ includeTags, excludeTags }) => {
+    // Update filter state with new selections
+  }}
+/>
+```
+
+**Note for next developer:**
+- The TagFilter component is ready but not yet integrated into the Markets page
+- Next sprint item "Frontend Markets Page Integration" will integrate this component
+- The existing TagsModal in markets page only supports single-mode (include only)
+- TagFilter supports both include and exclude modes which is required for the API params
+
 ## In Progress
 
-### Frontend Tag Filter Component
-- Next step: Create web/src/components/TagFilter.tsx component
+### Frontend Tag Templates UI
+- Next step: Create web/src/components/TagTemplateManager.tsx for template CRUD
 
 ## Blockers/Issues
 
