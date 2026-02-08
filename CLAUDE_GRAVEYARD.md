@@ -1,0 +1,814 @@
+# CLAUDE_GRAVEYARD.md
+
+Reference material removed from CLAUDE.md for brevity. Consult when needed.
+
+---
+
+## Release & Sprint Plans (Detailed Structure)
+
+```
+plans/release/
+├── 01_bronze_level/
+│   ├── RELEASE.md              # Release scope, goals, exit criteria
+│   ├── progress.txt            # Release-level progress tracking
+│   └── sprint/
+│       ├── 01_project_bootstrap/
+│       │   ├── prd.json        # Sprint PRD: categories with steps and pass/fail
+│       │   └── progress.txt    # Sprint progress log
+│       ├── 02_core_infra/
+│       ├── ...
+│       └── 08_order_filled_ingestion/
+├── 02_silver_level/
+│   └── RELEASE.md
+└── 03_gold_level/
+    └── RELEASE.md
+```
+
+- **RELEASE.md**: Defines scope, exit criteria, entities, and architecture for a release.
+- **prd.json**: Array of `{ category, description, steps[], passes }` objects. `passes` is `true`/`false` indicating completion.
+- **progress.txt**: Free-form log of completed tasks, blockers, and notes per sprint.
+
+## Full Rate Limits by API
+
+**CLOB API** (`clob.polymarket.com`): 9,000 req/10s overall. `/data/trades`: 500/10s.
+
+**Gamma API** (`gamma-api.polymarket.com`): 4,000 req/10s overall. `/markets`: 300/10s. `/events`: 500/10s.
+
+**Data API** (`data-api.polymarket.com`): 1,000 req/10s overall. `/trades`: 200/10s.
+
+## Full Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `BRONZE_BUCKET` | Yes | S3 bucket for bronze layer data |
+| `GOLD_BUCKET` | For Gold | S3 bucket for Gold layer Parquet files |
+| `CLICKHOUSE_HOST` | For Gold | ClickHouse server hostname (default: localhost) |
+| `CLICKHOUSE_PORT` | For Gold | ClickHouse native port (default: 9000) |
+| `CLICKHOUSE_USER` | For Gold | ClickHouse username (default: default) |
+| `CLICKHOUSE_PASSWORD` | For Gold | ClickHouse password (default: empty) |
+| `CLICKHOUSE_DATABASE` | For Gold | ClickHouse database (default: prediction_gold) |
+| `AWS_REGION` | No | AWS region (default: us-east-1) |
+| `KALSHI_API_KEY_ID` | For Kalshi | Kalshi API key ID |
+| `KALSHI_PRIVATE_KEY_PATH` | For Kalshi | Path to Kalshi RSA private key |
+| `POLYGON_WALLET_ADDRESS` | For CLOB | CLOB API-derived address (used in POLY_ADDRESS header) |
+| `POLYGON_WALLET_PUBLIC_KEY` | For CLOB | Polygon wallet public key |
+| `POLYGON_WALLET_PRIVATE_KEY` | For CLOB | Polygon wallet private key |
+| `POLYMARKET_BUILDER_API_KEY` | For CLOB | Builder API key |
+| `POLYMARKET_BUILDER_SECRET` | For CLOB | Base64-encoded Builder API secret |
+| `POLYMARKET_BUILDER_PASSPHRASE` | For CLOB | Builder API passphrase |
+| `DATABASE_URL` | For API | PostgreSQL connection string |
+| `JWT_SECRET_KEY` | For API | Secret for JWT signing (min 32 chars) |
+| `JWT_ALGORITHM` | No | JWT algorithm (default: HS256) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token TTL (default: 30) |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token TTL (default: 7) |
+| `DEBUG` | No | Enable debug mode with stack traces (default: false) |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins, or `*` for dev (default: *) |
+| `API_URL` | No | Backend API URL for proxy (default: http://localhost:8000) |
+| `NEXT_PUBLIC_API_URL` | No | Client-side API URL if not using proxy |
+
+## REST API Details
+
+### API Versioning Strategy
+
+All API endpoints follow URL-based versioning with `/api/v1/` prefix:
+
+- **Current version:** `v1` (0.1.0)
+- **Versioning scheme:** URL path prefix (`/api/v1/`, `/api/v2/`, etc.)
+- **Health endpoints:** Not versioned (available at `/health`, `/health/ready`, `/health/live`)
+
+**Endpoint structure:**
+```
+/api/v1/auth/*           # Authentication (register, login, refresh, me)
+/api/v1/markets/*        # Market data and search
+/api/v1/traders/*        # Trader profiles and leaderboards
+/api/v1/watchlist/*      # User watchlist management
+/api/v1/tracked-traders/* # Tracked traders management
+/api/v1/trades/*         # Trade data (smart money, whales)
+/api/v1/events/*         # Event data
+/health                  # Health checks (not versioned)
+```
+
+**Version migration policy:**
+- Breaking changes require a new version (`v2`, `v3`, etc.)
+- Non-breaking additions (new fields, endpoints) can be added to existing version
+- Old versions will be maintained for at least 6 months after deprecation notice
+- Deprecation will be communicated via `Deprecation` header and documentation
+
+### API Rate Limits
+
+| Endpoint Category | Rate Limit | Notes |
+|---|---|---|
+| Auth endpoints | 10 req/min per IP | Brute force prevention |
+| Public read endpoints | 100 req/min per IP | Markets, traders, events |
+| Authenticated endpoints | 200 req/min per user | Watchlist, tracked traders |
+| CLOB proxy endpoints | 50 req/min | Stay under Polymarket limits |
+
+Rate limit headers returned: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` (on 429).
+
+### Error Response Format
+
+```json
+{
+  "detail": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "status": 400
+}
+```
+
+Common error codes:
+- `VALIDATION_ERROR` (422) — Request validation failed, includes `errors` array with field-level details
+- `AUTHENTICATION_FAILED` (401) — Invalid or expired credentials
+- `AUTHORIZATION_DENIED` (403) — Permission denied (e.g., tier limits exceeded)
+- `NOT_FOUND` (404) — Resource not found
+- `RATE_LIMIT_EXCEEDED` (429) — Rate limit hit, includes `retry_after` field
+
+## Frontend Details
+
+### Frontend-Backend Integration
+
+The frontend communicates with the FastAPI backend through:
+
+1. **API Proxy (Development)**: `next.config.ts` proxies `/api/v1/*` requests to `http://localhost:8000` (or `API_URL` env var). This avoids CORS issues in development.
+
+2. **API Client** (`web/src/lib/api/client.ts`):
+   - `apiRequest<T>()` — Generic fetch wrapper with auth handling
+   - Automatic JWT token management (localStorage)
+   - Automatic token refresh on 401 responses
+   - Consistent error handling via `ApiError` class
+
+3. **Auth Context** (`web/src/lib/api/auth-context.tsx`):
+   - React context for authentication state
+   - `login()`, `logout()`, `register()` methods
+   - User state management with automatic token restoration
+
+4. **Generated Types** (`web/src/lib/api/schema.d.ts`):
+   - TypeScript types generated from OpenAPI spec
+   - Ensures frontend/backend type safety
+
+### Regenerating TypeScript Types
+
+When the API schema changes (new endpoints, modified responses), regenerate the frontend types:
+
+```bash
+# Generate OpenAPI spec from FastAPI
+cd /path/to/repo
+uvicorn prediction_data.api.main:app --reload &
+curl http://localhost:8000/openapi.json > openapi.json
+
+# Generate TypeScript types
+cd web
+npm run generate-api
+```
+
+This creates `web/src/lib/api/schema.d.ts` from `openapi.json`.
+
+## Docker Images for ECS (Detailed)
+
+The ECS tasks run on AWS Fargate which requires **linux/amd64** architecture. When building on Apple Silicon (M1/M2/M3), you must cross-compile.
+
+**Task Definition:** `prediction-data-ingest-prod` (container name: `prediction-data`)
+
+**Common errors:**
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `CannotPullContainerError: image Manifest does not contain descriptor matching platform 'linux/amd64'` | Built for ARM64 (Apple Silicon default) | Use `docker buildx build --platform linux/amd64 --load` |
+| `403 Forbidden` on push | ECR login expired | Re-run `aws ecr get-login-password ...` |
+| `No output specified with docker-container driver` | Missing `--load` flag | Add `--load` to load image into Docker |
+
+## Fast Feedback Loop for Code Changes
+
+When making changes that will run on ECS, follow this order to catch issues early:
+
+**1. Unit test the change locally (seconds):**
+```bash
+# Test specific functions directly
+python -c "
+from prediction_data.silver.normalize import _derive_polymarket_status
+print(_derive_polymarket_status({'active': True}))  # Should print 'active'
+"
+
+# Run related unit tests
+pytest tests/test_silver_normalize.py -v -k "status" --tb=short
+```
+
+**2. Dry-run the CLI command locally (seconds):**
+```bash
+prediction-data silver process --platform polymarket --entity markets \
+    --dt 2026-02-06 --dry-run
+```
+
+**3. Run a small sample locally (1-2 min):**
+```bash
+prediction-data silver process --platform polymarket --entity markets \
+    --dt 2026-02-06 --force-reprocess
+```
+
+**4. Test Docker image locally before pushing (2-3 min):**
+```bash
+docker buildx build --platform linux/amd64 --load -t prediction-data:test .
+
+docker run --rm \
+    -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+    -e BRONZE_BUCKET=prediction-bronze-prod \
+    prediction-data:test \
+    silver process --platform polymarket --entity markets --dt 2026-02-06 --dry-run
+```
+
+**5. Only then push to ECR and run on ECS.**
+
+**Common mistakes that waste time:**
+- Pushing ARM64 image to ECR (Fargate needs amd64) → Always use `--platform linux/amd64`
+- Running full date range on ECS without testing single day locally first
+- Using `--overwrite` or `--merge` which load all data into memory (default append is chunked)
+- Waiting for ECS tasks without checking if they're producing logs
+
+## Running ECS Tasks Manually
+
+```bash
+aws ecs run-task \
+    --cluster prediction-data-prod \
+    --task-definition prediction-data-ingest-prod \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-64b44845],securityGroups=[sg-1d625733],assignPublicIp=ENABLED}" \
+    --overrides '{
+        "containerOverrides": [{
+            "name": "prediction-data",
+            "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--dt", "2026-02-07"]
+        }]
+    }' \
+    --region us-east-1
+```
+
+## Running Everything Locally (Full)
+
+```bash
+# 1. Start infrastructure (PostgreSQL + ClickHouse)
+docker compose up -d
+
+# 2. Wait for healthy databases (healthchecks should pass automatically)
+docker compose exec postgres pg_isready -U predmkts
+docker compose exec clickhouse clickhouse-client --query "SELECT 1"
+
+# 3. Start FastAPI backend (in one terminal)
+uvicorn prediction_data.api.main:app --reload
+# API: http://localhost:8000
+# Docs: http://localhost:8000/docs
+
+# 4. Start Next.js frontend (in another terminal)
+cd web && npm run dev
+# Frontend: http://localhost:3000
+# Proxies /api/v1/* to backend automatically
+```
+
+**Alternative: Fully Containerized**
+```bash
+docker compose --profile api up -d
+cd web && npm run dev
+```
+
+### Development Workflow
+
+1. **Schema Changes**: Modify Pydantic schemas in `src/prediction_data/api/*/schemas.py`
+2. **Regenerate Types**: Run `npm run generate-api` in `web/`
+3. **Type Check**: Run `npm run typecheck` to verify frontend compatibility
+4. **Test**: Run `pytest tests/api/` for backend, `npm run test` for frontend
+
+## Detailed Project Structure
+
+```
+predmkts_backend/
+├── src/prediction_data/
+│   ├── api/                    # FastAPI REST API
+│   │   ├── main.py             # App entry point, middleware
+│   │   ├── auth/               # Authentication endpoints
+│   │   ├── markets/            # Market data endpoints
+│   │   ├── traders/            # Trader data endpoints
+│   │   ├── watchlist/          # User watchlist endpoints
+│   │   ├── tracked_traders/    # Tracked traders endpoints
+│   │   ├── trades/             # Trade data endpoints
+│   │   ├── events/             # Event data endpoints
+│   │   ├── health.py           # Health check endpoints
+│   │   ├── exceptions.py       # Custom exception classes
+│   │   ├── middleware.py       # Request logging, security headers
+│   │   ├── rate_limit.py       # Rate limiting configuration
+│   │   └── validators.py       # Reusable Pydantic validators
+│   ├── bronze/                 # Bronze layer ingestion
+│   ├── silver/                 # Silver layer processing
+│   ├── gold/                   # Gold layer aggregations
+│   └── core/                   # Shared configuration
+├── web/                        # Next.js frontend
+│   ├── src/
+│   │   ├── app/                # Next.js app router pages
+│   │   ├── components/         # React components
+│   │   ├── hooks/              # Custom React hooks
+│   │   └── lib/
+│   │       └── api/            # API client and types
+│   └── next.config.ts          # Next.js config with API proxy
+├── tests/
+│   ├── api/                    # API integration tests
+│   └── ...                     # Other test modules
+├── docker-compose.yml          # Local infrastructure
+├── openapi.json                # Generated OpenAPI spec
+└── CLAUDE.md                   # This file
+```
+
+## Backfill CLI (Full)
+
+```bash
+# Backfill all platforms/entities for a date range
+prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-31
+
+# Backfill only Polymarket order_filled
+prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
+    --platform polymarket --entity order_filled
+
+# Dry run (preview without executing)
+prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-07 --dry-run
+
+# Kalshi trades backfill (uses min_ts/max_ts day boundaries)
+prediction-data backfill run --start-date 2024-01-01 --end-date 2024-01-31 \
+    --platform kalshi --entity trades
+
+# Ingest Polymarket order_filled events for a single day
+prediction-data ingest polymarket-order-filled --dt 2024-06-15
+
+# Backfill order_filled via Goldsky subgraph
+prediction-data backfill run --start-date 2024-06-01 --end-date 2024-06-30 \
+    --platform polymarket --entity order_filled
+```
+
+### Catchup (Auto-Detect & Backfill to Present)
+
+```bash
+# Catch up all platforms/entities to present
+prediction-data backfill catchup
+
+# Catch up only Polymarket order_filled (incremental — fetches only new records)
+prediction-data backfill catchup --platform polymarket --entity order_filled
+
+# Force full snapshot for catalog entities (markets/events) instead of incremental
+prediction-data backfill catchup --full
+
+# Preview what would be fetched
+prediction-data backfill catchup --dry-run
+```
+
+**Incremental modes by entity type:**
+- **Catalog entities (markets, events):** Catchup uses incremental ingestion by default — finds the latest manifest, extracts the `updatedAt` cursor, and fetches only records changed since then via Gamma API (`order=updatedAt&ascending=false`). Writes delta partitions with `snapshot_type="delta"`. Use `--full` to force a full snapshot instead. Falls back to full snapshot automatically on first run or if no cursor exists.
+- **order_filled:** Incremental via Goldsky subgraph — finds the latest timestamp and fetches only newer records.
+- **Kalshi trades:** Finds the latest date and backfills missing days.
+
+### Parquet-to-Bronze Backfill (order_filled)
+
+Convert historical parquet data to bronze JSONL.gz format. Reads from the monolithic
+`s3://polymarket-bcp892/raw/polymarket/order_filled.parquet` (~15 GB, 313M rows),
+streams row groups to avoid loading everything into memory, and filters by date.
+
+The script uses a single-pass scan over all row groups, bucketing rows by date as they
+are read. This streams the 15 GB file exactly once regardless of how many days are in the
+range — O(row_groups) vs the naive O(days * row_groups) that would re-scan per day.
+
+Token ID resolution: Asset IDs in the parquet are float-notation strings (e.g. `6.58e+76`)
+due to precision loss. The script builds a mapping from bronze markets JSONL data
+(`clobTokenIds` field) to resolve them to full-precision token IDs.
+
+```bash
+# Convert a date range from the monolithic parquet
+python scripts/backfill_order_filled_from_parquet.py \
+    --start-date 2022-11-01 --end-date 2026-01-31
+
+# Preview without writing to S3
+python scripts/backfill_order_filled_from_parquet.py \
+    --start-date 2024-01-01 --end-date 2024-03-31 --dry-run
+```
+
+## Status CLI (Full)
+
+```bash
+# Check data coverage for a date range (shows gaps)
+prediction-data status coverage --start-date 2024-01-01 --end-date 2024-01-31
+prediction-data status coverage --start-date 2024-01-01 --end-date 2024-01-31 \
+    --platform polymarket --entity trades
+
+# List recent ingestion runs (default: last 20)
+prediction-data status runs
+prediction-data status runs --platform kalshi --last 10
+prediction-data status runs --dt 2024-06-15  # all runs for a specific date
+
+# Show full details of a specific run
+prediction-data status show-run <run_id>
+
+# Validate manifest integrity and detect orphaned/incomplete data
+prediction-data status validate --start-date 2024-01-01 --end-date 2024-01-31
+prediction-data status validate --start-date 2024-06-01 --end-date 2024-06-30 \
+    --platform polymarket --entity trades
+```
+
+## Silver CLI (Full)
+
+```bash
+# Initialize all Silver Iceberg tables in Glue Catalog
+prediction-data silver init-tables
+prediction-data silver init-tables --dry-run
+
+# Catch up Silver processing to present (near-continuous mode)
+prediction-data silver catchup --platform polymarket --entity trades
+prediction-data silver catchup --platform polymarket --entity trades --dry-run
+prediction-data silver catchup --platform polymarket --entity trades --from-date 2025-01-15
+
+# Catchup with ECS concurrency guard (used by EventBridge schedules)
+prediction-data silver catchup --platform polymarket --entity trades --skip-if-concurrent
+
+# Process Bronze manifests into Silver Iceberg tables (manual/backfill)
+prediction-data silver process --platform polymarket --entity trades --dt 2024-06-15
+prediction-data silver process --platform polymarket --entity markets \
+    --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data silver process --platform polymarket --entity trades \
+    --start-date 2024-06-01 --end-date 2024-06-30 --dry-run
+prediction-data silver process --platform polymarket --entity trades \
+    --dt 2024-06-15 --force-reprocess --skip-quality-checks
+
+# Compact small files in an Iceberg table
+prediction-data silver compact --table polymarket/trades
+prediction-data silver compact --table polymarket/trades --partition 2024-06-15
+prediction-data silver compact --table polymarket/trades --dry-run
+
+# Compact with row-level deduplication (for catalog entities after append ingestion)
+prediction-data silver compact-dedup --table polymarket/markets
+prediction-data silver compact-dedup --table polymarket/markets --partition 2024-06-15
+prediction-data silver compact-dedup --table polymarket/events --dry-run
+
+# Expire old snapshots (default: older than 7 days)
+prediction-data silver expire-snapshots --table polymarket/trades
+prediction-data silver expire-snapshots --table polymarket/trades --older-than-days 14
+
+# Remove orphaned data files
+prediction-data silver remove-orphans --table polymarket/trades
+prediction-data silver remove-orphans --table polymarket/trades --dry-run
+
+# Run all maintenance operations across all Silver tables
+prediction-data silver maintain
+prediction-data silver maintain --op compact              # compaction only
+prediction-data silver maintain --op dedup                # deduplication only (catalog entities)
+prediction-data silver maintain --op expire --op orphans  # expiration + orphan cleanup
+prediction-data silver maintain --dry-run
+prediction-data silver maintain --skip-if-concurrent      # with ECS concurrency guard
+```
+
+**Near-continuous scheduling (EventBridge):**
+- **Trades:** every 10 min via `silver catchup --skip-if-concurrent`
+- **Catalog (markets, events):** every 30 min via `silver catchup --skip-if-concurrent`
+- **Daily maintenance:** `silver maintain --op compact --skip-if-concurrent` at 04:00 UTC
+- **Weekly maintenance:** `silver maintain --skip-if-concurrent` Sundays at 04:00 UTC
+
+Concurrency is scoped per entity type (`silver-{platform}-{entity}`) so different entities can run concurrently but the same entity type cannot overlap. Maintenance uses filter `silver-maintain`.
+
+**Valid platform/entity targets:** polymarket/trades, polymarket/markets, polymarket/events, kalshi/trades, kalshi/markets, kalshi/events.
+
+**Processing features:**
+- Manifest-driven: discovers Bronze manifests and processes them into Iceberg tables.
+- Idempotent: tracks processed manifests in S3 state store; use `--force-reprocess` to override.
+- Snapshot-supersedes-deltas: for catalog entities (markets, events), a snapshot manifest supersedes earlier delta manifests for the same day.
+- Quality checks: non-null, uniqueness, timestamp range checks run by default; use `--skip-quality-checks` to bypass.
+
+## Silver Write Architecture
+
+All entities (including catalog entities like markets/events) default to **append** writes for optimal performance:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Bronze → Silver: APPEND (default for all entities)             │
+│                                                                 │
+│   • Fast writes: no table scan, low memory                     │
+│   • Supports frequent updates (e.g., every 5 minutes)          │
+│   • Duplicates handled by Gold layer at read time              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Gold Layer: Deduplication at read time                         │
+│                                                                 │
+│   • Keeps latest record per primary key by updated_at          │
+│   • No storage overhead from dedup at write time               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Maintenance: Periodic dedup compaction                          │
+│                                                                 │
+│   • silver compact-dedup removes duplicate rows                 │
+│   • Reduces storage and improves read performance               │
+│   • Run weekly or as needed: silver maintain --op dedup         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Write strategy flags:**
+- Default: Append (fast, Gold handles dedup at read time)
+- `--overwrite`: Replace all data (for full snapshots)
+- `--merge`: Legacy upsert (memory-intensive, loads entire table)
+
+**Dedup keys by entity:**
+| Entity | Primary Key | Timestamp Column |
+|--------|-------------|------------------|
+| markets | platform_market_id | updated_at |
+| events | platform_event_id | updated_at |
+| trades | platform_trade_id | event_ts |
+
+## Full Silver Reprocessing (schema fixes, backfills)
+
+When normalization logic changes (e.g., fixing field derivation), ALL historical
+Silver data may need reprocessing. Polymarket data goes back to 2013, so this is
+a large job that **must run on ECS, not locally**.
+
+```bash
+# Full reprocessing of catalog entities (run on ECS, not locally!)
+prediction-data silver process --platform polymarket --entity markets \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+prediction-data silver process --platform polymarket --entity events \
+    --start-date 2013-01-01 --end-date 2026-02-06 --force-reprocess
+
+# After Silver reprocessing, reload Gold dimensions
+prediction-data gold load-dims
+```
+
+**Memory requirements:**
+
+All entities use chunked file-by-file processing with bounded memory. Each Bronze
+file contains up to 500K records, so memory usage is bounded by single-file size
+(~1-2GB peak). The default 512MB task may still OOM; 2-4GB is recommended.
+
+| Entity | Processing | Memory Required |
+|--------|------------|-----------------|
+| markets | chunked (file-by-file) | 2-4GB |
+| events | chunked (file-by-file) | 2-4GB |
+| trades | chunked (file-by-file) | 2-4GB |
+
+All write modes (append, overwrite, merge) use chunked processing:
+- **append** (default): Each chunk appended independently
+- **overwrite**: First chunk overwrites table, remaining chunks appended
+- **merge**: Each chunk upserted independently using entity merge keys
+
+See `plans/release/02_silver_level/hotfixes.md` for documented schema fixes and
+their recovery procedures.
+
+## Schema Changes (Full Workflow)
+
+When adding new fields to the pipeline, you must update schemas at **all three layers** and propagate data through. Missing any layer causes runtime errors (e.g., 500 errors when API queries non-existent columns).
+
+### Schema Definition Locations
+
+| Layer | Schema Location | Storage |
+|-------|-----------------|---------|
+| Bronze | No schema (raw JSON from APIs) | S3 JSONL.gz |
+| Silver | `src/prediction_data/silver/tables.py` | Iceberg (Glue Catalog) |
+| Gold | `docker/clickhouse/init/*.sql` + `src/prediction_data/gold/dimensions.py` | ClickHouse |
+
+### Adding a New Field: Full Workflow
+
+**Example:** Adding `tags` field to events
+
+**Step 1: Update Silver schema definition** (`src/prediction_data/silver/tables.py`):
+```python
+_POLYMARKET_EVENTS_SCHEMA = Schema(
+    ...
+    NestedField(12, "tags", ListType(element_id=13, element_type=StringType(), element_required=False), required=False),
+)
+```
+
+**Step 2: Update Silver normalizer** (`src/prediction_data/silver/normalize.py`):
+```python
+def normalize(self, record, ...):
+    # Extract tags from Bronze JSON
+    raw_tags = record.get("tags")
+    tags = [t.get("label") for t in raw_tags if isinstance(t, dict)] if raw_tags else []
+    return {
+        ...
+        "tags": tags if tags else None,
+    }
+```
+
+**Step 3: Evolve Silver Iceberg table schema** (existing tables need migration):
+```python
+# Run once to add column to existing table
+from pyiceberg.types import ListType, StringType
+from prediction_data.silver.catalog import get_catalog
+
+catalog = get_catalog()
+table = catalog.load_table(('silver_polymarket', 'events'))
+with table.update_schema() as update:
+    update.add_column('tags', ListType(element_id=13, element_type=StringType(), element_required=False))
+```
+
+**Step 4: Update ClickHouse schema** (`docker/clickhouse/init/015_dim_event.sql`):
+```sql
+-- In CREATE TABLE (for new deployments)
+tags Array(String) DEFAULT [],
+
+-- Add migration for existing tables
+ALTER TABLE prediction_gold.dim_event ADD COLUMN IF NOT EXISTS tags Array(String) DEFAULT [];
+```
+
+**Step 5: Run the ALTER TABLE on existing ClickHouse**:
+```bash
+docker compose exec clickhouse clickhouse-client --query \
+    "ALTER TABLE prediction_gold.dim_event ADD COLUMN IF NOT EXISTS tags Array(String) DEFAULT []"
+```
+
+**Step 6: Update Gold dimension loader** (`src/prediction_data/gold/dimensions.py`):
+```python
+DIM_EVENT_SCHEMA = pa.schema([
+    ...
+    pa.field("tags", pa.list_(pa.string())),
+])
+
+def _silver_to_dim_event(arrow, platform):
+    ...
+    raw_tags = rec.get("tags")
+    tags = list(raw_tags) if raw_tags and isinstance(raw_tags, list) else []
+    rows["tags"].append(tags)
+```
+
+**Step 7: Reprocess data to populate new field**:
+```bash
+# Reprocess Silver from Bronze (extracts new field)
+prediction-data silver process --platform polymarket --entity events \
+    --start-date 2024-01-01 --end-date 2026-02-08 --force-reprocess
+
+# Reload Gold from Silver
+prediction-data gold load-dims --table dim_event
+```
+
+### Common Pitfalls
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Schema in code but not in Iceberg table | `ValueError: Could not find column: 'X'` | Run schema evolution via `table.update_schema()` |
+| Schema in Iceberg but not in ClickHouse | `500 Internal Server Error` on API | Run `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` |
+| Column exists but data is NULL/empty | API returns empty values | Reprocess Silver from Bronze, then reload Gold |
+| ClickHouse table is empty | API 500 or empty results | Run `prediction-data gold load-dims` |
+
+### Checking Schema State
+
+```bash
+# Check Silver Iceberg schema
+python -c "
+from prediction_data.silver.catalog import get_catalog
+table = get_catalog().load_table(('silver_polymarket', 'events'))
+for f in table.schema().fields: print(f'{f.name}: {f.field_type}')
+"
+
+# Check ClickHouse schema
+docker compose exec clickhouse clickhouse-client --query "DESCRIBE prediction_gold.dim_event"
+
+# Check if data exists
+docker compose exec clickhouse clickhouse-client --query \
+    "SELECT COUNT(*), countIf(length(tags) > 0) FROM prediction_gold.dim_event"
+```
+
+### Schema Evolution Notes
+
+- **Silver (Iceberg):** Supports adding columns without rewriting data. Use `table.update_schema()`. Existing rows get NULL for new columns until reprocessed.
+- **Gold (ClickHouse):** Use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` with a DEFAULT value. Existing rows get the default.
+- **`init-tables` does NOT evolve schemas:** It only creates tables if they don't exist. Schema changes require manual evolution.
+
+## Gold CLI (Full)
+
+```bash
+# Run all daily Gold processing steps (load-dims → process-trades → compute-marks → compute-wallet-metrics)
+prediction-data gold daily-run
+prediction-data gold daily-run --dt 2024-06-15
+prediction-data gold daily-run --dry-run
+
+# Load dimension tables into S3 and ClickHouse
+prediction-data gold load-dims
+prediction-data gold load-dims --table dim_market --dry-run
+
+# Process Silver trades through position accounting pipeline (ledger + position state)
+prediction-data gold process-trades --dt 2024-06-15
+prediction-data gold process-trades --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data gold process-trades --dt 2024-06-15 --force-reprocess --dry-run
+
+# Compute market marks (VWAP, last price, volume) from Silver trades
+prediction-data gold compute-marks --dt 2024-06-15 --platform polymarket
+prediction-data gold compute-marks --start-date 2024-06-01 --end-date 2024-06-30
+
+# Compute wallet PnL daily (aggregated from position ledger)
+prediction-data gold compute-pnl --dt 2024-06-15
+prediction-data gold compute-pnl --start-date 2024-06-01 --end-date 2024-06-30
+
+# Compute wallet MTM daily (watchlist wallets only)
+prediction-data gold compute-mtm --dt 2024-06-15
+
+# Compute wallet position snapshots (watchlist wallets only)
+prediction-data gold compute-position-snapshot --dt 2024-06-15
+
+# Compute all wallet metrics in one command
+prediction-data gold compute-wallet-metrics --dt 2024-06-15
+
+# Load Gold tables from S3 into ClickHouse
+prediction-data gold ch-load --table market_mark_daily --lookback-days 90
+prediction-data gold ch-load --all --lookback-days 90
+
+# On-demand wallet snapshot reconstruction
+prediction-data gold compute-snapshot --wallet 0x123... --start-date 2024-01-01 --end-date 2024-06-30
+
+# Rebuild Gold tables from Silver for a date range
+prediction-data gold rebuild --table market_mark_daily --start-date 2024-06-01 --end-date 2024-06-30
+prediction-data gold rebuild --table wallet_pnl_daily --start-date 2024-06-01 --end-date 2024-06-30 --force
+
+# Display freshness status of all Gold datasets
+prediction-data gold freshness
+
+# Watchlist management
+prediction-data gold watchlist add 0x123...
+prediction-data gold watchlist remove 0x123...
+prediction-data gold watchlist list
+prediction-data gold watchlist list --all  # include inactive
+```
+
+**Scheduled processing (EventBridge):**
+- **daily-run:** midnight UTC — runs all daily processing steps
+- **ch-load:** 00:30 UTC — loads all Gold tables to ClickHouse (90-day lookback)
+- **freshness:** 01:00 UTC — verifies all datasets are within SLA
+
+**Gold tables:**
+- `dim_platform`, `dim_market`, `dim_outcome`, `dim_wallet`, `dim_event`, `dim_category` — dimension tables
+- `wallet_position_ledger` — per-fill position accounting records
+- `wallet_position_state` — current position state per wallet/market/outcome
+- `market_mark_daily` — daily market marks (VWAP, last price, volume, liquidity)
+- `wallet_pnl_daily` — daily realized PnL per wallet (all wallets)
+- `wallet_mtm_daily` — daily mark-to-market per wallet (watchlist only)
+- `wallet_position_snapshot_daily` — daily position snapshots (watchlist only)
+
+## Position Accounting Methodology
+
+- Average-cost basis: `new_avg_cost = (old_qty * old_avg_cost + qty_delta * price) / new_qty`
+- Realized PnL on close: `pnl = closed_qty * (exit_price - avg_cost) - fees`
+- Position flips: oversized sell splits into close (realize PnL) + open (new direction)
+- Ledger records before/after state snapshots for full audit trail
+
+## Freshness SLAs
+
+| Table | SLA (seconds) |
+|-------|---------------|
+| `market_mark_daily` | 300 (5 min) |
+| `wallet_pnl_daily` | 600 (10 min) |
+| `wallet_mtm_daily` | 900 (15 min) |
+| `wallet_position_snapshot_daily` | 900 (15 min) |
+
+Freshness states: `fresh` (within SLA), `stale` (SLA < lag <= 2×SLA), `broken` (lag > 2×SLA or last run failed).
+
+See [`docs/gold-operations-runbook.md`](docs/gold-operations-runbook.md) for full operational procedures.
+
+## Pipeline Diagnostics (Detailed)
+
+The `scripts/diagnose_markets.py` script provides comprehensive diagnostics for the markets data pipeline, tracing data from external APIs through Bronze, Silver, Gold layers to the REST API.
+
+**What it checks:**
+
+| Layer | Checks |
+|-------|--------|
+| External API | Polymarket Gamma API connectivity and schema validation |
+| Bronze | S3 manifests, record counts, ingestion freshness |
+| Silver | Iceberg table snapshots, row counts, staleness |
+| Gold | ClickHouse table row counts (dim_market, dim_outcome, dim_event, market_mark_daily) |
+| REST API | Endpoint response, market data completeness, outcome population |
+| Infrastructure | EventBridge schedule status (enabled/disabled) |
+
+**Output includes:**
+- Color-coded status indicators (OK/WARN/ERROR)
+- Natural language explanations for each pipeline stage
+- Data freshness with human-readable ages ("2h ago", "1d ago")
+- Recommended fixes for common issues
+- Summary of all issues and warnings
+
+**Common issues detected:**
+- Empty dimension tables (e.g., `dim_outcome` empty causes blank API responses)
+- Stale data at any layer (Bronze not ingesting, Silver not processing)
+- Missing manifests or snapshots
+- API returning incomplete market data
+
+**Example output:**
+```
+================================================================================
+  4. GOLD LAYER (ClickHouse)
+================================================================================
+  [OK] dim_market: 386,588 rows
+  [ERROR] dim_outcome: 0 rows - EMPTY - This is why API returns blank data!
+  [OK] dim_event: 181,756 rows
+  [WARN] market_mark_daily: Latest: 2026-02-04 (2d old)
+
+================================================================================
+  RECOMMENDED FIXES
+================================================================================
+  1. Load dim_outcome table:
+     Run: prediction-data gold load-dims --table dim_outcome
+```
+
+## Data Volumes (Estimates)
+
+- **Polymarket order_filled:** ~50,000-500,000 events/day (varies with market activity). Trades are constructed in Silver from these events.
+- **Kalshi trades:** ~1,000-10,000 trades/day.
+- **Polymarket markets catalog:** ~360,000 records (~163 MB gzipped). Full fetch takes ~10 min at 500/page.
+- **Polymarket events catalog:** ~176,000 records (~165 MB gzipped). Full fetch takes ~4 min at 500/page.
+- **Full historical Kalshi trades backfill** (e.g., 1 year): Expect several hours of sequential processing due to rate limiting.
