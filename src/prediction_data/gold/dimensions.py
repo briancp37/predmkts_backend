@@ -527,6 +527,8 @@ DIM_EVENT_SCHEMA = pa.schema(
         pa.field("slug", pa.string()),
         pa.field("status", pa.string()),
         pa.field("category", pa.string()),
+        pa.field("image_url", pa.string()),
+        pa.field("tags", pa.list_(pa.string())),
     ]
 )
 
@@ -596,6 +598,11 @@ def _silver_to_dim_event(
         rows["slug"].append(str(rec.get("slug", "") or ""))
         rows["status"].append(str(rec.get("status", "") or ""))
         rows["category"].append(str(rec.get("category", "") or ""))
+        rows["image_url"].append(str(rec.get("image_url", "") or ""))
+        # Extract tags - Silver stores as list of strings, default to empty list
+        raw_tags = rec.get("tags")
+        tags = list(raw_tags) if raw_tags and isinstance(raw_tags, list) else []
+        rows["tags"].append(tags)
 
     return pa.table(rows, schema=DIM_EVENT_SCHEMA)
 

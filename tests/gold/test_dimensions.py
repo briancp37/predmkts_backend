@@ -654,6 +654,7 @@ def _fake_silver_events() -> pa.Table:
             "silver_ingestion_ts": pa.array(
                 [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
             ),
+            "tags": [["Politics", "Elections"], ["Sports", "NFL"]],
         }
     )
 
@@ -696,6 +697,7 @@ class TestSilverToDimEvent:
                 "silver_ingestion_ts": pa.array(
                     [None], type=pa.timestamp("us", tz="UTC")
                 ),
+                "tags": [None],
             }
         )
         result = _silver_to_dim_event(arrow, "polymarket")
@@ -705,6 +707,7 @@ class TestSilverToDimEvent:
         assert row["slug"] == ""
         assert row["status"] == ""
         assert row["category"] == ""
+        assert row["tags"] == []
 
     def test_dedup_by_platform_event_id(self) -> None:
         """Duplicate event IDs are deduplicated (last-write-wins)."""
@@ -726,6 +729,7 @@ class TestSilverToDimEvent:
                 "silver_ingestion_ts": pa.array(
                     [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
                 ),
+                "tags": [["Politics"], ["Politics", "Elections"]],
             }
         )
         result = _silver_to_dim_event(arrow, "polymarket")
@@ -733,6 +737,7 @@ class TestSilverToDimEvent:
         row = result.to_pylist()[0]
         assert row["title"] == "New Title"
         assert row["status"] == "closed"
+        assert row["tags"] == ["Politics", "Elections"]
 
     def test_empty_events(self) -> None:
         empty = pa.table(
@@ -747,11 +752,19 @@ class TestSilverToDimEvent:
                 "updated_at": pa.array([], type=pa.timestamp("us", tz="UTC")),
                 "bronze_run_id": pa.array([], type=pa.string()),
                 "silver_ingestion_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "tags": pa.array([], type=pa.list_(pa.string())),
             }
         )
         result = _silver_to_dim_event(empty, "polymarket")
         assert result.num_rows == 0
         assert result.schema.equals(DIM_EVENT_SCHEMA)
+
+    def test_tags_extracted(self) -> None:
+        """Tags are properly extracted from Silver events."""
+        result = _silver_to_dim_event(_fake_silver_events(), "polymarket")
+        rows = result.to_pylist()
+        assert rows[0]["tags"] == ["Politics", "Elections"]
+        assert rows[1]["tags"] == ["Sports", "NFL"]
 
 
 class TestLoadDimEvent:
@@ -856,6 +869,7 @@ class TestSilverEventsToDimCategory:
                     [1_700_000_000, 1_700_000_001, 1_700_000_002],
                     type=pa.timestamp("us", tz="UTC"),
                 ),
+                "tags": [["Politics"], ["Politics"], ["Sports"]],
             }
         )
         result = _silver_events_to_dim_category(arrow, "polymarket")
@@ -883,6 +897,7 @@ class TestSilverEventsToDimCategory:
                 "silver_ingestion_ts": pa.array(
                     [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
                 ),
+                "tags": [["Politics"], ["Politics"]],
             }
         )
         result = _silver_events_to_dim_category(arrow, "polymarket")
@@ -907,6 +922,7 @@ class TestSilverEventsToDimCategory:
                 "silver_ingestion_ts": pa.array(
                     [None], type=pa.timestamp("us", tz="UTC")
                 ),
+                "tags": [None],
             }
         )
         result = _silver_events_to_dim_category(arrow, "polymarket")
@@ -928,6 +944,7 @@ class TestSilverEventsToDimCategory:
                 "updated_at": pa.array([], type=pa.timestamp("us", tz="UTC")),
                 "bronze_run_id": pa.array([], type=pa.string()),
                 "silver_ingestion_ts": pa.array([], type=pa.timestamp("us", tz="UTC")),
+                "tags": pa.array([], type=pa.list_(pa.string())),
             }
         )
         result = _silver_events_to_dim_category(empty, "polymarket")

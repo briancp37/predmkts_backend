@@ -23,10 +23,24 @@
 - Run `prediction-data silver process --platform polymarket --entity events --force-reprocess` on ECS to populate tags column for historical data
 - Schema evolution in Iceberg should handle the new column automatically
 
+### 2026-02-08: Gold dim_event Tags (COMPLETE)
+- Updated DIM_EVENT_SCHEMA in gold/dimensions.py to include tags as pa.list_(pa.string())
+- Added tags extraction logic in _silver_to_dim_event() function
+- Updated ClickHouse DDL in docker/clickhouse/init/015_dim_event.sql:
+  - Added tags Array(String) DEFAULT [] column to CREATE TABLE
+  - Added ALTER TABLE to add column for existing tables
+- Updated test fixtures in tests/gold/test_dimensions.py to include tags column
+- Added new test: test_tags_extracted() to verify tags are properly extracted
+- All 11 dim_event-related tests pass
+
+**Note for next developer:**
+- After Silver reprocessing on ECS, run `prediction-data gold load-dims` to populate tags in dim_event
+- Tags are queryable via ClickHouse `has(tags, 'TagName')` or `arrayContains(tags, 'TagName')`
+
 ## In Progress
 
-### Gold dim_event Tags
-- Next step: Update gold/dimensions.py and ClickHouse schema to include tags column
+### API Tags Endpoint
+- Next step: Create GET /api/v1/tags endpoint
 
 ## Blockers/Issues
 

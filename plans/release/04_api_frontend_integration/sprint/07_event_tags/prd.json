@@ -33,7 +33,7 @@
       "Verify tags are queryable with arrayContains() or has() in ClickHouse",
       "Test filtering events by tag inclusion and exclusion"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "API Tags Endpoint",

@@ -8,7 +8,15 @@ CREATE TABLE IF NOT EXISTS prediction_gold.dim_event
     slug                String,
     status              String,
     category            String,
+    image_url           String DEFAULT '',
+    tags                Array(String) DEFAULT [],
     updated_at          DateTime DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (platform, platform_event_id);
+
+-- Add image_url column if it doesn't exist (for existing tables)
+ALTER TABLE prediction_gold.dim_event ADD COLUMN IF NOT EXISTS image_url String DEFAULT '';
+
+-- Add tags column if it doesn't exist (for existing tables)
+ALTER TABLE prediction_gold.dim_event ADD COLUMN IF NOT EXISTS tags Array(String) DEFAULT [];
