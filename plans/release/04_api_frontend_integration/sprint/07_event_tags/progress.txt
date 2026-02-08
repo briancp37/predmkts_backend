@@ -37,10 +37,36 @@
 - After Silver reprocessing on ECS, run `prediction-data gold load-dims` to populate tags in dim_event
 - Tags are queryable via ClickHouse `has(tags, 'TagName')` or `arrayContains(tags, 'TagName')`
 
+### 2026-02-08: API Tags Endpoint (COMPLETE)
+- Created new tags API module at src/prediction_data/api/tags/
+  - __init__.py - exports router
+  - schemas.py - EventTagResponse with label, slug, eventCount
+  - service.py - get_event_tags() queries ClickHouse using ARRAY JOIN
+  - router.py - GET /api/v1/tags endpoint with rate limiting
+- Registered router in main.py at /api/v1/tags prefix
+- Added OpenAPI tag description for documentation
+- Added 5-minute caching in cache.py (CACHE_DURATION_STATIC)
+- Created tests/api/test_tags.py with 4 test cases:
+  - test_list_tags_success
+  - test_list_tags_empty
+  - test_list_tags_slug_generation
+  - test_list_tags_filters_empty_labels
+- All tests pass (frontend: 550, backend API: 52)
+
+**Query used:**
+```sql
+SELECT tag AS label, COUNT() AS event_count
+FROM prediction_gold.dim_event
+ARRAY JOIN tags AS tag
+WHERE tag != ''
+GROUP BY tag
+ORDER BY event_count DESC
+```
+
 ## In Progress
 
-### API Tags Endpoint
-- Next step: Create GET /api/v1/tags endpoint
+### API Tag Filtering
+- Next step: Add includeTags/excludeTags query params to GET /markets/advanced
 
 ## Blockers/Issues
 

@@ -45,7 +45,7 @@
       "Order by eventCount DESC",
       "Add caching (5-10 minute TTL) since tags change infrequently"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "API Tag Filtering",

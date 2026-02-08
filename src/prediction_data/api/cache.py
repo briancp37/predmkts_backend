@@ -41,6 +41,7 @@ PUBLIC_CACHE_PATHS: dict[str, int] = {
     "/api/v1/events": CACHE_DURATION_PUBLIC,
     "/api/v1/trades/smart": CACHE_DURATION_PUBLIC,
     "/api/v1/trades/whales": CACHE_DURATION_PUBLIC,
+    "/api/v1/tags": CACHE_DURATION_STATIC,  # Event tags cached for 5 minutes
 }
 
 # Path prefixes that should have public caching (for dynamic segments)
