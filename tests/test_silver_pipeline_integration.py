@@ -425,8 +425,12 @@ class TestErrorHandling:
             _to_arrow_table(bad_records, schema)
 
     @pytest.mark.asyncio
-    async def test_iceberg_merge_failure_raises_processing_error(self) -> None:
-        """Catalog upsert failure propagates as ProcessingError."""
+    async def test_iceberg_append_failure_raises_processing_error(self) -> None:
+        """Catalog append failure propagates as ProcessingError.
+
+        Note: Catalog entities now default to append (write_to_iceberg), not
+        merge/upsert. The Gold layer handles deduplication at read time.
+        """
         records = _raw_market_records(2)
         manifest = _make_discovered_manifest(entity="markets", row_count=2)
         key = manifest.manifest.files[0].key
@@ -434,7 +438,7 @@ class TestErrorHandling:
 
         catalog = MagicMock()
         mock_table = MagicMock()
-        mock_table.upsert.side_effect = RuntimeError("Iceberg down")
+        mock_table.append.side_effect = RuntimeError("Iceberg down")
         catalog.load_table.return_value = mock_table
 
         with pytest.raises(ProcessingError, match="Failed to write"):
@@ -599,12 +603,15 @@ class TestMultiCatchupIncrementalProcessing:
         assert captured[0].num_rows == 1
 
     @pytest.mark.asyncio
-    async def test_cross_manifest_overlap_resolved_by_merge_keys(self) -> None:
-        """Overlapping records across catchup cycles are handled by Iceberg upsert.
+    async def test_cross_manifest_overlap_handled_by_append(self) -> None:
+        """Overlapping records across catchup cycles are handled by append + Gold dedup.
 
         When two catchup cycles ingest the same record (overlapping time windows),
-        each manifest processes independently. The Iceberg merge/upsert with
-        merge_keys ensures the final table has only one copy of each entity.
+        each manifest processes independently using append. The Gold layer handles
+        deduplication at read time by keeping the latest record per primary key.
+
+        The Silver maintenance compact-dedup operation can periodically clean up
+        duplicates in the Silver table.
         """
         # Same market appears in both catchup runs (simulating overlapping windows)
         shared_record = {
@@ -671,20 +678,18 @@ class TestMultiCatchupIncrementalProcessing:
         result2 = await process_manifest(manifest2, s3_client2, catalog2)
         assert result2.rows_written == 2
 
-        # Both runs write 2 rows each — Iceberg upsert handles dedup at merge level.
-        # The shared record appears in both write batches; the merge_keys
-        # (platform_market_id) ensure it's upserted rather than duplicated.
+        # Both runs write 2 rows each via append.
+        # The shared record appears in both write batches — this is expected.
+        # Gold layer deduplicates at read time; compact-dedup can clean Silver.
         assert len(captured1) == 1
         assert len(captured2) == 1
 
-        # Verify merge_keys were used in the upsert call
-        upsert_call1 = catalog1.load_table.return_value.upsert
-        upsert_call1.assert_called_once()
-        call_kwargs1 = upsert_call1.call_args
-        assert "join_cols" in call_kwargs1.kwargs
+        # Verify append was used (not upsert) - check that append method was called
+        append_call1 = catalog1.load_table.return_value.append
+        append_call1.assert_called_once()
 
-        upsert_call2 = catalog2.load_table.return_value.upsert
-        upsert_call2.assert_called_once()
+        append_call2 = catalog2.load_table.return_value.append
+        append_call2.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

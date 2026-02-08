@@ -81,6 +81,7 @@ async def process_manifest(
     markets_lookup: Any | None = None,
     append_only: bool = False,
     overwrite: bool = False,
+    merge: bool = False,
 ) -> ProcessingResult:
     """Process a single Bronze manifest through the Silver pipeline.
 
@@ -267,14 +268,17 @@ async def process_manifest(
             checks_passed=len(quality_results),
         )
 
-    # --- Write (append, overwrite, or merge/upsert) ---
+    # --- Write (overwrite, merge, or append) ---
     #
-    # Stream entities (trades, order_filled) are immutable events — use
-    # append by default (fast, no full-table scan).  Catalog entities
-    # (markets, events) may receive updates to existing records, so they
-    # use merge/upsert by default.
+    # Default is append for ALL entities (fast, no table scan, low memory).
+    # The Gold layer handles deduplication at read time by keeping the
+    # latest record per primary key by updated_at timestamp.
+    #
+    # Write strategy precedence:
+    #   1. --overwrite: Replace all data (for full snapshots)
+    #   2. --merge: Upsert by primary key (legacy, memory-intensive)
+    #   3. Default: Append (fast, Gold handles dedup)
     namespace = _build_namespace(platform)
-    is_stream = entity not in CATALOG_ENTITIES
     try:
         if overwrite:
             write_result: WriteResult = overwrite_to_iceberg(
@@ -283,14 +287,7 @@ async def process_manifest(
                 namespace,
                 entity,
             )
-        elif append_only or is_stream:
-            write_result = write_to_iceberg(
-                normalized,
-                catalog,
-                namespace,
-                entity,
-            )
-        else:
+        elif merge:
             join_cols = normalizer.merge_keys()
             write_result = merge_to_iceberg(
                 normalized,
@@ -298,6 +295,14 @@ async def process_manifest(
                 namespace,
                 entity,
                 join_cols=join_cols,
+            )
+        else:
+            # Default: append (fast, no table scan)
+            write_result = write_to_iceberg(
+                normalized,
+                catalog,
+                namespace,
+                entity,
             )
     except (IcebergWriteError, KeyError) as exc:
         msg = f"Failed to write Silver for manifest {run_id}: {exc}"

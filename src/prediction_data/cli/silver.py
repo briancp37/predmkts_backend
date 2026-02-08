@@ -169,11 +169,8 @@ def process(
         bool,
         typer.Option(
             "--append-only",
-            help=(
-                "Force append writes instead of merge/upsert. "
-                "Stream entities (trades, order_filled) already default to "
-                "append; this flag forces append for catalog entities too."
-            ),
+            help="(Deprecated) Append is now the default for all entities.",
+            hidden=True,
         ),
     ] = False,
     overwrite: Annotated[
@@ -181,8 +178,19 @@ def process(
         typer.Option(
             "--overwrite",
             help=(
-                "Replace all table data instead of merge/upsert. "
+                "Replace all table data. "
                 "Use for catalog entities (markets, events) with full snapshots."
+            ),
+        ),
+    ] = False,
+    merge: Annotated[
+        bool,
+        typer.Option(
+            "--merge",
+            help=(
+                "Use merge/upsert instead of append. Memory-intensive — "
+                "requires loading entire table. Use only when dedup at "
+                "write time is required."
             ),
         ),
     ] = False,
@@ -243,8 +251,8 @@ def process(
             dry_run=dry_run,
             force_reprocess=force_reprocess,
             skip_quality_checks=skip_quality_checks,
-            append_only=append_only,
             overwrite=overwrite,
+            merge=merge,
         )
     )
 
@@ -259,8 +267,8 @@ async def _run_process(
     dry_run: bool,
     force_reprocess: bool,
     skip_quality_checks: bool,
-    append_only: bool = False,
     overwrite: bool = False,
+    merge: bool = False,
 ) -> None:
     """Discover and process Bronze manifests for the given scope."""
     from prediction_data.silver.catalog import get_catalog
@@ -399,8 +407,8 @@ async def _run_process(
                         m, s3, catalog,
                         skip_quality_checks=skip_quality_checks,
                         markets_lookup=markets_lookup,
-                        append_only=append_only,
                         overwrite=overwrite,
+                        merge=merge,
                     )
                 total_processed += 1
                 typer.echo(
@@ -886,6 +894,125 @@ def _print_compaction_results(
         typer.echo(f"\nTotal space saved: {total_bytes_saved / 1024 / 1024:.1f} MB")
 
 
+@app.command(name="compact-dedup")
+def compact_dedup(
+    table: Annotated[
+        str,
+        typer.Option(
+            "--table",
+            help="Table to deduplicate as 'platform/entity' (e.g. polymarket/markets).",
+        ),
+    ],
+    partition: Annotated[
+        str | None,
+        typer.Option(
+            "--partition",
+            help="Specific partition to deduplicate (e.g. '2024-06-15').",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Preview deduplication without rewriting files.",
+        ),
+    ] = False,
+) -> None:
+    """Compact a Silver Iceberg table with row-level deduplication.
+
+    For catalog entities (markets, events), removes duplicate records by
+    primary key, keeping the record with the latest updated_at timestamp.
+    This cleans up duplicates from append-only ingestion.
+
+    \b
+    Examples:
+      prediction-data silver compact-dedup --table polymarket/markets
+      prediction-data silver compact-dedup --table polymarket/events --partition 2024-06-15
+    """
+    from prediction_data.core.logging import configure_logging
+    from prediction_data.silver.catalog import get_catalog
+    from prediction_data.silver.maintenance import compact_with_dedup
+
+    configure_logging()
+
+    # Parse table argument
+    parts = table.split("/")
+    if len(parts) != 2:
+        typer.echo(
+            "Error: --table must be 'platform/entity' (e.g. polymarket/markets).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    platform, entity = parts
+    _validate_platform_entity(platform, entity)
+
+    namespace = _resolve_namespace(platform)
+
+    if dry_run:
+        typer.echo("Dry run — no files will be rewritten.\n")
+
+    typer.echo(f"Scanning {namespace}.{entity} for duplicates...")
+
+    try:
+        catalog = get_catalog()
+        results = compact_with_dedup(
+            catalog,
+            namespace,
+            entity,
+            partition=partition,
+            dry_run=dry_run,
+        )
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+    _print_dedup_results(results, dry_run=dry_run)
+
+
+def _print_dedup_results(
+    results: list,
+    *,
+    dry_run: bool,
+) -> None:
+    """Print dedup compaction results summary."""
+    deduped = [r for r in results if not r.skipped]
+    skipped = [r for r in results if r.skipped]
+
+    if not deduped and not skipped:
+        typer.echo("No partitions found.")
+        return
+
+    if skipped:
+        skipped_with_rows = [r for r in skipped if r.rows_before > 0]
+        if skipped_with_rows:
+            typer.echo(f"\nSkipped {len(skipped_with_rows)} partition(s) (no duplicates).")
+
+    if not deduped:
+        typer.echo("No partitions have duplicates to remove.")
+        return
+
+    typer.echo(f"\n{'Would deduplicate' if dry_run else 'Deduplicated'} {len(deduped)} partition(s):")
+    total_removed = 0
+    for r in deduped:
+        total_removed += r.duplicates_removed
+        if dry_run:
+            typer.echo(
+                f"  {r.partition}: {r.rows_before} rows, "
+                f"{r.duplicates_removed} duplicates"
+            )
+        else:
+            typer.echo(
+                f"  {r.partition}: {r.rows_before} -> {r.rows_after} rows, "
+                f"removed {r.duplicates_removed} duplicates, "
+                f"{r.duration_seconds:.1f}s"
+            )
+
+    if total_removed > 0:
+        action = "Would remove" if dry_run else "Removed"
+        typer.echo(f"\nTotal: {action} {total_removed} duplicate(s)")
+
+
 @app.command(name="expire-snapshots")
 def expire_snapshots_cmd(
     table: Annotated[
@@ -1068,7 +1195,7 @@ def _print_orphan_result(
         typer.echo(f"Duration: {result.duration_seconds:.1f}s")
 
 
-_VALID_OPERATIONS = {"compact", "expire", "orphans"}
+_VALID_OPERATIONS = {"compact", "dedup", "expire", "orphans"}
 
 
 @app.command(name="maintain")
@@ -1197,6 +1324,13 @@ def _print_maintenance_summary(
             f"\n{action} {len(compacted)} partition(s), "
             f"saved {total_saved / 1024 / 1024:.1f} MB"
         )
+
+    # Dedup summary
+    deduped = [r for r in result.dedup_results if not r.skipped]
+    if deduped:
+        total_removed = sum(r.duplicates_removed for r in deduped)
+        action = "Would remove" if dry_run else "Removed"
+        typer.echo(f"{action} {total_removed} duplicate(s) from {len(deduped)} partition(s)")
 
     # Expiration summary
     total_expired = sum(r.snapshots_expired for r in result.expiration_results)

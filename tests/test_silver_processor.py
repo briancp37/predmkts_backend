@@ -100,7 +100,7 @@ class TestProcessManifestHappyPath:
                 return_value=read_result,
             ) as mock_read,
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
         ):
@@ -149,7 +149,7 @@ class TestProcessManifestHappyPath:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
         ):
@@ -209,8 +209,12 @@ class TestProcessManifestAppendOnly:
         assert result.rows_written == 3
 
     @pytest.mark.asyncio
-    async def test_catalog_entity_defaults_to_merge(self) -> None:
-        """Catalog entities (markets, events) should default to merge_to_iceberg."""
+    async def test_catalog_entity_defaults_to_append(self) -> None:
+        """Catalog entities (markets, events) now default to append (write_to_iceberg).
+
+        The Gold layer handles deduplication at read time. Use --merge flag for
+        legacy upsert behavior when needed.
+        """
         manifest = _make_manifest()  # defaults to entity="markets"
         records = _raw_market_records(3)
         read_result = ReadResult(
@@ -242,8 +246,8 @@ class TestProcessManifestAppendOnly:
         ):
             result = await process_manifest(manifest, MagicMock(), MagicMock())
 
-        mock_merge.assert_called_once()
-        mock_append.assert_not_called()
+        mock_append.assert_called_once()
+        mock_merge.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_stream_entity_defaults_to_append(self) -> None:
@@ -344,7 +348,7 @@ class TestProcessManifestOverwrite:
 
     @pytest.mark.asyncio
     async def test_overwrite_not_used_by_default(self) -> None:
-        """Default should call merge_to_iceberg, not overwrite."""
+        """Default should call write_to_iceberg (append), not overwrite."""
         manifest = _make_manifest()
         records = _raw_market_records(3)
         read_result = ReadResult(
@@ -370,13 +374,13 @@ class TestProcessManifestOverwrite:
                 return_value=write_result,
             ) as mock_overwrite,
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
-            ) as mock_merge,
+            ) as mock_append,
         ):
             await process_manifest(manifest, MagicMock(), MagicMock())
 
-        mock_merge.assert_called_once()
+        mock_append.assert_called_once()
         mock_overwrite.assert_not_called()
 
 
@@ -424,7 +428,7 @@ class TestProcessManifestErrors:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 side_effect=IcebergWriteError("schema mismatch"),
             ),pytest.raises(ProcessingError, match="Failed to write")
         ):
@@ -682,7 +686,7 @@ class TestLateArrivingData:
                 return_value=read_result,
             ),
             patch(
-                "prediction_data.silver.processor.merge_to_iceberg",
+                "prediction_data.silver.processor.write_to_iceberg",
                 return_value=write_result,
             ) as mock_write,
         ):

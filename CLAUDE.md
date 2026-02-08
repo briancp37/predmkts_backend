@@ -614,6 +614,11 @@ prediction-data silver compact --table polymarket/trades
 prediction-data silver compact --table polymarket/trades --partition 2024-06-15
 prediction-data silver compact --table polymarket/trades --dry-run
 
+# Compact with row-level deduplication (for catalog entities after append ingestion)
+prediction-data silver compact-dedup --table polymarket/markets
+prediction-data silver compact-dedup --table polymarket/markets --partition 2024-06-15
+prediction-data silver compact-dedup --table polymarket/events --dry-run
+
 # Expire old snapshots (default: older than 7 days)
 prediction-data silver expire-snapshots --table polymarket/trades
 prediction-data silver expire-snapshots --table polymarket/trades --older-than-days 14
@@ -625,6 +630,7 @@ prediction-data silver remove-orphans --table polymarket/trades --dry-run
 # Run all maintenance operations across all Silver tables
 prediction-data silver maintain
 prediction-data silver maintain --op compact              # compaction only
+prediction-data silver maintain --op dedup                # deduplication only (catalog entities)
 prediction-data silver maintain --op expire --op orphans  # expiration + orphan cleanup
 prediction-data silver maintain --dry-run
 prediction-data silver maintain --skip-if-concurrent      # with ECS concurrency guard
@@ -645,6 +651,47 @@ Concurrency is scoped per entity type (`silver-{platform}-{entity}`) so differen
 - Idempotent: tracks processed manifests in S3 state store; use `--force-reprocess` to override.
 - Snapshot-supersedes-deltas: for catalog entities (markets, events), a snapshot manifest supersedes earlier delta manifests for the same day.
 - Quality checks: non-null, uniqueness, timestamp range checks run by default; use `--skip-quality-checks` to bypass.
+
+**Silver Write Architecture:**
+
+All entities (including catalog entities like markets/events) default to **append** writes for optimal performance:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Bronze → Silver: APPEND (default for all entities)             │
+│                                                                 │
+│   • Fast writes: no table scan, low memory                     │
+│   • Supports frequent updates (e.g., every 5 minutes)          │
+│   • Duplicates handled by Gold layer at read time              │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Gold Layer: Deduplication at read time                         │
+│                                                                 │
+│   • Keeps latest record per primary key by updated_at          │
+│   • No storage overhead from dedup at write time               │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Maintenance: Periodic dedup compaction                          │
+│                                                                 │
+│   • silver compact-dedup removes duplicate rows                 │
+│   • Reduces storage and improves read performance               │
+│   • Run weekly or as needed: silver maintain --op dedup         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Write strategy flags:**
+- Default: Append (fast, Gold handles dedup at read time)
+- `--overwrite`: Replace all data (for full snapshots)
+- `--merge`: Legacy upsert (memory-intensive, loads entire table)
+
+**Dedup keys by entity:**
+| Entity | Primary Key | Timestamp Column |
+|--------|-------------|------------------|
+| markets | platform_market_id | updated_at |
+| events | platform_event_id | updated_at |
+| trades | platform_trade_id | event_ts |
 
 **Full Silver Reprocessing (schema fixes, backfills):**
 

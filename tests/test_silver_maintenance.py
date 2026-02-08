@@ -449,12 +449,14 @@ class TestResultDataclasses:
         r = MaintenanceRunResult(
             tables_processed=6,
             compaction_results=[],
+            dedup_results=[],
             expiration_results=[],
             orphan_results=[],
             errors=[],
             duration_seconds=10.0,
         )
         assert r.tables_processed == 6
+        assert r.dedup_results == []
         assert r.errors == []
 
 

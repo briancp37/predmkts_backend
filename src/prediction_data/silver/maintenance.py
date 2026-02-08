@@ -48,6 +48,28 @@ class CompactionResult:
     skipped: bool = False
 
 
+@dataclasses.dataclass(slots=True)
+class DedupCompactionResult:
+    """Metadata returned after a dedup compaction operation."""
+
+    namespace: str
+    table_name: str
+    partition: str | None
+    rows_before: int
+    rows_after: int
+    duplicates_removed: int
+    duration_seconds: float
+    skipped: bool = False
+
+
+# Primary key and timestamp columns for deduplication by entity type
+DEDUP_KEYS: dict[str, tuple[str, str]] = {
+    "markets": ("platform_market_id", "updated_at"),
+    "events": ("platform_event_id", "updated_at"),
+    "trades": ("platform_trade_id", "event_ts"),
+}
+
+
 def _load_table(catalog: Catalog, namespace: str, table_name: str) -> Table:
     """Load an Iceberg table from the catalog."""
     try:
@@ -282,6 +304,225 @@ def compact_table(
                 files_after=files_after,
                 bytes_before=bytes_before,
                 bytes_after=bytes_after,
+                duration_seconds=duration,
+            )
+        )
+
+    return results
+
+
+def compact_with_dedup(
+    catalog: Catalog,
+    namespace: str,
+    table_name: str,
+    *,
+    partition: str | None = None,
+    dry_run: bool = False,
+) -> list[DedupCompactionResult]:
+    """Compact a table with row-level deduplication.
+
+    For catalog entities (markets, events), this removes duplicate records
+    by primary key, keeping the record with the latest updated_at timestamp.
+    This is used to clean up duplicates from append-only ingestion.
+
+    Args:
+        catalog: PyIceberg catalog instance.
+        namespace: Iceberg namespace (e.g. ``"silver_polymarket"``).
+        table_name: Iceberg table name (e.g. ``"markets"``).
+        partition: Optional specific partition to compact. If None, processes
+            all partitions.
+        dry_run: If True, report what would be deduplicated without writing.
+
+    Returns:
+        List of DedupCompactionResult for each partition processed.
+    """
+    if (namespace, table_name) not in SILVER_TABLES:
+        msg = f"Unknown table: {namespace}.{table_name}"
+        raise MaintenanceError(msg)
+
+    # Get dedup configuration for this entity
+    if table_name not in DEDUP_KEYS:
+        msg = f"No dedup key configured for entity: {table_name}"
+        raise MaintenanceError(msg)
+
+    primary_key, timestamp_col = DEDUP_KEYS[table_name]
+
+    table = _load_table(catalog, namespace, table_name)
+    full_name = f"{namespace}.{table_name}"
+
+    logger.info(
+        "dedup_compaction_start",
+        table=full_name,
+        partition_filter=partition,
+        primary_key=primary_key,
+        timestamp_col=timestamp_col,
+    )
+
+    # Get list of partitions
+    partition_stats = _get_partition_file_stats(table)
+
+    if not partition_stats:
+        logger.info("dedup_compaction_no_files", table=full_name)
+        return [
+            DedupCompactionResult(
+                namespace=namespace,
+                table_name=table_name,
+                partition=partition,
+                rows_before=0,
+                rows_after=0,
+                duplicates_removed=0,
+                duration_seconds=0.0,
+                skipped=True,
+            )
+        ]
+
+    # Filter to specific partition if requested
+    if partition is not None:
+        partition_stats = {
+            k: v for k, v in partition_stats.items() if k == partition
+        }
+        if not partition_stats:
+            logger.info(
+                "dedup_compaction_partition_not_found",
+                table=full_name,
+                partition=partition,
+            )
+            return [
+                DedupCompactionResult(
+                    namespace=namespace,
+                    table_name=table_name,
+                    partition=partition,
+                    rows_before=0,
+                    rows_after=0,
+                    duplicates_removed=0,
+                    duration_seconds=0.0,
+                    skipped=True,
+                )
+            ]
+
+    results: list[DedupCompactionResult] = []
+
+    for part_key, _files in sorted(partition_stats.items()):
+        logger.info(
+            "dedup_compaction_partition_start",
+            table=full_name,
+            partition=part_key,
+        )
+
+        t0 = time.monotonic()
+
+        try:
+            # Scan partition data
+            row_filter = (
+                f"event_ts_day == '{part_key}'"
+                if part_key not in ("__unpartitioned__", "__null__")
+                else "true"
+            )
+            scan = table.scan(row_filter=row_filter)
+            arrow_table: pa.Table = scan.to_arrow()
+
+            rows_before = len(arrow_table)
+
+            if rows_before == 0:
+                logger.info(
+                    "dedup_compaction_empty_partition",
+                    table=full_name,
+                    partition=part_key,
+                )
+                results.append(
+                    DedupCompactionResult(
+                        namespace=namespace,
+                        table_name=table_name,
+                        partition=part_key,
+                        rows_before=0,
+                        rows_after=0,
+                        duplicates_removed=0,
+                        duration_seconds=0.0,
+                        skipped=True,
+                    )
+                )
+                continue
+
+            # Deduplicate: keep row with latest timestamp per primary key
+            records = arrow_table.to_pylist()
+            latest_by_key: dict[str, dict] = {}
+
+            for rec in records:
+                key = rec.get(primary_key, "")
+                ts = rec.get(timestamp_col)
+                existing = latest_by_key.get(key)
+                if existing is None or (ts and ts > existing.get(timestamp_col)):
+                    latest_by_key[key] = rec
+
+            deduped = list(latest_by_key.values())
+            rows_after = len(deduped)
+            duplicates_removed = rows_before - rows_after
+
+            if duplicates_removed == 0:
+                logger.info(
+                    "dedup_compaction_no_duplicates",
+                    table=full_name,
+                    partition=part_key,
+                    rows=rows_before,
+                )
+                results.append(
+                    DedupCompactionResult(
+                        namespace=namespace,
+                        table_name=table_name,
+                        partition=part_key,
+                        rows_before=rows_before,
+                        rows_after=rows_after,
+                        duplicates_removed=0,
+                        duration_seconds=time.monotonic() - t0,
+                        skipped=True,
+                    )
+                )
+                continue
+
+            if dry_run:
+                results.append(
+                    DedupCompactionResult(
+                        namespace=namespace,
+                        table_name=table_name,
+                        partition=part_key,
+                        rows_before=rows_before,
+                        rows_after=rows_after,
+                        duplicates_removed=duplicates_removed,
+                        duration_seconds=0.0,
+                        skipped=False,
+                    )
+                )
+                continue
+
+            # Overwrite partition with deduplicated data
+            deduped_table = pa.Table.from_pylist(deduped, schema=arrow_table.schema)
+            table.dynamic_partition_overwrite(deduped_table)
+            table.refresh()
+
+        except Exception as exc:
+            msg = f"Dedup compaction failed for {full_name} partition {part_key}: {exc}"
+            raise MaintenanceError(msg) from exc
+
+        duration = time.monotonic() - t0
+
+        logger.info(
+            "dedup_compaction_partition_done",
+            table=full_name,
+            partition=part_key,
+            rows_before=rows_before,
+            rows_after=rows_after,
+            duplicates_removed=duplicates_removed,
+            duration_s=round(duration, 2),
+        )
+
+        results.append(
+            DedupCompactionResult(
+                namespace=namespace,
+                table_name=table_name,
+                partition=part_key,
+                rows_before=rows_before,
+                rows_after=rows_after,
+                duplicates_removed=duplicates_removed,
                 duration_seconds=duration,
             )
         )
@@ -573,6 +814,7 @@ class MaintenanceRunResult:
 
     tables_processed: int
     compaction_results: list[CompactionResult]
+    dedup_results: list[DedupCompactionResult]
     expiration_results: list[SnapshotExpirationResult]
     orphan_results: list[OrphanCleanupResult]
     errors: list[tuple[str, str]]  # (table_name, error_message)
@@ -590,13 +832,13 @@ def run_all_maintenance(
     """Run maintenance operations across all Silver Iceberg tables.
 
     Designed to be called from a scheduler (cron, EventBridge, etc.).
-    Operations are run sequentially per table: compact, then expire
+    Operations are run sequentially per table: compact, dedup, expire
     snapshots, then remove orphans.
 
     Args:
         catalog: PyIceberg catalog instance.
         operations: Set of operations to run. Valid values:
-            ``"compact"``, ``"expire"``, ``"orphans"``.
+            ``"compact"``, ``"dedup"``, ``"expire"``, ``"orphans"``.
         expire_older_than_days: Retention period for snapshot expiration.
         orphan_older_than_days: Min age for orphan file deletion.
         dry_run: If True, preview without making changes.
@@ -607,6 +849,7 @@ def run_all_maintenance(
     t0 = time.monotonic()
 
     compaction_results: list[CompactionResult] = []
+    dedup_results: list[DedupCompactionResult] = []
     expiration_results: list[SnapshotExpirationResult] = []
     orphan_results: list[OrphanCleanupResult] = []
     errors: list[tuple[str, str]] = []
@@ -625,6 +868,16 @@ def run_all_maintenance(
             except MaintenanceError as exc:
                 logger.warning("maintenance_compact_error", table=full_name, error=str(exc))
                 errors.append((full_name, f"compact: {exc}"))
+
+        if "dedup" in operations:
+            try:
+                dedup_res = compact_with_dedup(
+                    catalog, namespace, table_name, dry_run=dry_run,
+                )
+                dedup_results.extend(dedup_res)
+            except MaintenanceError as exc:
+                logger.warning("maintenance_dedup_error", table=full_name, error=str(exc))
+                errors.append((full_name, f"dedup: {exc}"))
 
         if "expire" in operations:
             try:
@@ -667,6 +920,7 @@ def run_all_maintenance(
     return MaintenanceRunResult(
         tables_processed=tables_processed,
         compaction_results=compaction_results,
+        dedup_results=dedup_results,
         expiration_results=expiration_results,
         orphan_results=orphan_results,
         errors=errors,

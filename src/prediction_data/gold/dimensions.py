@@ -275,6 +275,23 @@ def _parse_json_array(json_str: str | None) -> list[str]:
     return []
 
 
+def parse_tokens(json_str: str | None) -> list[dict[str, Any]]:
+    """Parse a JSON array of token objects.
+
+    Returns a list of dicts, filtering out any non-dict items.
+    Returns an empty list on None, empty string, or invalid JSON.
+    """
+    if not json_str:
+        return []
+    try:
+        parsed = json.loads(json_str)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
+
+
 def _silver_to_dim_outcome(
     arrow: pa.Table,
     platform: str,
