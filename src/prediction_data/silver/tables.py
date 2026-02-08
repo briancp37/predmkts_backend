@@ -10,6 +10,7 @@ from pyiceberg.table.sorting import NullOrder, SortDirection, SortField, SortOrd
 from pyiceberg.transforms import DayTransform, IdentityTransform
 from pyiceberg.types import (
     DoubleType,
+    ListType,
     LongType,
     NestedField,
     StringType,
@@ -82,6 +83,13 @@ _POLYMARKET_EVENTS_SCHEMA = Schema(
     NestedField(8, "updated_at", TimestamptzType(), required=False),
     NestedField(9, "bronze_run_id", StringType(), required=False),
     NestedField(10, "silver_ingestion_ts", TimestamptzType(), required=False),
+    NestedField(11, "image_url", StringType(), required=False),
+    NestedField(
+        12,
+        "tags",
+        ListType(element_id=13, element_type=StringType(), element_required=False),
+        required=False,
+    ),
 )
 
 # -- Kalshi Trades Schema (scaffold) --

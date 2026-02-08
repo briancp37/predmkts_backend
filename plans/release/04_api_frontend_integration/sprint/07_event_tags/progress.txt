@@ -1,0 +1,50 @@
+# Sprint Progress: Event Tags
+# Release: 04_api_frontend_integration
+# Created: 2026-02-08
+
+## Status: In Progress
+
+## Completed Tasks
+
+### 2026-02-08: Bronze Tags Ingestion (COMPLETE)
+- Verified Polymarket Gamma API /events endpoint returns tags array
+- Confirmed Bronze events ingestion preserves raw tags array in JSONL output
+- Tested with sample events containing tags like 'Sports', 'Basketball', 'Crypto', 'Politics'
+- Documented tags schema: array of objects with {id, label, slug, forceShow, publishedAt, createdAt, updatedAt, forceHide?, requiresTranslation, isCarousel?}
+
+### 2026-02-08: Silver Tags Normalization (COMPLETE)
+- Updated Silver events schema in tables.py to include tags column as ListType(StringType())
+- Added normalization logic in normalize.py to extract tag labels from raw event data
+- Missing tags handled gracefully (returns None instead of empty array)
+- Tag labels extracted into simple string array for easier querying
+- Iceberg table schema updated (field 12: tags as list<string>)
+
+**Note for next developer:**
+- Run `prediction-data silver process --platform polymarket --entity events --force-reprocess` on ECS to populate tags column for historical data
+- Schema evolution in Iceberg should handle the new column automatically
+
+## In Progress
+
+### Gold dim_event Tags
+- Next step: Update gold/dimensions.py and ClickHouse schema to include tags column
+
+## Blockers/Issues
+
+None currently.
+
+## Notes
+
+This sprint implements end-to-end tag support:
+1. Bronze → Silver → Gold pipeline for event tags
+2. API endpoints for tag listing and filtering
+3. User-saved tag templates (PostgreSQL)
+4. Frontend components for tag filtering and template management
+
+Key decisions made:
+- Tags schema: Using Array(String) for simplicity (just tag labels)
+- Tag labels extracted from Bronze objects with {label, slug, ...} structure
+- Missing tags return None (not empty array) for storage efficiency
+
+Dependencies:
+- Requires dim_event populated in ClickHouse
+- Requires user auth for tag templates

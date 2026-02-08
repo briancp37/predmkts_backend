@@ -342,6 +342,20 @@ class PolymarketEventsNormalizer(Normalizer):
         if raw_updated:
             updated_at = _parse_timestamp_utc(raw_updated)
 
+        # Get image URL - prefer 'image' field, fall back to 'icon'
+        image_url = _safe_str(record.get("image")) or _safe_str(record.get("icon"))
+
+        # Extract tag labels from tags array
+        # Bronze format: [{"id": "1", "label": "Sports", "slug": "sports", ...}, ...]
+        tags: list[str] = []
+        raw_tags = record.get("tags")
+        if raw_tags and isinstance(raw_tags, list):
+            for tag in raw_tags:
+                if isinstance(tag, dict):
+                    label = tag.get("label")
+                    if label and isinstance(label, str):
+                        tags.append(label)
+
         return {
             "event_ts": event_ts,
             "platform_event_id": str(event_id),
@@ -353,6 +367,8 @@ class PolymarketEventsNormalizer(Normalizer):
             "updated_at": updated_at,
             "bronze_run_id": bronze_run_id,
             "silver_ingestion_ts": silver_ingestion_ts,
+            "image_url": image_url,
+            "tags": tags if tags else None,
         }
 
 

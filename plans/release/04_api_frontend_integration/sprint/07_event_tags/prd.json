@@ -1,0 +1,144 @@
+[
+  {
+    "category": "Bronze Tags Ingestion",
+    "description": "Ensure event tags are captured in Bronze layer from Polymarket API",
+    "steps": [
+      "Verify Polymarket Gamma API /events endpoint returns tags array in response",
+      "Confirm Bronze events ingestion preserves the raw tags array in JSONL output",
+      "Test with sample event that has tags like 'Sports', 'Politics', 'Crypto'",
+      "Document tags schema: array of objects with {label, slug, ...} structure"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Silver Tags Normalization",
+    "description": "Extract and normalize tags from Bronze events into structured Silver format",
+    "steps": [
+      "Update Silver events schema to include tags column (Array of Struct or JSON string)",
+      "Add normalization logic in silver/normalize.py to extract tags from raw event data",
+      "Handle missing tags gracefully (default to empty array)",
+      "Extract tag labels into a simple string array for easier querying",
+      "Update Iceberg table schema for polymarket/events to include tags column",
+      "Reprocess existing events to populate tags column"
+    ],
+    "passes": true
+  },
+  {
+    "category": "Gold dim_event Tags",
+    "description": "Add tags to Gold dim_event table for API consumption",
+    "steps": [
+      "Update dim_event schema in gold/dimensions.py to include tags column",
+      "Add tags column to ClickHouse dim_event table (Array(String) for labels)",
+      "Update gold load-dims to populate tags from Silver events",
+      "Verify tags are queryable with arrayContains() or has() in ClickHouse",
+      "Test filtering events by tag inclusion and exclusion"
+    ],
+    "passes": false
+  },
+  {
+    "category": "API Tags Endpoint",
+    "description": "Create endpoint to list available tags with counts",
+    "steps": [
+      "Create GET /api/v1/tags endpoint to list all unique tags",
+      "Query ClickHouse: SELECT tag, count() FROM dim_event ARRAY JOIN tags AS tag GROUP BY tag",
+      "Return TagResponse with: label (str), slug (str), eventCount (int)",
+      "Order by eventCount DESC",
+      "Add caching (5-10 minute TTL) since tags change infrequently"
+    ],
+    "passes": false
+  },
+  {
+    "category": "API Tag Filtering",
+    "description": "Add tag-based filtering to markets and events endpoints",
+    "steps": [
+      "Add includeTags query param to GET /markets/advanced (comma-separated)",
+      "Add excludeTags query param to GET /markets/advanced (comma-separated)",
+      "Update service.py to join with dim_event and filter by tags",
+      "Implement has(e.tags, tag) for inclusion filtering",
+      "Implement NOT has(e.tags, tag) for exclusion filtering",
+      "Add same tag filtering to GET /events endpoint",
+      "Update OpenAPI spec and regenerate TypeScript types"
+    ],
+    "passes": false
+  },
+  {
+    "category": "PostgreSQL Tag Templates",
+    "description": "Create database model for user-saved tag filter templates",
+    "steps": [
+      "Create tag_templates table in PostgreSQL: id, user_id, name, include_tags (array), exclude_tags (array), is_default (bool), created_at, updated_at",
+      "Add foreign key to users table",
+      "Create Alembic migration for tag_templates table",
+      "Add unique constraint on (user_id, name) to prevent duplicate template names"
+    ],
+    "passes": false
+  },
+  {
+    "category": "API Tag Templates CRUD",
+    "description": "Create endpoints for managing user tag templates",
+    "steps": [
+      "Create src/prediction_data/api/tag_templates/ directory with router.py, service.py, schemas.py",
+      "Create TagTemplateCreate schema: name (str), includeTags (list[str]), excludeTags (list[str]), isDefault (bool)",
+      "Create TagTemplateResponse schema: id (int), name (str), includeTags, excludeTags, isDefault, createdAt",
+      "Implement POST /api/v1/tag-templates to create template (requires auth)",
+      "Implement GET /api/v1/tag-templates to list user's templates",
+      "Implement GET /api/v1/tag-templates/{id} to get single template",
+      "Implement PUT /api/v1/tag-templates/{id} to update template",
+      "Implement DELETE /api/v1/tag-templates/{id} to delete template",
+      "Limit to one default template per user (unset previous default on new default)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Tag Filter Component",
+    "description": "Create reusable tag filter UI component",
+    "steps": [
+      "Create web/src/components/TagFilter.tsx component",
+      "Fetch available tags from GET /api/v1/tags on mount",
+      "Display tags as chips/badges with toggle selection",
+      "Support multi-select for both include and exclude modes",
+      "Add visual distinction between included (green) and excluded (red) tags",
+      "Emit onChange with selected includeTags and excludeTags arrays",
+      "Add search/filter input for large tag lists"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Tag Templates UI",
+    "description": "Add tag template management to frontend",
+    "steps": [
+      "Create web/src/components/TagTemplateManager.tsx for template CRUD",
+      "Add 'Save as Template' button to TagFilter component",
+      "Add template selector dropdown to quickly apply saved templates",
+      "Show template name and tag counts in dropdown",
+      "Add default template indicator (star icon)",
+      "Auto-apply default template on page load if set",
+      "Add edit and delete buttons for each template"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Frontend Markets Page Integration",
+    "description": "Integrate tag filtering into markets listing page",
+    "steps": [
+      "Add TagFilter component to web/src/app/markets/page.tsx",
+      "Update useMarketsAdvanced hook to accept includeTags and excludeTags params",
+      "Persist selected tags in URL query params for shareable links",
+      "Add tag chips to market cards showing which tags the market's event belongs to",
+      "Update market filters sidebar/header with tag filter section"
+    ],
+    "passes": false
+  },
+  {
+    "category": "Testing and Documentation",
+    "description": "Add tests and update documentation",
+    "steps": [
+      "Add unit tests for tag normalization in Silver layer",
+      "Add API tests for tag filtering endpoints",
+      "Add API tests for tag template CRUD",
+      "Update CLAUDE.md with tag-related CLI commands if any",
+      "Update OpenAPI spec with all new endpoints",
+      "Regenerate TypeScript types: npm run generate-api"
+    ],
+    "passes": false
+  }
+]
