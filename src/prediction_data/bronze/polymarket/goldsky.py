@@ -237,12 +237,18 @@ class GoldskyClient:
         *,
         timestamp_gte: int,
         timestamp_lte: int,
-        batch_size: int = 500_000,
+        batch_size: int = 200_000,
     ) -> AsyncIterator[list[dict[str, Any]]]:
         """Yield batches of OrderFilledEvents, flushing every ``batch_size`` records.
 
         Same pagination logic as :meth:`fetch_all_order_filled_events` but
         yields batches instead of accumulating everything in memory.
+
+        Memory estimation (for ECS task sizing):
+            - 293K records OOM'd at 512MB → ~1.7KB/record effective
+            - 200K batch * 1.7KB = ~340MB peak memory
+            - Recommended: 1GB task memory for 200K batch (safe margin)
+            - 512MB may work but is risky during catchup
 
         Args:
             timestamp_gte: Lower bound Unix timestamp (inclusive).
