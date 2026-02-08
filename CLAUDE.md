@@ -390,7 +390,7 @@ aws ecs run-task ...
 **Common mistakes that waste time:**
 - Pushing ARM64 image to ECR (Fargate needs amd64) → Always use `--platform linux/amd64`
 - Running full date range on ECS without testing single day locally first
-- Not checking memory requirements → Catalog entities need 16GB+
+- Using `--overwrite` or `--merge` which load all data into memory (default append is chunked)
 - Waiting for ECS tasks without checking if they're producing logs
 
 **Running ECS tasks manually:**
@@ -711,11 +711,7 @@ prediction-data silver process --platform polymarket --entity events \
 prediction-data gold load-dims
 ```
 
-**Running on ECS (requires 16GB+ memory):**
-
-Catalog entity reprocessing (markets, events) loads ~386K records into memory
-during PyIceberg writes. The default 512MB task definition will OOM. Override
-with at least 16GB:
+**Running on ECS:**
 
 ```bash
 aws ecs run-task \
@@ -724,8 +720,6 @@ aws ecs run-task \
     --launch-type FARGATE \
     --network-configuration "awsvpcConfiguration={subnets=[subnet-64b44845],securityGroups=[sg-1d625733],assignPublicIp=ENABLED}" \
     --overrides '{
-        "cpu": "4096",
-        "memory": "16384",
         "containerOverrides": [{
             "name": "prediction-data",
             "command": ["silver", "process", "--platform", "polymarket", "--entity", "markets", "--start-date", "2013-01-01", "--end-date", "2026-02-07", "--force-reprocess"]
@@ -734,16 +728,22 @@ aws ecs run-task \
     --region us-east-1
 ```
 
-**Memory requirements by entity:**
+**Memory requirements:**
 
-| Entity | Compressed Size | Memory Required |
-|--------|-----------------|-----------------|
-| markets | ~163MB/day | 16GB+ |
-| events | ~165MB/day | 16GB+ |
-| trades | ~varies | 4GB (stream entity) |
+All entities use chunked file-by-file processing with bounded memory. Each Bronze
+file contains up to 500K records, so memory usage is bounded by single-file size
+(~1-2GB peak). The default 512MB task may still OOM; 2-4GB is recommended.
 
-**Warning:** Do NOT run full reprocessing locally — it will consume significant
-memory and CPU. Always use ECS for large backfill jobs.
+| Entity | Processing | Memory Required |
+|--------|------------|-----------------|
+| markets | chunked (file-by-file) | 2-4GB |
+| events | chunked (file-by-file) | 2-4GB |
+| trades | chunked (file-by-file) | 2-4GB |
+
+All write modes (append, overwrite, merge) use chunked processing:
+- **append** (default): Each chunk appended independently
+- **overwrite**: First chunk overwrites table, remaining chunks appended
+- **merge**: Each chunk upserted independently using entity merge keys
 
 See `plans/release/02_silver_level/hotfixes.md` for documented schema fixes and
 their recovery procedures.

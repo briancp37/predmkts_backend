@@ -387,8 +387,6 @@ async def _run_process(
 
         day_errors: list[tuple[str, str]] = []
 
-        is_stream = entity not in CATALOG_ENTITIES
-
         for m in day_manifests:
             total_processed_so_far = total_processed + len(day_errors)
             progress = total_processed_so_far + 1
@@ -396,20 +394,16 @@ async def _run_process(
             typer.echo(f"  Processing {label} ...")
 
             try:
-                if is_stream:
-                    result = await process_manifest_chunked(
-                        m, s3, catalog,
-                        skip_quality_checks=skip_quality_checks,
-                        markets_lookup=markets_lookup,
-                    )
-                else:
-                    result = await process_manifest(
-                        m, s3, catalog,
-                        skip_quality_checks=skip_quality_checks,
-                        markets_lookup=markets_lookup,
-                        overwrite=overwrite,
-                        merge=merge,
-                    )
+                # Always use chunked processing for bounded memory.
+                # Overwrite: first chunk overwrites, rest append.
+                # Merge: each chunk upserted independently.
+                result = await process_manifest_chunked(
+                    m, s3, catalog,
+                    skip_quality_checks=skip_quality_checks,
+                    markets_lookup=markets_lookup,
+                    overwrite=overwrite,
+                    merge=merge,
+                )
                 total_processed += 1
                 typer.echo(
                     f"    OK: {result.rows_written} rows written, "
@@ -679,7 +673,6 @@ async def _run_catchup(
         return
 
     catalog = get_catalog()
-    is_stream = entity not in CATALOG_ENTITIES
 
     # Pre-load markets reference for trades processing
     markets_lookup = None
@@ -729,18 +722,13 @@ async def _run_catchup(
             typer.echo(f"  {label} Processing dt={m.dt} run_id={m.run_id} ...")
 
             try:
-                if is_stream:
-                    result = await process_manifest_chunked(
-                        m, s3, catalog,
-                        skip_quality_checks=skip_quality_checks,
-                        markets_lookup=markets_lookup,
-                    )
-                else:
-                    result = await process_manifest(
-                        m, s3, catalog,
-                        skip_quality_checks=skip_quality_checks,
-                        markets_lookup=markets_lookup,
-                    )
+                # Catchup always uses append mode, so always use chunked
+                # processing for bounded memory usage.
+                result = await process_manifest_chunked(
+                    m, s3, catalog,
+                    skip_quality_checks=skip_quality_checks,
+                    markets_lookup=markets_lookup,
+                )
                 total_processed += 1
                 typer.echo(
                     f"    OK: {result.rows_written} rows, "

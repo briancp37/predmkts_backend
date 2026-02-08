@@ -351,12 +351,13 @@ async def process_manifest_chunked(
     *,
     skip_quality_checks: bool = False,
     markets_lookup: Any | None = None,
+    overwrite: bool = False,
+    merge: bool = False,
 ) -> ProcessingResult:
     """Process a manifest file-by-file for bounded memory usage.
 
-    For stream entities (trades, order_filled) that use append-only writes.
     Each Bronze part file is processed independently:
-    read → dedup → normalize → append to Iceberg → free memory.
+    read → dedup → normalize → write to Iceberg → free memory.
 
     Memory usage is bounded by the largest single part file, not the
     entire manifest.
@@ -367,6 +368,8 @@ async def process_manifest_chunked(
         catalog: PyIceberg catalog for writing Silver tables.
         skip_quality_checks: If True, skip quality checks.
         markets_lookup: Pre-loaded MarketsReferenceLookup for trades.
+        overwrite: If True, first chunk overwrites table, rest append.
+        merge: If True, upsert each chunk using entity merge keys.
 
     Returns:
         A :class:`ProcessingResult` with aggregated pipeline metrics.
@@ -438,6 +441,7 @@ async def process_manifest_chunked(
     last_snapshot_id = -1
     files_processed = 0
     file_errors = 0
+    first_write_done = False  # Track if we've done the first write (for overwrite mode)
 
     for file_idx, file_ref in enumerate(files):
         file_label = f"file {file_idx + 1}/{len(files)} ({file_ref.key})"
@@ -488,9 +492,16 @@ async def process_manifest_chunked(
                 gc.collect()
                 continue
 
-        # --- Write (append) ---
+        # --- Write (overwrite first chunk, merge, or append) ---
         try:
-            write_result = write_to_iceberg(normalized, catalog, namespace, entity)
+            if overwrite and not first_write_done:
+                write_result = overwrite_to_iceberg(normalized, catalog, namespace, entity)
+                first_write_done = True
+            elif merge:
+                join_cols = normalizer.merge_keys()
+                write_result = merge_to_iceberg(normalized, catalog, namespace, entity, join_cols=join_cols)
+            else:
+                write_result = write_to_iceberg(normalized, catalog, namespace, entity)
             total_written += write_result.rows_written
             last_snapshot_id = write_result.snapshot_id
             files_processed += 1

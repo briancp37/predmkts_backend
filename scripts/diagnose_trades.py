@@ -297,20 +297,20 @@ class TradesDiagnostics:
                         manifest["_key"] = obj["Key"]
                         manifest["_modified"] = obj["LastModified"]
                         manifests.append(manifest)
-                        total_record_count += manifest.get("record_count", 0)
+                        total_record_count += manifest.get("row_count", 0)
 
             if manifests:
                 # Sort by timestamp
-                manifests.sort(key=lambda m: m.get("ingestion_ts", ""), reverse=True)
+                manifests.sort(key=lambda m: m.get("generated_at", ""), reverse=True)
                 latest_manifest = manifests[0]
 
-                ingestion_ts = latest_manifest.get("ingestion_ts", "")
-                record_count = latest_manifest.get("record_count", 0)
+                generated_at = latest_manifest.get("generated_at", "")
+                record_count = latest_manifest.get("row_count", 0)
 
                 # Parse timestamp and calculate age
-                if ingestion_ts:
+                if generated_at:
                     try:
-                        ts = datetime.fromisoformat(ingestion_ts.replace("Z", "+00:00"))
+                        ts = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
                         age = format_age(ts)
                         age_minutes = (datetime.now(timezone.utc) - ts).total_seconds() / 60
 
@@ -323,7 +323,7 @@ class TradesDiagnostics:
                             print_status("Latest Ingestion", "ERROR", f"{age} ({format_number(record_count)} records)")
                             self.issues.append(f"Bronze order_filled data is stale: {age}")
                     except Exception:
-                        print_status("Latest Ingestion", "INFO", f"{ingestion_ts} ({format_number(record_count)} records)")
+                        print_status("Latest Ingestion", "INFO", f"{generated_at} ({format_number(record_count)} records)")
 
                 print_status("Total Runs Today", "INFO", f"{len(manifests)} run(s)")
                 print_status("Total Records Today", "INFO", format_number(total_record_count))
@@ -351,7 +351,7 @@ class TradesDiagnostics:
                             resp = self.s3.get_object(Bucket=bucket, Key=obj["Key"])
                             manifest = json.loads(resp["Body"].read().decode())
                             day_manifests.append(manifest)
-                            day_records += manifest.get("record_count", 0)
+                            day_records += manifest.get("row_count", 0)
 
                 if day_records == 0:
                     print_status(f"  {dt}", "WARN", "No data")

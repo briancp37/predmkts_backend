@@ -404,7 +404,7 @@ class TestCrossRunDedup:
             patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
             patch(_STATE, return_value=fake_state),
             patch(_CATALOG, return_value=MagicMock()),
-            patch(_PROCESS, new_callable=AsyncMock, side_effect=track_process),
+            patch(_PROCESS_CHUNKED, new_callable=AsyncMock, side_effect=track_process),
         ):
             result = runner.invoke(
                 app,
@@ -440,7 +440,7 @@ class TestCrossRunDedup:
             patch(_DISCOVER, new_callable=AsyncMock, return_value=manifests),
             patch(_STATE, return_value=fake_state),
             patch(_CATALOG, return_value=MagicMock()),
-            patch(_PROCESS, new_callable=AsyncMock, side_effect=track_process),
+            patch(_PROCESS_CHUNKED, new_callable=AsyncMock, side_effect=track_process),
         ):
             result = runner.invoke(
                 app,
@@ -874,8 +874,8 @@ class TestCatchup:
         mock_chunked.assert_awaited_once()
         mock_batch.assert_not_awaited()
 
-    def test_catchup_uses_batch_for_catalog_entities(self) -> None:
-        """Catchup uses batch processing for catalog entities (markets)."""
+    def test_catchup_uses_chunked_for_catalog_entities(self) -> None:
+        """Catchup uses chunked processing for all entities including catalogs."""
         manifests = [_manifest(run_id="run-1", dt="2024-06-15", entity="markets")]
         fake_state = FakeStateStoreWithDates(latest_date="2024-06-14")
 
@@ -890,7 +890,11 @@ class TestCatchup:
                 new_callable=AsyncMock,
                 return_value=FakeProcessingResult(),
             ) as mock_batch,
-            patch(_PROCESS_CHUNKED, new_callable=AsyncMock) as mock_chunked,
+            patch(
+                _PROCESS_CHUNKED,
+                new_callable=AsyncMock,
+                return_value=FakeProcessingResult(),
+            ) as mock_chunked,
         ):
             result = runner.invoke(
                 app,
@@ -899,8 +903,8 @@ class TestCatchup:
             )
 
         assert result.exit_code == 0
-        mock_batch.assert_awaited_once()
-        mock_chunked.assert_not_awaited()
+        mock_chunked.assert_awaited_once()
+        mock_batch.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
