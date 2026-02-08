@@ -114,8 +114,12 @@ export interface UseMarketsAdvancedParams {
   minChange?: number;
   /** Maximum 24h price change percentage */
   maxChange?: number;
-  /** Comma-separated list of tags */
+  /** @deprecated Use includeTags instead. Comma-separated list of tags */
   tags?: string;
+  /** Comma-separated list of tags to include (markets must have at least one) */
+  includeTags?: string;
+  /** Comma-separated list of tags to exclude (markets must not have any) */
+  excludeTags?: string;
   /** Results per page (default: 25, max: 1000) */
   limit?: number;
   /** Pagination offset */
@@ -193,9 +197,17 @@ async function fetchMarketsAdvanced(
     searchParams.set('maxChange', String(params.maxChange));
   }
 
-  // Tags filter
+  // Tags filter (legacy)
   if (params.tags) {
     searchParams.set('tags', params.tags);
+  }
+
+  // Include/exclude tags filters (new API)
+  if (params.includeTags) {
+    searchParams.set('includeTags', params.includeTags);
+  }
+  if (params.excludeTags) {
+    searchParams.set('excludeTags', params.excludeTags);
   }
 
   // Pagination

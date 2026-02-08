@@ -3,12 +3,15 @@
  *
  * PRD #12 (Sprint 9) - Create Markets page with all components integrated
  * PRD #18 - Performance optimizations (lazy loading, suspense)
+ * Sprint 07 - Event Tags: Added TagFilter with include/exclude support
  *
  * Features:
  * - MarketFilters component with comprehensive filter controls
  * - Card and Table view toggle
  * - Pagination with per-page selector
- * - Tags modal for tag filtering (lazy loaded)
+ * - TagFilter component with include/exclude tag filtering
+ * - TagTemplateManager for saving/loading tag filter templates
+ * - URL persistence for tag filters (shareable links)
  * - Watchlist functionality for authenticated users
  * - Loading states with skeleton loaders
  * - Empty state when no markets match filters
@@ -17,8 +20,9 @@
 
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { LayoutGrid } from 'lucide-react';
 import { useSession } from '@/components/providers';
 import {
@@ -38,13 +42,23 @@ import {
   type ViewMode,
   type PerPageOption,
 } from '@/components/markets';
+import type { TagFilterSelection } from '@/components/TagFilter';
 
-// Lazy load TagsModal component - PRD #18 performance optimization
-const TagsModal = dynamic(
-  () => import('@/components/markets/tags-modal').then((mod) => ({ default: mod.TagsModal })),
+// Lazy load TagFilter component - Sprint 07 tag filtering
+const TagFilter = dynamic(
+  () => import('@/components/TagFilter').then((mod) => ({ default: mod.TagFilter })),
   {
-    loading: () => null, // No loading state needed as modal opens on demand
-    ssr: false, // Disable SSR for modal
+    loading: () => null,
+    ssr: false,
+  }
+);
+
+// Lazy load TagTemplateManager component - Sprint 07 tag templates
+const TagTemplateManager = dynamic(
+  () => import('@/components/TagTemplateManager').then((mod) => ({ default: mod.TagTemplateManager })),
+  {
+    loading: () => null,
+    ssr: false,
   }
 );
 
@@ -114,9 +128,17 @@ function buildApiParams(
     params.minChange = 20;
   }
 
-  // Tags filter
-  if (filters.tags.length > 0) {
-    params.tags = filters.tags.join(',');
+  // Tag filters - use new includeTags/excludeTags params
+  if (filters.includeTags.length > 0) {
+    params.includeTags = filters.includeTags.join(',');
+  }
+  if (filters.excludeTags.length > 0) {
+    params.excludeTags = filters.excludeTags.join(',');
+  }
+
+  // Legacy tags support (fallback for backwards compatibility)
+  if (filters.tags.length > 0 && filters.includeTags.length === 0) {
+    params.includeTags = filters.tags.join(',');
   }
 
   return params;
@@ -130,12 +152,29 @@ import {
 } from '@/components/loading-skeleton';
 
 export default function MarketsPage() {
+  // URL state for shareable links
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   // Authentication state
   const { data: session, status: authStatus } = useSession();
   const isAuthenticated = authStatus === 'authenticated' && !!session?.user;
 
+  // Initialize filter state from URL params
+  const initialFilters = useMemo((): MarketFilterValues => {
+    const includeTagsParam = searchParams.get('includeTags');
+    const excludeTagsParam = searchParams.get('excludeTags');
+
+    return {
+      ...DEFAULT_FILTER_VALUES,
+      includeTags: includeTagsParam ? includeTagsParam.split(',').filter(Boolean) : [],
+      excludeTags: excludeTagsParam ? excludeTagsParam.split(',').filter(Boolean) : [],
+    };
+  }, [searchParams]);
+
   // Filter state
-  const [filters, setFilters] = useState<MarketFilterValues>(DEFAULT_FILTER_VALUES);
+  const [filters, setFilters] = useState<MarketFilterValues>(initialFilters);
 
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('card');
@@ -144,8 +183,8 @@ export default function MarketsPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<PerPageOption>(25);
 
-  // Tags modal state
-  const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
+  // Tags filter modal state
+  const [isTagFilterOpen, setIsTagFilterOpen] = useState(false);
 
   // Watchlist hooks
   const { data: watchlistData } = useWatchlist({ enabled: isAuthenticated });
@@ -184,6 +223,33 @@ export default function MarketsPage() {
     ? displayedMarkets.length
     : (marketsData?.total ?? 0);
 
+  // Update URL when tag filters change
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    // Update includeTags param
+    if (filters.includeTags.length > 0) {
+      params.set('includeTags', filters.includeTags.join(','));
+    } else {
+      params.delete('includeTags');
+    }
+
+    // Update excludeTags param
+    if (filters.excludeTags.length > 0) {
+      params.set('excludeTags', filters.excludeTags.join(','));
+    } else {
+      params.delete('excludeTags');
+    }
+
+    // Only update URL if params actually changed
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    const currentUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+
+    if (newUrl !== currentUrl) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [filters.includeTags, filters.excludeTags, pathname, router, searchParams]);
+
   // Handle filter changes - reset to page 1
   const handleFilterChange = useCallback((newFilters: MarketFilterValues) => {
     setFilters(newFilters);
@@ -204,13 +270,42 @@ export default function MarketsPage() {
     [isAuthenticated, watchlistedIds, addToWatchlist, removeFromWatchlist]
   );
 
-  // Handle tags modal apply
-  const handleTagsApply = useCallback(
-    (tags: string[]) => {
-      handleFilterChange({ ...filters, tags });
+  // Handle TagFilter apply - Sprint 07
+  const handleTagFilterApply = useCallback(
+    (selection: TagFilterSelection) => {
+      handleFilterChange({
+        ...filters,
+        includeTags: selection.includeTags,
+        excludeTags: selection.excludeTags,
+        // Clear legacy tags field
+        tags: [],
+      });
     },
     [filters, handleFilterChange]
   );
+
+  // Handle TagTemplateManager apply - Sprint 07
+  const handleApplyTemplate = useCallback(
+    (selection: TagFilterSelection) => {
+      handleFilterChange({
+        ...filters,
+        includeTags: selection.includeTags,
+        excludeTags: selection.excludeTags,
+        tags: [],
+      });
+    },
+    [filters, handleFilterChange]
+  );
+
+  // Handle clearing tag selection
+  const handleClearTagSelection = useCallback(() => {
+    handleFilterChange({
+      ...filters,
+      includeTags: [],
+      excludeTags: [],
+      tags: [],
+    });
+  }, [filters, handleFilterChange]);
 
   // Handle page change
   const handlePageChange = useCallback((newPage: number) => {
@@ -226,6 +321,12 @@ export default function MarketsPage() {
 
   const isLoading = isLoadingMarkets;
   const isFetching = isFetchingMarkets && !isLoading;
+
+  // Current tag selection for TagFilter and TagTemplateManager
+  const currentTagSelection: TagFilterSelection = {
+    includeTags: filters.includeTags,
+    excludeTags: filters.excludeTags,
+  };
 
   return (
     <div className="space-y-6">
@@ -244,8 +345,9 @@ export default function MarketsPage() {
       <MarketFilters
         values={filters}
         onChange={handleFilterChange}
-        onTagsClick={() => setIsTagsModalOpen(true)}
-        selectedTagsCount={filters.tags.length}
+        onTagsClick={() => setIsTagFilterOpen(true)}
+        includeTagsCount={filters.includeTags.length}
+        excludeTagsCount={filters.excludeTags.length}
         isAuthenticated={isAuthenticated}
       />
 
@@ -260,6 +362,13 @@ export default function MarketsPage() {
             </span>
           )}
         </div>
+
+        {/* Tag Template Manager - Sprint 07 */}
+        <TagTemplateManager
+          currentSelection={currentTagSelection}
+          onApplyTemplate={handleApplyTemplate}
+          onClearSelection={handleClearTagSelection}
+        />
       </div>
 
       {/* Markets Display */}
@@ -296,6 +405,8 @@ export default function MarketsPage() {
             filters.createdDate !== 'all' ||
             filters.change ||
             filters.tags.length > 0 ||
+            filters.includeTags.length > 0 ||
+            filters.excludeTags.length > 0 ||
             filters.watchlistOnly) && (
             <button
               type="button"
@@ -341,12 +452,13 @@ export default function MarketsPage() {
         />
       )}
 
-      {/* Tags Modal */}
-      <TagsModal
-        isOpen={isTagsModalOpen}
-        onClose={() => setIsTagsModalOpen(false)}
-        selectedTags={filters.tags}
-        onApply={handleTagsApply}
+      {/* Tag Filter Modal - Sprint 07 */}
+      <TagFilter
+        isOpen={isTagFilterOpen}
+        onClose={() => setIsTagFilterOpen(false)}
+        includeTags={filters.includeTags}
+        excludeTags={filters.excludeTags}
+        onApply={handleTagFilterApply}
       />
     </div>
   );

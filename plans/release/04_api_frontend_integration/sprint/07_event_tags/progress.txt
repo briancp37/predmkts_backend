@@ -231,10 +231,54 @@ function MarketsPage() {
 - Requires authentication - component returns null when not logged in
 - The TemplateDropdown can also be used standalone if needed
 
+### 2026-02-08: Frontend Markets Page Integration (COMPLETE)
+- Updated MarketFilterValues interface to support includeTags and excludeTags:
+  - Added includeTags: string[] for tags to include (markets must have at least one)
+  - Added excludeTags: string[] for tags to exclude (markets must not have any)
+  - Marked legacy tags field as @deprecated
+  - Updated DEFAULT_FILTER_VALUES with empty arrays for new fields
+- Updated useMarketsAdvanced hook (use-markets-advanced.ts):
+  - Added includeTags and excludeTags params to UseMarketsAdvancedParams
+  - Added URL param building for includeTags and excludeTags
+  - Maintained backwards compatibility with legacy tags param
+- Updated MarketFilters component (market-filters.tsx):
+  - Changed props from selectedTagsCount to includeTagsCount/excludeTagsCount
+  - Tags button now shows separate green (+N) and red (-N) count badges
+  - Updated hasActiveFilters and More Filters indicator to check new fields
+- Updated Markets page (markets/page.tsx):
+  - Replaced lazy-loaded TagsModal with TagFilter component
+  - Added lazy-loaded TagTemplateManager component
+  - Added URL persistence for tag filters using useSearchParams/useRouter
+  - Initialized filters from URL params on page load
+  - Tag selections sync to URL for shareable links (e.g., /markets?includeTags=Sports,Crypto&excludeTags=Politics)
+  - Added handleTagFilterApply and handleApplyTemplate callbacks
+  - Added handleClearTagSelection for clearing all tag filters
+  - Updated buildApiParams to use new includeTags/excludeTags
+  - Legacy tags field support for backwards compatibility
+- All tests pass (frontend: 550)
+- Type checking passes (tsc --noEmit: no errors)
+
+**Features added:**
+- TagFilter modal accessible from More Filters > Tags button
+- Include/exclude tag filtering with visual indicators
+- TagTemplateManager in header for authenticated users
+- URL persistence for shareable filtered views
+- Auto-apply default template on page load
+
+**Note for next developer:**
+- The "Add tag chips to market cards" step was not implemented in this sprint
+  - This would require event tags to be returned in the market data from the API
+  - Currently markets only have category, not event tags
+  - Consider adding eventTags field to MarketAdvancedResponse if needed
+
 ## In Progress
 
-### Frontend Markets Page Integration
-- Next step: Add TagFilter and TagTemplateManager to web/src/app/markets/page.tsx
+None - all frontend integration complete.
+
+## Remaining
+
+### Testing and Documentation
+- Next step: Add tests and update documentation
 
 ## Blockers/Issues
 

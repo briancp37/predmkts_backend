@@ -126,7 +126,7 @@
       "Add tag chips to market cards showing which tags the market's event belongs to",
       "Update market filters sidebar/header with tag filter section"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Testing and Documentation",

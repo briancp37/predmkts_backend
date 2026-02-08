@@ -77,7 +77,12 @@ export interface MarketFilterValues {
   createdDate: TimeFilter;
   rewards: string;
   change: string;
+  /** @deprecated Use includeTags instead */
   tags: string[];
+  /** Tags to include (markets must have at least one of these) */
+  includeTags: string[];
+  /** Tags to exclude (markets must not have any of these) */
+  excludeTags: string[];
   watchlistOnly: boolean;
 }
 
@@ -101,6 +106,8 @@ export const DEFAULT_FILTER_VALUES: MarketFilterValues = {
   rewards: '',
   change: '',
   tags: [],
+  includeTags: [],
+  excludeTags: [],
   watchlistOnly: false,
 };
 
@@ -111,8 +118,10 @@ export interface MarketFiltersProps {
   onChange: (values: MarketFilterValues) => void;
   /** Callback when Tags button is clicked */
   onTagsClick?: () => void;
-  /** Number of selected tags (for badge display) */
-  selectedTagsCount?: number;
+  /** Number of included tags (for badge display) */
+  includeTagsCount?: number;
+  /** Number of excluded tags (for badge display) */
+  excludeTagsCount?: number;
   /** Whether user is authenticated (for watchlist filter) */
   isAuthenticated?: boolean;
   /** Additional CSS classes */
@@ -185,10 +194,12 @@ export function MarketFilters({
   values,
   onChange,
   onTagsClick,
-  selectedTagsCount = 0,
+  includeTagsCount = 0,
+  excludeTagsCount = 0,
   isAuthenticated = false,
   className,
 }: MarketFiltersProps) {
+  const totalTagsCount = includeTagsCount + excludeTagsCount;
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [isCategoryOpen, setIsCategoryOpen] = React.useState(false);
   const categoryRef = React.useRef<HTMLDivElement>(null);
@@ -263,6 +274,8 @@ export function MarketFilters({
     values.rewards !== '' ||
     values.change !== '' ||
     values.tags.length > 0 ||
+    values.includeTags.length > 0 ||
+    values.excludeTags.length > 0 ||
     values.watchlistOnly;
 
   const selectedCategory = CATEGORY_OPTIONS.find((opt) => opt.value === values.category);
@@ -423,6 +436,8 @@ export function MarketFilters({
               values.rewards !== '' ||
               values.change !== '' ||
               values.tags.length > 0 ||
+              values.includeTags.length > 0 ||
+              values.excludeTags.length > 0 ||
               values.watchlistOnly) && (
               <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
                 Active
@@ -506,16 +521,21 @@ export function MarketFilters({
                 onClick={onTagsClick}
                 className={cn(
                   'flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
-                  selectedTagsCount > 0
+                  totalTagsCount > 0
                     ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
                     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
                 )}
               >
                 <Tag className="h-4 w-4" />
                 Tags
-                {selectedTagsCount > 0 && (
-                  <span className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-xs font-medium text-white">
-                    {selectedTagsCount}
+                {includeTagsCount > 0 && (
+                  <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-xs font-medium text-white">
+                    +{includeTagsCount}
+                  </span>
+                )}
+                {excludeTagsCount > 0 && (
+                  <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-medium text-white">
+                    -{excludeTagsCount}
                   </span>
                 )}
               </button>
