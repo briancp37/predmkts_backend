@@ -86,7 +86,7 @@
       "Implement DELETE /api/v1/tag-templates/{id} to delete template",
       "Limit to one default template per user (unset previous default on new default)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Tag Filter Component",

@@ -23,6 +23,7 @@ from prediction_data.api.middleware import RequestLoggingMiddleware
 from prediction_data.api.polymarket_proxy import router as polymarket_proxy_router
 from prediction_data.api.polymarket_proxy.client import close_proxy_client
 from prediction_data.api.rate_limit import limiter, rate_limit_exceeded_handler
+from prediction_data.api.tag_templates.router import router as tag_templates_router
 from prediction_data.api.tags.router import router as tags_router
 from prediction_data.api.tracked_traders.router import router as tracked_traders_router
 from prediction_data.api.traders.router import router as traders_router
@@ -152,6 +153,12 @@ OPENAPI_TAGS = [
         "Rate limited to 100 req/min. Cached for 5 minutes.",
     },
     {
+        "name": "tag-templates",
+        "description": "User's saved tag filter templates. Save combinations of include/exclude "
+        "tags for quick filtering. Supports a default template for automatic application. "
+        "Requires authentication. Rate limited to 200 req/min per user.",
+    },
+    {
         "name": "health",
         "description": "Health check endpoints for monitoring and Kubernetes probes. "
         "Not versioned, not rate limited.",
@@ -213,6 +220,9 @@ app.include_router(
 app.include_router(trades_router, prefix="/api/v1/trades", tags=["trades"])
 app.include_router(events_router, prefix="/api/v1/events", tags=["events"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])
+app.include_router(
+    tag_templates_router, prefix="/api/v1/tag-templates", tags=["tag-templates"]
+)
 app.include_router(
     polymarket_proxy_router, prefix="/api/v1/proxy", tags=["polymarket-proxy"]
 )

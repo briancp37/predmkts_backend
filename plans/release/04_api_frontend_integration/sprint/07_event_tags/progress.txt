@@ -104,10 +104,46 @@ ORDER BY event_count DESC
 - No Alembic migration needed - tables are auto-created on startup
 - For existing production databases, restart the API to create the table
 
+### 2026-02-08: API Tag Templates CRUD (COMPLETE)
+- Created src/prediction_data/api/tag_templates/ module:
+  - __init__.py - exports router
+  - schemas.py - TagTemplateCreate, TagTemplateUpdate, TagTemplateResponse, TagTemplateListResponse
+  - service.py - CRUD operations with SQLAlchemy async queries
+  - router.py - REST endpoints with rate limiting and auth
+- Implemented all CRUD endpoints:
+  - POST /api/v1/tag-templates - create template (requires auth)
+  - GET /api/v1/tag-templates - list user's templates
+  - GET /api/v1/tag-templates/{id} - get single template
+  - PUT /api/v1/tag-templates/{id} - update template
+  - DELETE /api/v1/tag-templates/{id} - delete template
+- Default template logic: setting isDefault=true automatically unsets previous default
+- Registered router in main.py with tag-templates prefix
+- Added OpenAPI tag description for documentation
+- Created tests/api/test_tag_templates.py with 21 test cases:
+  - Create: success, minimal, no auth, duplicate name, default unsets previous, empty name fails
+  - List: empty, with items, no auth
+  - Get: success, not found, no auth
+  - Update: success, partial, set default, duplicate name, not found
+  - Delete: success, not found, no auth
+  - Flow: create-list-update-delete integration test
+- All tests pass (frontend: 550, backend API: 73)
+- Type checking passes (mypy: no issues)
+
+**Endpoints available:**
+- `POST /api/v1/tag-templates` - Create template
+- `GET /api/v1/tag-templates` - List templates
+- `GET /api/v1/tag-templates/{id}` - Get template by ID
+- `PUT /api/v1/tag-templates/{id}` - Update template
+- `DELETE /api/v1/tag-templates/{id}` - Delete template
+
+**Note for next developer:**
+- OpenAPI spec needs regeneration: `uvicorn prediction_data.api.main:app --reload` then `curl http://localhost:8000/openapi.json > openapi.json`
+- TypeScript types need regeneration: `cd web && npm run generate-api`
+
 ## In Progress
 
-### API Tag Templates CRUD
-- Next step: Create endpoints for template management
+### Frontend Tag Filter Component
+- Next step: Create web/src/components/TagFilter.tsx component
 
 ## Blockers/Issues
 
