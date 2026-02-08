@@ -142,8 +142,10 @@ class PolymarketClient:
             "limit": limit,
             "offset": offset,
         }
-        if include_closed:
-            params["closed"] = "true"
+        # When include_closed=False, filter to only open markets
+        # When include_closed=True (default), don't add param to get ALL markets
+        if not include_closed:
+            params["closed"] = "false"
 
         self._logger.debug(
             "Fetching markets page",
@@ -261,8 +263,10 @@ class PolymarketClient:
             "limit": limit,
             "offset": offset,
         }
-        if include_closed:
-            params["closed"] = "true"
+        # When include_closed=False, filter to only open markets
+        # When include_closed=True (default), don't add param to get ALL markets
+        if not include_closed:
+            params["closed"] = "false"
 
         self._logger.debug(
             "Fetching events page",

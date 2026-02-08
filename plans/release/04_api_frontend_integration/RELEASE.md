@@ -76,6 +76,7 @@ Add a FastAPI REST API layer to serve the Next.js frontend, unifying the codebas
 | 04 | user_features | Watchlist, tracked traders |
 | 05 | integration_polish | Error handling, testing, cleanup |
 | 06 | supabase | Production database migration to Supabase |
+| 07 | event_tags | Event tags pipeline, API filtering, user templates |
 
 ## Exit Criteria
 
@@ -88,6 +89,8 @@ Add a FastAPI REST API layer to serve the Next.js frontend, unifying the codebas
 - [ ] docker-compose starts all services (Postgres, ClickHouse)
 - [ ] No regressions in existing CLI/pipeline functionality
 - [ ] Supabase production database configured and tested
+- [ ] Event tags available in API with include/exclude filtering
+- [ ] Tag templates saveable per user with default template support
 
 ## Deferred
 
