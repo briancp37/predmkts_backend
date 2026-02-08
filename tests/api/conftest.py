@@ -18,6 +18,7 @@ from sqlalchemy import StaticPool
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from prediction_data.api.clickhouse import get_clickhouse_client
+from prediction_data.api.clob_client import ClobApiClient, get_clob_client
 from prediction_data.api.main import app
 from prediction_data.api.rate_limit import limiter
 from prediction_data.db.base import Base
@@ -74,12 +75,24 @@ def mock_clickhouse_client() -> MagicMock:
     return client
 
 
+@pytest.fixture
+def mock_clob_client() -> MagicMock:
+    """Create a mock CLOB API client."""
+    from unittest.mock import AsyncMock
+    client = MagicMock()
+    # Mock async methods to return empty data
+    client.get_order_books = AsyncMock(return_value={})
+    client.get_order_book = AsyncMock(return_value=None)
+    return client
+
+
 @pytest_asyncio.fixture(scope="function")
 async def client(
     test_session_factory: async_sessionmaker[AsyncSession],
     mock_clickhouse_client: MagicMock,
+    mock_clob_client: MagicMock,
 ) -> AsyncGenerator[AsyncClient, None]:
-    """Create an async test client with database and ClickHouse overrides."""
+    """Create an async test client with database, ClickHouse, and CLOB overrides."""
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with test_session_factory() as session:
@@ -93,9 +106,13 @@ async def client(
     def override_get_clickhouse() -> MagicMock:
         return mock_clickhouse_client
 
+    async def override_get_clob_client() -> MagicMock:
+        return mock_clob_client
+
     # Override dependencies
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_clickhouse_client] = override_get_clickhouse
+    app.dependency_overrides[get_clob_client] = override_get_clob_client
 
     # Disable rate limiting for tests
     limiter.enabled = False

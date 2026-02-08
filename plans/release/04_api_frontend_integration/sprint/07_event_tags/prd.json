@@ -139,6 +139,6 @@
       "Update OpenAPI spec with all new endpoints",
       "Regenerate TypeScript types: npm run generate-api"
     ],
-    "passes": false
+    "passes": true
   }
 ]

@@ -775,6 +775,8 @@ export interface paths {
          *     - **category**: Filter by event category (exact match)
          *     - **search**: Search text in event title and description (case-insensitive)
          *     - **status**: Filter by event status (e.g., 'active', 'resolved')
+         *     - **includeTags**: Comma-separated tags to include (events must have at least one)
+         *     - **excludeTags**: Comma-separated tags to exclude (events with any of these are hidden)
          *     - **limit**: Maximum number of events to return (1-500, default 50)
          *     - **offset**: Number of events to skip for pagination
          */
@@ -808,6 +810,99 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tags
+         * @description List all available event tags with their event counts.
+         *
+         *     Returns a list of tags that are associated with events in the platform.
+         *     Tags are labels like 'Sports', 'Politics', 'Crypto', etc.
+         *
+         *     Tags are ordered by event count (highest first), making it easy to
+         *     show the most popular tags first in filter UIs.
+         *
+         *     **Response fields:**
+         *     - `label`: Display label for the tag (e.g., "Sports")
+         *     - `slug`: URL-friendly slug (e.g., "sports")
+         *     - `eventCount`: Number of events with this tag
+         *
+         *     **Caching:** Results are cached for 5 minutes since tags change infrequently.
+         */
+        get: operations["list_tags_api_v1_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tag-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tag templates
+         * @description Get all tag templates for the authenticated user.
+         *
+         *     Returns templates ordered by creation date (newest first).
+         */
+        get: operations["list_tag_templates_api_v1_tag_templates_get"];
+        put?: never;
+        /**
+         * Create tag template
+         * @description Create a new tag template.
+         *
+         *     Template names must be unique per user. If isDefault is true,
+         *     any existing default template will be unset.
+         */
+        post: operations["create_template_api_v1_tag_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tag-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get tag template
+         * @description Get a specific tag template by ID.
+         */
+        get: operations["get_template_api_v1_tag_templates__template_id__get"];
+        /**
+         * Update tag template
+         * @description Update a tag template.
+         *
+         *     All fields are optional. If isDefault is true, any existing default
+         *     template will be unset. If name is changed, it must be unique.
+         */
+        put: operations["update_template_api_v1_tag_templates__template_id__put"];
+        post?: never;
+        /**
+         * Delete tag template
+         * @description Delete a tag template.
+         */
+        delete: operations["delete_template_api_v1_tag_templates__template_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1277,6 +1372,33 @@ export interface components {
              * @description Markets associated with this event, with outcomes and price data
              */
             markets?: components["schemas"]["EventMarketResponse"][];
+        };
+        /**
+         * EventTagResponse
+         * @description Event tag information with counts.
+         *
+         *     Event tags are labels like 'Sports', 'Politics', 'Crypto' that are
+         *     associated with events in the prediction market platform.
+         */
+        EventTagResponse: {
+            /**
+             * Label
+             * @description Display label for the tag
+             * @example Sports
+             */
+            label: string;
+            /**
+             * Slug
+             * @description URL-friendly slug for the tag
+             * @example sports
+             */
+            slug: string;
+            /**
+             * Eventcount
+             * @description Number of events with this tag
+             * @example 1250
+             */
+            eventCount: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2260,6 +2382,145 @@ export interface components {
             marketCount: number;
         };
         /**
+         * TagTemplateCreate
+         * @description Request schema for creating a tag template.
+         */
+        TagTemplateCreate: {
+            /**
+             * Name
+             * @description Template name
+             * @example Sports Only
+             */
+            name: string;
+            /**
+             * Includetags
+             * @description Tags to include in filter
+             * @example [
+             *       "Sports",
+             *       "Basketball"
+             *     ]
+             */
+            includeTags?: string[];
+            /**
+             * Excludetags
+             * @description Tags to exclude from filter
+             * @example [
+             *       "Politics"
+             *     ]
+             */
+            excludeTags?: string[];
+            /**
+             * Isdefault
+             * @description Whether this is the user's default template
+             * @default false
+             */
+            isDefault: boolean;
+        };
+        /**
+         * TagTemplateListResponse
+         * @description Response schema for listing tag templates.
+         */
+        TagTemplateListResponse: {
+            /**
+             * Items
+             * @description List of tag templates
+             */
+            items: components["schemas"]["TagTemplateResponse"][];
+            /**
+             * Count
+             * @description Total number of templates
+             * @example 5
+             */
+            count: number;
+        };
+        /**
+         * TagTemplateResponse
+         * @description Response schema for a tag template.
+         */
+        TagTemplateResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Unique template identifier
+             * @example 550e8400-e29b-41d4-a716-446655440000
+             */
+            id: string;
+            /**
+             * Name
+             * @description Template name
+             * @example Sports Only
+             */
+            name: string;
+            /**
+             * Includetags
+             * @description Tags to include in filter
+             * @example [
+             *       "Sports",
+             *       "Basketball"
+             *     ]
+             */
+            includeTags: string[];
+            /**
+             * Excludetags
+             * @description Tags to exclude from filter
+             * @example [
+             *       "Politics"
+             *     ]
+             */
+            excludeTags: string[];
+            /**
+             * Isdefault
+             * @description Whether this is the user's default template
+             */
+            isDefault: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             * @description When the template was created
+             */
+            createdAt: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             * @description When the template was last updated
+             */
+            updatedAt: string;
+        };
+        /**
+         * TagTemplateUpdate
+         * @description Request schema for updating a tag template.
+         */
+        TagTemplateUpdate: {
+            /**
+             * Name
+             * @description Template name
+             * @example Sports Only
+             */
+            name?: string | null;
+            /**
+             * Includetags
+             * @description Tags to include in filter
+             * @example [
+             *       "Sports",
+             *       "Basketball"
+             *     ]
+             */
+            includeTags?: string[] | null;
+            /**
+             * Excludetags
+             * @description Tags to exclude from filter
+             * @example [
+             *       "Politics"
+             *     ]
+             */
+            excludeTags?: string[] | null;
+            /**
+             * Isdefault
+             * @description Whether this is the user's default template
+             */
+            isDefault?: boolean | null;
+        };
+        /**
          * TimeseriesInterval
          * @description Valid interval options for timeseries queries.
          * @enum {string}
@@ -2494,7 +2755,7 @@ export interface components {
              */
             customName?: string | null;
             /** @description Trade details */
-            trade: components["schemas"]["TradeResponse"];
+            trade: components["schemas"]["prediction_data__api__traders__schemas__TradeResponse"];
             /**
              * Timestamp
              * Format: date-time
@@ -2703,7 +2964,7 @@ export interface components {
              * Items
              * @description List of trades
              */
-            items: components["schemas"]["prediction_data__api__markets__schemas__TradeResponse"][];
+            items: components["schemas"]["TradeResponse"][];
             /**
              * Total
              * @description Total number of matching trades
@@ -2722,7 +2983,7 @@ export interface components {
         };
         /**
          * TradeResponse
-         * @description Trade record for a trader.
+         * @description Trade record for a market.
          */
         TradeResponse: {
             /**
@@ -2733,37 +2994,31 @@ export interface components {
             id: string;
             /**
              * Traderaddress
-             * @description Trader wallet address
+             * @description Ethereum wallet address of the trader (lowercase)
              * @example 0x1234567890abcdef1234567890abcdef12345678
              */
             traderAddress: string;
             /**
              * Marketid
-             * @description Market ID
+             * @description Market this trade belongs to
              * @example market-12345
              */
             marketId: string;
             /**
-             * Marketquestion
-             * @description Market question text
-             * @example Will Bitcoin reach $100k by 2025?
-             */
-            marketQuestion: string;
-            /**
              * Outcomeid
-             * @description Outcome ID
+             * @description Outcome being traded
              * @example outcome-yes-123
              */
             outcomeId: string;
             /**
              * Outcomename
-             * @description Outcome name
+             * @description Name of the outcome
              * @example Yes
              */
             outcomeName: string;
             /**
              * Side
-             * @description Trade side
+             * @description Trade side (BUY or SELL)
              * @example BUY
              * @enum {string}
              */
@@ -2775,32 +3030,26 @@ export interface components {
              */
             price: number;
             /**
-             * Quantity
+             * Amount
              * @description Number of shares traded
              * @example 1000
              */
-            quantity: number;
+            amount: number;
             /**
              * Usdvalue
-             * @description USD value of trade
+             * @description USD value of the trade (amount * price)
              * @example 650
              */
             usdValue: number;
             /**
-             * Fees
-             * @description Trading fees in USD
-             * @example 1.3
+             * Txhash
+             * @description Blockchain transaction hash
+             * @example 0xabc123...
              */
-            fees: number;
-            /**
-             * Realizedpnl
-             * @description Realized PnL if closing position
-             * @example 50
-             */
-            realizedPnl?: number | null;
+            txHash?: string | null;
             /**
              * Timestamp
-             * @description Trade timestamp (ISO 8601)
+             * @description Trade execution timestamp (ISO 8601)
              * @example 2024-01-15T10:30:00Z
              */
             timestamp: string;
@@ -3392,79 +3641,6 @@ export interface components {
             totalWalletValue: number;
         };
         /**
-         * TradeResponse
-         * @description Trade record for a market.
-         */
-        prediction_data__api__markets__schemas__TradeResponse: {
-            /**
-             * Id
-             * @description Unique trade identifier
-             * @example trade-abc123
-             */
-            id: string;
-            /**
-             * Traderaddress
-             * @description Ethereum wallet address of the trader (lowercase)
-             * @example 0x1234567890abcdef1234567890abcdef12345678
-             */
-            traderAddress: string;
-            /**
-             * Marketid
-             * @description Market this trade belongs to
-             * @example market-12345
-             */
-            marketId: string;
-            /**
-             * Outcomeid
-             * @description Outcome being traded
-             * @example outcome-yes-123
-             */
-            outcomeId: string;
-            /**
-             * Outcomename
-             * @description Name of the outcome
-             * @example Yes
-             */
-            outcomeName: string;
-            /**
-             * Side
-             * @description Trade side (BUY or SELL)
-             * @example BUY
-             * @enum {string}
-             */
-            side: "BUY" | "SELL";
-            /**
-             * Price
-             * @description Execution price (0.0 to 1.0)
-             * @example 0.65
-             */
-            price: number;
-            /**
-             * Amount
-             * @description Number of shares traded
-             * @example 1000
-             */
-            amount: number;
-            /**
-             * Usdvalue
-             * @description USD value of the trade (amount * price)
-             * @example 650
-             */
-            usdValue: number;
-            /**
-             * Txhash
-             * @description Blockchain transaction hash
-             * @example 0xabc123...
-             */
-            txHash?: string | null;
-            /**
-             * Timestamp
-             * @description Trade execution timestamp (ISO 8601)
-             * @example 2024-01-15T10:30:00Z
-             */
-            timestamp: string;
-        };
-        /**
          * PriceHistoryResponse
          * @description Price history timeseries response.
          */
@@ -3520,7 +3696,7 @@ export interface components {
              * Items
              * @description List of trades
              */
-            items: components["schemas"]["TradeResponse"][];
+            items: components["schemas"]["prediction_data__api__traders__schemas__TradeResponse"][];
             /**
              * Total
              * @description Total number of matching trades
@@ -3536,6 +3712,123 @@ export interface components {
              * @description Results per page
              */
             limit: number;
+        };
+        /**
+         * TradeResponse
+         * @description Trade record for a trader.
+         */
+        prediction_data__api__traders__schemas__TradeResponse: {
+            /**
+             * Id
+             * @description Unique trade identifier
+             * @example trade-abc123
+             */
+            id: string;
+            /**
+             * Traderaddress
+             * @description Trader wallet address
+             * @example 0x1234567890abcdef1234567890abcdef12345678
+             */
+            traderAddress: string;
+            /**
+             * Marketid
+             * @description Market ID
+             * @example market-12345
+             */
+            marketId: string;
+            /**
+             * Marketquestion
+             * @description Market question text
+             * @example Will Bitcoin reach $100k by 2025?
+             */
+            marketQuestion: string;
+            /**
+             * Outcomeid
+             * @description Outcome ID
+             * @example outcome-yes-123
+             */
+            outcomeId: string;
+            /**
+             * Outcomename
+             * @description Outcome name
+             * @example Yes
+             */
+            outcomeName: string;
+            /**
+             * Side
+             * @description Trade side
+             * @example BUY
+             * @enum {string}
+             */
+            side: "BUY" | "SELL";
+            /**
+             * Price
+             * @description Execution price (0.0 to 1.0)
+             * @example 0.65
+             */
+            price: number;
+            /**
+             * Quantity
+             * @description Number of shares traded
+             * @example 1000
+             */
+            quantity: number;
+            /**
+             * Usdvalue
+             * @description USD value of trade
+             * @example 650
+             */
+            usdValue: number;
+            /**
+             * Fees
+             * @description Trading fees in USD
+             * @example 1.3
+             */
+            fees: number;
+            /**
+             * Realizedpnl
+             * @description Realized PnL if closing position
+             * @example 50
+             */
+            realizedPnl?: number | null;
+            /**
+             * Timestamp
+             * @description Trade timestamp (ISO 8601)
+             * @example 2024-01-15T10:30:00Z
+             */
+            timestamp: string;
+        };
+        /**
+         * @example {
+         *       "detail": "Resource not found",
+         *       "code": "NOT_FOUND",
+         *       "status": 404
+         *     }
+         */
+        ErrorResponse: {
+            /** @description Human-readable error message */
+            detail: string;
+            /** @description Machine-readable error code */
+            code: string;
+            /** @description HTTP status code */
+            status: number;
+        };
+        /**
+         * @example {
+         *       "detail": "Rate limit exceeded",
+         *       "code": "RATE_LIMIT_EXCEEDED",
+         *       "status": 429,
+         *       "retry_after": 60
+         *     }
+         */
+        RateLimitResponse: {
+            detail: string;
+            /** @enum {string} */
+            code: "RATE_LIMIT_EXCEEDED";
+            /** @enum {integer} */
+            status: 429;
+            /** @description Seconds until rate limit resets */
+            retry_after: number;
         };
     };
     responses: never;
@@ -3805,10 +4098,14 @@ export interface operations {
             query?: {
                 /** @description Filter by category (exact match) */
                 category?: string | null;
+                /** @description Comma-separated categories to exclude (e.g., 'Sports,Crypto') */
+                excludeCategories?: string | null;
                 /** @description Search in question and description */
                 search?: string | null;
-                /** @description Filter by resolved status */
+                /** @description Filter by resolved status. Defaults to false to exclude resolved/expired markets. */
                 resolved?: boolean | null;
+                /** @description Only show markets with recent trading activity. Defaults to false to show all non-resolved markets. */
+                activeOnly?: boolean;
                 /** @description Sort field */
                 sortBy?: "volume" | "liquidity" | "spread" | "priceChange";
                 /** @description Sort direction */
@@ -3829,8 +4126,10 @@ export interface operations {
                 minChange?: number | null;
                 /** @description Maximum 24h price change */
                 maxChange?: number | null;
-                /** @description Comma-separated tags to filter by */
-                tags?: string | null;
+                /** @description Comma-separated tags to include (e.g., 'Sports,Politics'). Markets must belong to events with at least one of these tags. */
+                includeTags?: string | null;
+                /** @description Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Markets will be excluded if their event has any of these tags. */
+                excludeTags?: string | null;
                 /** @description Maximum results to return */
                 limit?: number;
                 /** @description Number of results to skip */
@@ -4749,6 +5048,10 @@ export interface operations {
                 search?: string | null;
                 /** @description Filter by status (e.g., 'active', 'resolved') */
                 status?: string | null;
+                /** @description Comma-separated tags to include (e.g., 'Sports,Politics'). Events must have at least one of these tags. */
+                includeTags?: string | null;
+                /** @description Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Events with any of these tags will be excluded. */
+                excludeTags?: string | null;
                 /** @description Maximum results to return */
                 limit?: number;
                 /** @description Number of results to skip */
@@ -4809,6 +5112,279 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    list_tags_api_v1_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventTagResponse"][];
+                };
+            };
+        };
+    };
+    list_tag_templates_api_v1_tag_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagTemplateListResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_template_api_v1_tag_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagTemplateResponse"];
+                };
+            };
+            /** @description Bad request - template name already exists */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_template_api_v1_tag_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagTemplateResponse"];
+                };
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - template does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_template_api_v1_tag_templates__template_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagTemplateResponse"];
+                };
+            };
+            /** @description Bad request - template name already exists */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - template does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_template_api_v1_tag_templates__template_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized - missing or invalid access token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not found - template does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

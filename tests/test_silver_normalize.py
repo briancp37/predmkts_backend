@@ -208,6 +208,82 @@ class TestPolymarketEventsNormalizer:
         key = self.norm.dedup_key(rec)
         assert key == "polymarket:e1:2026-01-20T15:30:00Z"
 
+    def test_tags_extracted_from_array(self) -> None:
+        """Tags array should be extracted as list of label strings."""
+        rec = {
+            "id": "e1",
+            "updated_at": "2024-06-01T00:00:00Z",
+            "tags": [
+                {"id": "1", "label": "Sports", "slug": "sports"},
+                {"id": "2", "label": "Basketball", "slug": "basketball"},
+                {"id": "3", "label": "NBA", "slug": "nba"},
+            ],
+        }
+        result = self.norm.normalize(rec)
+        assert result["tags"] == ["Sports", "Basketball", "NBA"]
+
+    def test_tags_empty_array_returns_none(self) -> None:
+        """Empty tags array should return None for storage efficiency."""
+        rec = {"id": "e1", "updated_at": "2024-06-01T00:00:00Z", "tags": []}
+        result = self.norm.normalize(rec)
+        assert result["tags"] is None
+
+    def test_tags_missing_returns_none(self) -> None:
+        """Missing tags field should return None."""
+        rec = {"id": "e1", "updated_at": "2024-06-01T00:00:00Z"}
+        result = self.norm.normalize(rec)
+        assert result["tags"] is None
+
+    def test_tags_null_returns_none(self) -> None:
+        """Null tags field should return None."""
+        rec = {"id": "e1", "updated_at": "2024-06-01T00:00:00Z", "tags": None}
+        result = self.norm.normalize(rec)
+        assert result["tags"] is None
+
+    def test_tags_filters_invalid_entries(self) -> None:
+        """Non-dict tag entries and entries without labels should be filtered."""
+        rec = {
+            "id": "e1",
+            "updated_at": "2024-06-01T00:00:00Z",
+            "tags": [
+                {"id": "1", "label": "Sports", "slug": "sports"},
+                {"id": "2"},  # Missing label
+                "string_not_dict",  # Not a dict
+                {"id": "3", "label": "", "slug": "empty"},  # Empty label
+                {"id": "4", "label": None, "slug": "null"},  # Null label
+                {"id": "5", "label": "Politics", "slug": "politics"},
+            ],
+        }
+        result = self.norm.normalize(rec)
+        assert result["tags"] == ["Sports", "Politics"]
+
+    def test_tags_with_gamma_api_format(self) -> None:
+        """Tags from Gamma API format with full metadata should extract labels."""
+        rec = {
+            "id": "e1",
+            "updatedAt": "2024-06-01T00:00:00Z",
+            "tags": [
+                {
+                    "id": "100",
+                    "label": "Crypto",
+                    "slug": "crypto",
+                    "forceShow": True,
+                    "publishedAt": "2024-01-01T00:00:00Z",
+                    "createdAt": "2024-01-01T00:00:00Z",
+                    "updatedAt": "2024-01-02T00:00:00Z",
+                },
+                {
+                    "id": "101",
+                    "label": "DeFi",
+                    "slug": "defi",
+                    "forceShow": False,
+                    "requiresTranslation": True,
+                },
+            ],
+        }
+        result = self.norm.normalize(rec)
+        assert result["tags"] == ["Crypto", "DeFi"]
+
 
 # ---------------------------------------------------------------------------
 # Kalshi Trades

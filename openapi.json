@@ -2,6 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Prediction Markets API",
+    "description": "\n## Overview\n\nREST API for prediction market data and user features. Provides access to market data,\ntrader analytics, watchlists, and tracked trader activity from Polymarket.\n\n## Authentication\n\nMost endpoints require JWT Bearer token authentication. To authenticate:\n\n1. Register a new account via `POST /api/v1/auth/register`\n2. Login via `POST /api/v1/auth/login` to receive access and refresh tokens\n3. Include the access token in the `Authorization` header: `Bearer <access_token>`\n4. When the access token expires (30 min), use `POST /api/v1/auth/refresh` with your refresh token\n\n## Rate Limits\n\nRate limits vary by endpoint category:\n\n| Category | Limit | Description |\n|----------|-------|-------------|\n| Auth endpoints | 10 req/min | Brute force prevention |\n| Public endpoints | 100 req/min | Markets, traders, events |\n| Authenticated endpoints | 200 req/min | Watchlist, tracked traders |\n| CLOB proxy | 50 req/min | Advanced market data (Polymarket proxy) |\n\nRate limit headers returned with each response:\n- `X-RateLimit-Limit`: Request limit for the endpoint\n- `X-RateLimit-Remaining`: Remaining requests in current window\n- `Retry-After`: Seconds to wait (only on 429 responses)\n\n## Error Handling\n\nAll errors return a consistent JSON format:\n\n```json\n{\n  \"detail\": \"Human-readable error message\",\n  \"code\": \"ERROR_CODE\",\n  \"status\": 400\n}\n```\n\nCommon error codes:\n- `NOT_FOUND` (404): Resource not found\n- `DUPLICATE_ENTRY` (400): Duplicate watchlist/tracker entry\n- `TIER_LIMIT_EXCEEDED` (403): Tracked trader limit reached for your tier\n- `UNAUTHORIZED` (401): Invalid or expired credentials\n- `RATE_LIMIT_EXCEEDED` (429): Too many requests\n- `VALIDATION_ERROR` (422): Invalid request parameters\n\n## Versioning\n\nAll API endpoints use URL-based versioning with `/api/v1/` prefix.\nHealth check endpoints are not versioned (`/health`, `/health/ready`, `/health/live`).\n",
     "version": "0.1.0"
   },
   "paths": {
@@ -348,6 +349,24 @@
             "description": "Filter by category (exact match)"
           },
           {
+            "name": "excludeCategories",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated categories to exclude (e.g., 'Sports,Crypto')",
+              "title": "Excludecategories"
+            },
+            "description": "Comma-separated categories to exclude (e.g., 'Sports,Crypto')"
+          },
+          {
             "name": "search",
             "in": "query",
             "required": false,
@@ -378,10 +397,23 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by resolved status",
+              "description": "Filter by resolved status. Defaults to false to exclude resolved/expired markets.",
+              "default": false,
               "title": "Resolved"
             },
-            "description": "Filter by resolved status"
+            "description": "Filter by resolved status. Defaults to false to exclude resolved/expired markets."
+          },
+          {
+            "name": "activeOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only show markets with recent trading activity. Defaults to false to show all non-resolved markets.",
+              "default": false,
+              "title": "Activeonly"
+            },
+            "description": "Only show markets with recent trading activity. Defaults to false to show all non-resolved markets."
           },
           {
             "name": "sortBy",
@@ -562,7 +594,7 @@
             "description": "Maximum 24h price change"
           },
           {
-            "name": "tags",
+            "name": "includeTags",
             "in": "query",
             "required": false,
             "schema": {
@@ -574,10 +606,28 @@
                   "type": "null"
                 }
               ],
-              "description": "Comma-separated tags to filter by",
-              "title": "Tags"
+              "description": "Comma-separated tags to include (e.g., 'Sports,Politics'). Markets must belong to events with at least one of these tags.",
+              "title": "Includetags"
             },
-            "description": "Comma-separated tags to filter by"
+            "description": "Comma-separated tags to include (e.g., 'Sports,Politics'). Markets must belong to events with at least one of these tags."
+          },
+          {
+            "name": "excludeTags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Markets will be excluded if their event has any of these tags.",
+              "title": "Excludetags"
+            },
+            "description": "Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Markets will be excluded if their event has any of these tags."
           },
           {
             "name": "limit",
@@ -2237,7 +2287,7 @@
           "events"
         ],
         "summary": "List Events",
-        "description": "List events with optional filtering and pagination.\n\nReturns a paginated list of events. Events are ordered by last update time\n(most recent first).\n\n- **category**: Filter by event category (exact match)\n- **search**: Search text in event title and description (case-insensitive)\n- **status**: Filter by event status (e.g., 'active', 'resolved')\n- **limit**: Maximum number of events to return (1-500, default 50)\n- **offset**: Number of events to skip for pagination",
+        "description": "List events with optional filtering and pagination.\n\nReturns a paginated list of events. Events are ordered by last update time\n(most recent first).\n\n- **category**: Filter by event category (exact match)\n- **search**: Search text in event title and description (case-insensitive)\n- **status**: Filter by event status (e.g., 'active', 'resolved')\n- **includeTags**: Comma-separated tags to include (events must have at least one)\n- **excludeTags**: Comma-separated tags to exclude (events with any of these are hidden)\n- **limit**: Maximum number of events to return (1-500, default 50)\n- **offset**: Number of events to skip for pagination",
         "operationId": "list_events_api_v1_events_get",
         "parameters": [
           {
@@ -2293,6 +2343,42 @@
               "title": "Status"
             },
             "description": "Filter by status (e.g., 'active', 'resolved')"
+          },
+          {
+            "name": "includeTags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated tags to include (e.g., 'Sports,Politics'). Events must have at least one of these tags.",
+              "title": "Includetags"
+            },
+            "description": "Comma-separated tags to include (e.g., 'Sports,Politics'). Events must have at least one of these tags."
+          },
+          {
+            "name": "excludeTags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Events with any of these tags will be excluded.",
+              "title": "Excludetags"
+            },
+            "description": "Comma-separated tags to exclude (e.g., 'Crypto,NFT'). Events with any of these tags will be excluded."
           },
           {
             "name": "limit",
@@ -2377,6 +2463,295 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "tags": [
+          "tags"
+        ],
+        "summary": "List Tags",
+        "description": "List all available event tags with their event counts.\n\nReturns a list of tags that are associated with events in the platform.\nTags are labels like 'Sports', 'Politics', 'Crypto', etc.\n\nTags are ordered by event count (highest first), making it easy to\nshow the most popular tags first in filter UIs.\n\n**Response fields:**\n- `label`: Display label for the tag (e.g., \"Sports\")\n- `slug`: URL-friendly slug (e.g., \"sports\")\n- `eventCount`: Number of events with this tag\n\n**Caching:** Results are cached for 5 minutes since tags change infrequently.",
+        "operationId": "list_tags_api_v1_tags_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EventTagResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Tags Api V1 Tags Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tag-templates": {
+      "get": {
+        "tags": [
+          "tag-templates"
+        ],
+        "summary": "List tag templates",
+        "description": "Get all tag templates for the authenticated user.\n\nReturns templates ordered by creation date (newest first).",
+        "operationId": "list_tag_templates_api_v1_tag_templates_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagTemplateListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid access token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "tag-templates"
+        ],
+        "summary": "Create tag template",
+        "description": "Create a new tag template.\n\nTemplate names must be unique per user. If isDefault is true,\nany existing default template will be unset.",
+        "operationId": "create_template_api_v1_tag_templates_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagTemplateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - template name already exists"
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid access token"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tag-templates/{template_id}": {
+      "get": {
+        "tags": [
+          "tag-templates"
+        ],
+        "summary": "Get tag template",
+        "description": "Get a specific tag template by ID.",
+        "operationId": "get_template_api_v1_tag_templates__template_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagTemplateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid access token"
+          },
+          "404": {
+            "description": "Not found - template does not exist"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "tag-templates"
+        ],
+        "summary": "Update tag template",
+        "description": "Update a tag template.\n\nAll fields are optional. If isDefault is true, any existing default\ntemplate will be unset. If name is changed, it must be unique.",
+        "operationId": "update_template_api_v1_tag_templates__template_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagTemplateUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagTemplateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - template name already exists"
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid access token"
+          },
+          "404": {
+            "description": "Not found - template does not exist"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "tag-templates"
+        ],
+        "summary": "Delete tag template",
+        "description": "Delete a tag template.",
+        "operationId": "delete_template_api_v1_tag_templates__template_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized - missing or invalid access token"
+          },
+          "404": {
+            "description": "Not found - template does not exist"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
           },
           "422": {
             "description": "Validation Error",
@@ -3455,6 +3830,36 @@
         ],
         "title": "EventResponse",
         "description": "Event response with associated markets."
+      },
+      "EventTagResponse": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Display label for the tag",
+            "example": "Sports"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug",
+            "description": "URL-friendly slug for the tag",
+            "example": "sports"
+          },
+          "eventCount": {
+            "type": "integer",
+            "title": "Eventcount",
+            "description": "Number of events with this tag",
+            "example": 1250
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "slug",
+          "eventCount"
+        ],
+        "title": "EventTagResponse",
+        "description": "Event tag information with counts.\n\nEvent tags are labels like 'Sports', 'Politics', 'Crypto' that are\nassociated with events in the prediction market platform."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4932,6 +5337,218 @@
         "title": "TagResponse",
         "description": "Tag (category) information for filtering markets."
       },
+      "TagTemplateCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Template name",
+            "example": "Sports Only"
+          },
+          "includeTags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Includetags",
+            "description": "Tags to include in filter",
+            "example": [
+              "Sports",
+              "Basketball"
+            ]
+          },
+          "excludeTags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excludetags",
+            "description": "Tags to exclude from filter",
+            "example": [
+              "Politics"
+            ]
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Isdefault",
+            "description": "Whether this is the user's default template",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TagTemplateCreate",
+        "description": "Request schema for creating a tag template."
+      },
+      "TagTemplateListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TagTemplateResponse"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "List of tag templates"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Total number of templates",
+            "example": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "TagTemplateListResponse",
+        "description": "Response schema for listing tag templates."
+      },
+      "TagTemplateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Unique template identifier",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Template name",
+            "example": "Sports Only"
+          },
+          "includeTags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Includetags",
+            "description": "Tags to include in filter",
+            "example": [
+              "Sports",
+              "Basketball"
+            ]
+          },
+          "excludeTags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excludetags",
+            "description": "Tags to exclude from filter",
+            "example": [
+              "Politics"
+            ]
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Isdefault",
+            "description": "Whether this is the user's default template"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat",
+            "description": "When the template was created"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updatedat",
+            "description": "When the template was last updated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "includeTags",
+          "excludeTags",
+          "isDefault",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "TagTemplateResponse",
+        "description": "Response schema for a tag template."
+      },
+      "TagTemplateUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Template name",
+            "example": "Sports Only"
+          },
+          "includeTags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includetags",
+            "description": "Tags to include in filter",
+            "example": [
+              "Sports",
+              "Basketball"
+            ]
+          },
+          "excludeTags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excludetags",
+            "description": "Tags to exclude from filter",
+            "example": [
+              "Politics"
+            ]
+          },
+          "isDefault": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isdefault",
+            "description": "Whether this is the user's default template"
+          }
+        },
+        "type": "object",
+        "title": "TagTemplateUpdate",
+        "description": "Request schema for updating a tag template."
+      },
       "TimeseriesInterval": {
         "type": "string",
         "enum": [
@@ -5266,7 +5883,7 @@
             "example": "Smart Money Alpha"
           },
           "trade": {
-            "$ref": "#/components/schemas/TradeResponse",
+            "$ref": "#/components/schemas/prediction_data__api__traders__schemas__TradeResponse",
             "description": "Trade details"
           },
           "timestamp": {
@@ -5572,7 +6189,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/prediction_data__api__markets__schemas__TradeResponse"
+              "$ref": "#/components/schemas/TradeResponse"
             },
             "type": "array",
             "title": "Items",
@@ -5615,31 +6232,25 @@
           "traderAddress": {
             "type": "string",
             "title": "Traderaddress",
-            "description": "Trader wallet address",
+            "description": "Ethereum wallet address of the trader (lowercase)",
             "example": "0x1234567890abcdef1234567890abcdef12345678"
           },
           "marketId": {
             "type": "string",
             "title": "Marketid",
-            "description": "Market ID",
+            "description": "Market this trade belongs to",
             "example": "market-12345"
-          },
-          "marketQuestion": {
-            "type": "string",
-            "title": "Marketquestion",
-            "description": "Market question text",
-            "example": "Will Bitcoin reach $100k by 2025?"
           },
           "outcomeId": {
             "type": "string",
             "title": "Outcomeid",
-            "description": "Outcome ID",
+            "description": "Outcome being traded",
             "example": "outcome-yes-123"
           },
           "outcomeName": {
             "type": "string",
             "title": "Outcomename",
-            "description": "Outcome name",
+            "description": "Name of the outcome",
             "example": "Yes"
           },
           "side": {
@@ -5649,7 +6260,7 @@
               "SELL"
             ],
             "title": "Side",
-            "description": "Trade side",
+            "description": "Trade side (BUY or SELL)",
             "example": "BUY"
           },
           "price": {
@@ -5658,41 +6269,35 @@
             "description": "Execution price (0.0 to 1.0)",
             "example": 0.65
           },
-          "quantity": {
+          "amount": {
             "type": "number",
-            "title": "Quantity",
+            "title": "Amount",
             "description": "Number of shares traded",
             "example": 1000.0
           },
           "usdValue": {
             "type": "number",
             "title": "Usdvalue",
-            "description": "USD value of trade",
+            "description": "USD value of the trade (amount * price)",
             "example": 650.0
           },
-          "fees": {
-            "type": "number",
-            "title": "Fees",
-            "description": "Trading fees in USD",
-            "example": 1.3
-          },
-          "realizedPnl": {
+          "txHash": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Realizedpnl",
-            "description": "Realized PnL if closing position",
-            "example": 50.0
+            "title": "Txhash",
+            "description": "Blockchain transaction hash",
+            "example": "0xabc123..."
           },
           "timestamp": {
             "type": "string",
             "title": "Timestamp",
-            "description": "Trade timestamp (ISO 8601)",
+            "description": "Trade execution timestamp (ISO 8601)",
             "example": "2024-01-15T10:30:00Z"
           }
         },
@@ -5701,18 +6306,16 @@
           "id",
           "traderAddress",
           "marketId",
-          "marketQuestion",
           "outcomeId",
           "outcomeName",
           "side",
           "price",
-          "quantity",
+          "amount",
           "usdValue",
-          "fees",
           "timestamp"
         ],
         "title": "TradeResponse",
-        "description": "Trade record for a trader."
+        "description": "Trade record for a market."
       },
       "TradeSide": {
         "type": "string",
@@ -6515,102 +7118,6 @@
         "title": "WhaleTradeResponse",
         "description": "Trade response with whale metadata."
       },
-      "prediction_data__api__markets__schemas__TradeResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "Unique trade identifier",
-            "example": "trade-abc123"
-          },
-          "traderAddress": {
-            "type": "string",
-            "title": "Traderaddress",
-            "description": "Ethereum wallet address of the trader (lowercase)",
-            "example": "0x1234567890abcdef1234567890abcdef12345678"
-          },
-          "marketId": {
-            "type": "string",
-            "title": "Marketid",
-            "description": "Market this trade belongs to",
-            "example": "market-12345"
-          },
-          "outcomeId": {
-            "type": "string",
-            "title": "Outcomeid",
-            "description": "Outcome being traded",
-            "example": "outcome-yes-123"
-          },
-          "outcomeName": {
-            "type": "string",
-            "title": "Outcomename",
-            "description": "Name of the outcome",
-            "example": "Yes"
-          },
-          "side": {
-            "type": "string",
-            "enum": [
-              "BUY",
-              "SELL"
-            ],
-            "title": "Side",
-            "description": "Trade side (BUY or SELL)",
-            "example": "BUY"
-          },
-          "price": {
-            "type": "number",
-            "title": "Price",
-            "description": "Execution price (0.0 to 1.0)",
-            "example": 0.65
-          },
-          "amount": {
-            "type": "number",
-            "title": "Amount",
-            "description": "Number of shares traded",
-            "example": 1000.0
-          },
-          "usdValue": {
-            "type": "number",
-            "title": "Usdvalue",
-            "description": "USD value of the trade (amount * price)",
-            "example": 650.0
-          },
-          "txHash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Txhash",
-            "description": "Blockchain transaction hash",
-            "example": "0xabc123..."
-          },
-          "timestamp": {
-            "type": "string",
-            "title": "Timestamp",
-            "description": "Trade execution timestamp (ISO 8601)",
-            "example": "2024-01-15T10:30:00Z"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "traderAddress",
-          "marketId",
-          "outcomeId",
-          "outcomeName",
-          "side",
-          "price",
-          "amount",
-          "usdValue",
-          "timestamp"
-        ],
-        "title": "TradeResponse",
-        "description": "Trade record for a market."
-      },
       "prediction_data__api__polymarket_proxy__schemas__PriceHistoryResponse": {
         "properties": {
           "token_id": {
@@ -6699,7 +7206,7 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/TradeResponse"
+              "$ref": "#/components/schemas/prediction_data__api__traders__schemas__TradeResponse"
             },
             "type": "array",
             "title": "Items",
@@ -6730,13 +7237,234 @@
         ],
         "title": "TradeListResponse",
         "description": "Paginated list of trades."
+      },
+      "prediction_data__api__traders__schemas__TradeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique trade identifier",
+            "example": "trade-abc123"
+          },
+          "traderAddress": {
+            "type": "string",
+            "title": "Traderaddress",
+            "description": "Trader wallet address",
+            "example": "0x1234567890abcdef1234567890abcdef12345678"
+          },
+          "marketId": {
+            "type": "string",
+            "title": "Marketid",
+            "description": "Market ID",
+            "example": "market-12345"
+          },
+          "marketQuestion": {
+            "type": "string",
+            "title": "Marketquestion",
+            "description": "Market question text",
+            "example": "Will Bitcoin reach $100k by 2025?"
+          },
+          "outcomeId": {
+            "type": "string",
+            "title": "Outcomeid",
+            "description": "Outcome ID",
+            "example": "outcome-yes-123"
+          },
+          "outcomeName": {
+            "type": "string",
+            "title": "Outcomename",
+            "description": "Outcome name",
+            "example": "Yes"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "description": "Trade side",
+            "example": "BUY"
+          },
+          "price": {
+            "type": "number",
+            "title": "Price",
+            "description": "Execution price (0.0 to 1.0)",
+            "example": 0.65
+          },
+          "quantity": {
+            "type": "number",
+            "title": "Quantity",
+            "description": "Number of shares traded",
+            "example": 1000.0
+          },
+          "usdValue": {
+            "type": "number",
+            "title": "Usdvalue",
+            "description": "USD value of trade",
+            "example": 650.0
+          },
+          "fees": {
+            "type": "number",
+            "title": "Fees",
+            "description": "Trading fees in USD",
+            "example": 1.3
+          },
+          "realizedPnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnl",
+            "description": "Realized PnL if closing position",
+            "example": 50.0
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "Trade timestamp (ISO 8601)",
+            "example": "2024-01-15T10:30:00Z"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "traderAddress",
+          "marketId",
+          "marketQuestion",
+          "outcomeId",
+          "outcomeName",
+          "side",
+          "price",
+          "quantity",
+          "usdValue",
+          "fees",
+          "timestamp"
+        ],
+        "title": "TradeResponse",
+        "description": "Trade record for a trader."
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "code": {
+            "type": "string",
+            "description": "Machine-readable error code"
+          },
+          "status": {
+            "type": "integer",
+            "description": "HTTP status code"
+          }
+        },
+        "required": [
+          "detail",
+          "code",
+          "status"
+        ],
+        "example": {
+          "detail": "Resource not found",
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "RateLimitResponse": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "RATE_LIMIT_EXCEEDED"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              429
+            ]
+          },
+          "retry_after": {
+            "type": "integer",
+            "description": "Seconds until rate limit resets"
+          }
+        },
+        "required": [
+          "detail",
+          "code",
+          "status",
+          "retry_after"
+        ],
+        "example": {
+          "detail": "Rate limit exceeded",
+          "code": "RATE_LIMIT_EXCEEDED",
+          "status": 429,
+          "retry_after": 60
+        }
       }
     },
     "securitySchemes": {
-      "HTTPBearer": {
+      "BearerAuth": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token obtained from /api/v1/auth/login. Tokens expire after 30 minutes. Use /api/v1/auth/refresh to get new tokens."
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": "User authentication and account management. Register, login, refresh tokens, and manage user profile. Rate limited to 10 req/min per IP."
+    },
+    {
+      "name": "markets",
+      "description": "Prediction market data and search. Browse markets, view details, trades, and price history. Public endpoints rate limited to 100 req/min. Advanced endpoints (CLOB data) limited to 50 req/min."
+    },
+    {
+      "name": "traders",
+      "description": "Trader analytics and leaderboards. View trader profiles, positions, trades, smart scores, and leaderboard rankings. Rate limited to 100 req/min."
+    },
+    {
+      "name": "watchlist",
+      "description": "User market watchlist management. Add, remove, and view watched markets. Requires authentication. Rate limited to 200 req/min per user."
+    },
+    {
+      "name": "tracked-traders",
+      "description": "Tracked trader management and activity feed. Track wallets to monitor their trading activity. Tier-based limits apply (free: 5, pro: 50). Requires authentication. Rate limited to 200 req/min per user."
+    },
+    {
+      "name": "trades",
+      "description": "Smart money and whale trade detection. View high-conviction trades from smart traders and large whale transactions. Rate limited to 100 req/min."
+    },
+    {
+      "name": "events",
+      "description": "Event data and associated markets. Browse events and their markets. Rate limited to 100 req/min."
+    },
+    {
+      "name": "tags",
+      "description": "Event tags for filtering. Get available tags like 'Sports', 'Politics', 'Crypto' with event counts. Use these to filter markets and events. Rate limited to 100 req/min. Cached for 5 minutes."
+    },
+    {
+      "name": "tag-templates",
+      "description": "User's saved tag filter templates. Save combinations of include/exclude tags for quick filtering. Supports a default template for automatic application. Requires authentication. Rate limited to 200 req/min per user."
+    },
+    {
+      "name": "health",
+      "description": "Health check endpoints for monitoring and Kubernetes probes. Not versioned, not rate limited."
+    },
+    {
+      "name": "polymarket-proxy",
+      "description": "Proxy layer for Polymarket APIs (CLOB, Data, Gamma). Provides cached access to real-time market data with rate limiting, circuit breaker protection, and retry logic. Rate limited to 50 req/min."
+    }
+  ]
 }
