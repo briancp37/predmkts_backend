@@ -24,6 +24,16 @@ async def list_events(
     category: str | None = Query(None, description="Filter by category (exact match)"),
     search: str | None = Query(None, description="Search in title and description"),
     status: str | None = Query(None, description="Filter by status (e.g., 'active', 'resolved')"),
+    includeTags: str | None = Query(
+        None,
+        description="Comma-separated tags to include (e.g., 'Sports,Politics'). "
+        "Events must have at least one of these tags.",
+    ),
+    excludeTags: str | None = Query(
+        None,
+        description="Comma-separated tags to exclude (e.g., 'Crypto,NFT'). "
+        "Events with any of these tags will be excluded.",
+    ),
     limit: int = Query(50, ge=1, le=500, description="Maximum results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     client: Client = Depends(get_clickhouse_client),
@@ -36,14 +46,28 @@ async def list_events(
     - **category**: Filter by event category (exact match)
     - **search**: Search text in event title and description (case-insensitive)
     - **status**: Filter by event status (e.g., 'active', 'resolved')
+    - **includeTags**: Comma-separated tags to include (events must have at least one)
+    - **excludeTags**: Comma-separated tags to exclude (events with any of these are hidden)
     - **limit**: Maximum number of events to return (1-500, default 50)
     - **offset**: Number of events to skip for pagination
     """
+    # Parse include tags if provided
+    include_tag_list: list[str] | None = None
+    if includeTags:
+        include_tag_list = [t.strip() for t in includeTags.split(",") if t.strip()]
+
+    # Parse exclude tags if provided
+    exclude_tag_list: list[str] | None = None
+    if excludeTags:
+        exclude_tag_list = [t.strip() for t in excludeTags.split(",") if t.strip()]
+
     events, total = await get_events(
         client,
         category=category,
         search=search,
         status=status,
+        include_tags=include_tag_list,
+        exclude_tags=exclude_tag_list,
         limit=limit,
         offset=offset,
     )

@@ -585,7 +585,8 @@ async def get_markets_advanced(
     max_spread: float | None = None,
     min_change: float | None = None,
     max_change: float | None = None,
-    tags: list[str] | None = None,
+    include_tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -612,7 +613,8 @@ async def get_markets_advanced(
         max_spread: Maximum spread filter (cents).
         min_change: Minimum 24h price change filter.
         max_change: Maximum 24h price change filter.
-        tags: Filter by tags (currently unused - tags not in schema).
+        include_tags: Include only markets whose events have at least one of these tags.
+        exclude_tags: Exclude markets whose events have any of these tags.
         limit: Maximum number of results.
         offset: Offset for pagination.
 
@@ -642,6 +644,18 @@ async def get_markets_advanced(
     if exclude_categories:
         conditions.append("(e.category IS NULL OR e.category NOT IN {exclude_categories:Array(String)})")
         params["exclude_categories"] = exclude_categories
+
+    # Tag filtering using ClickHouse array functions on dim_event.tags
+    if include_tags:
+        # Market must belong to an event that has at least one of the include tags
+        conditions.append("hasAny(e.tags, {include_tags:Array(String)})")
+        params["include_tags"] = include_tags
+
+    if exclude_tags:
+        # Market must NOT belong to an event that has any of the exclude tags
+        # Using NOT hasAny() to exclude events with any matching tags
+        conditions.append("NOT hasAny(e.tags, {exclude_tags:Array(String)})")
+        params["exclude_tags"] = exclude_tags
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 

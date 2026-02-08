@@ -67,6 +67,8 @@ async def get_events(
     category: str | None = None,
     search: str | None = None,
     status: str | None = None,
+    include_tags: list[str] | None = None,
+    exclude_tags: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -77,6 +79,8 @@ async def get_events(
         category: Filter by category (exact match).
         search: Search query for title/description (ILIKE).
         status: Filter by status (exact match).
+        include_tags: Include only events that have at least one of these tags.
+        exclude_tags: Exclude events that have any of these tags.
         limit: Maximum number of results.
         offset: Offset for pagination.
 
@@ -100,6 +104,17 @@ async def get_events(
     if status:
         conditions.append("e.status = {status:String}")
         params["status"] = status
+
+    # Tag filtering using ClickHouse array functions on dim_event.tags
+    if include_tags:
+        # Event must have at least one of the include tags
+        conditions.append("hasAny(e.tags, {include_tags:Array(String)})")
+        params["include_tags"] = include_tags
+
+    if exclude_tags:
+        # Event must NOT have any of the exclude tags
+        conditions.append("NOT hasAny(e.tags, {exclude_tags:Array(String)})")
+        params["exclude_tags"] = exclude_tags
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 

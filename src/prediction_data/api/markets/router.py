@@ -82,8 +82,20 @@ async def list_markets(
 async def list_markets_advanced(
     request: Request,
     category: str | None = Query(None, description="Filter by category (exact match)"),
+    excludeCategories: str | None = Query(
+        None,
+        description="Comma-separated categories to exclude (e.g., 'Sports,Crypto')",
+    ),
     search: str | None = Query(None, description="Search in question and description"),
-    resolved: bool | None = Query(None, description="Filter by resolved status"),
+    resolved: bool | None = Query(
+        False,
+        description="Filter by resolved status. Defaults to false to exclude resolved/expired markets.",
+    ),
+    activeOnly: bool = Query(
+        False,
+        description="Only show markets with recent trading activity. "
+        "Defaults to false to show all non-resolved markets.",
+    ),
     sortBy: Literal["volume", "liquidity", "spread", "priceChange"] = Query(
         "volume", description="Sort field"
     ),
@@ -96,7 +108,16 @@ async def list_markets_advanced(
     maxSpread: float | None = Query(None, description="Maximum spread in cents"),
     minChange: float | None = Query(None, description="Minimum 24h price change"),
     maxChange: float | None = Query(None, description="Maximum 24h price change"),
-    tags: str | None = Query(None, description="Comma-separated tags to filter by"),
+    includeTags: str | None = Query(
+        None,
+        description="Comma-separated tags to include (e.g., 'Sports,Politics'). "
+        "Markets must belong to events with at least one of these tags.",
+    ),
+    excludeTags: str | None = Query(
+        None,
+        description="Comma-separated tags to exclude (e.g., 'Crypto,NFT'). "
+        "Markets will be excluded if their event has any of these tags.",
+    ),
     limit: int = Query(50, ge=1, le=500, description="Maximum results to return"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     page: int | None = Query(None, ge=1, description="Page number (alternative to offset)"),
@@ -137,17 +158,29 @@ async def list_markets_advanced(
     if page is not None:
         effective_offset = (page - 1) * limit
 
-    # Parse tags if provided
-    tag_list: list[str] | None = None
-    if tags:
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    # Parse include tags if provided
+    include_tag_list: list[str] | None = None
+    if includeTags:
+        include_tag_list = [t.strip() for t in includeTags.split(",") if t.strip()]
+
+    # Parse exclude tags if provided
+    exclude_tag_list: list[str] | None = None
+    if excludeTags:
+        exclude_tag_list = [t.strip() for t in excludeTags.split(",") if t.strip()]
+
+    # Parse exclude categories if provided
+    exclude_category_list: list[str] | None = None
+    if excludeCategories:
+        exclude_category_list = [c.strip() for c in excludeCategories.split(",") if c.strip()]
 
     markets, total = await get_markets_advanced(
         client,
         clob_client,
         category=category,
+        exclude_categories=exclude_category_list,
         search=search,
         resolved=resolved,
+        active_only=activeOnly,
         sort_by=sortBy,
         sort_order=sortOrder,
         min_volume=minVolume,
@@ -158,7 +191,8 @@ async def list_markets_advanced(
         max_spread=maxSpread,
         min_change=minChange,
         max_change=maxChange,
-        tags=tag_list,
+        include_tags=include_tag_list,
+        exclude_tags=exclude_tag_list,
         limit=limit,
         offset=effective_offset,
     )

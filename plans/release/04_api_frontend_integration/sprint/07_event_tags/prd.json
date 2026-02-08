@@ -59,7 +59,7 @@
       "Add same tag filtering to GET /events endpoint",
       "Update OpenAPI spec and regenerate TypeScript types"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "PostgreSQL Tag Templates",

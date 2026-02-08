@@ -63,10 +63,33 @@ GROUP BY tag
 ORDER BY event_count DESC
 ```
 
+### 2026-02-08: API Tag Filtering (COMPLETE)
+- Added includeTags and excludeTags query params to GET /markets/advanced
+  - Both params accept comma-separated tag strings
+  - includeTags: markets must belong to events with at least one of these tags
+  - excludeTags: markets with events containing any of these tags are excluded
+- Updated markets/router.py:
+  - Replaced single `tags` param with `includeTags` and `excludeTags`
+  - Added parsing logic for both comma-separated params
+- Updated markets/service.py:
+  - Added `include_tags` and `exclude_tags` parameters to get_markets_advanced()
+  - Implemented filtering using ClickHouse `hasAny(e.tags, {tags:Array(String)})`
+  - For exclusion: `NOT hasAny(e.tags, {exclude_tags:Array(String)})`
+- Added same tag filtering to GET /events endpoint:
+  - Updated events/router.py with includeTags and excludeTags params
+  - Updated events/service.py with include_tags and exclude_tags filtering
+- All tests pass (frontend: 550, backend API: 52)
+- Type checking passes (mypy: no issues in 8 source files)
+
+**Note for next developer:**
+- OpenAPI spec needs regeneration and TypeScript types need update
+- Run: `uvicorn prediction_data.api.main:app --reload` then `curl http://localhost:8000/openapi.json > openapi.json`
+- Then: `cd web && npm run generate-api`
+
 ## In Progress
 
-### API Tag Filtering
-- Next step: Add includeTags/excludeTags query params to GET /markets/advanced
+### PostgreSQL Tag Templates
+- Next step: Create tag_templates table migration
 
 ## Blockers/Issues
 
