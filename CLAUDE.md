@@ -337,6 +337,62 @@ docker push 434552667190.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest
 
 **Task Definition:** `prediction-data-ingest-prod` (container name: `prediction-data`)
 
+### Fast Feedback Loop for Code Changes
+
+When making changes that will run on ECS, follow this order to catch issues early:
+
+**1. Unit test the change locally (seconds):**
+```bash
+# Test specific functions directly
+python -c "
+from prediction_data.silver.normalize import _derive_polymarket_status
+print(_derive_polymarket_status({'active': True}))  # Should print 'active'
+"
+
+# Run related unit tests
+pytest tests/test_silver_normalize.py -v -k "status" --tb=short
+```
+
+**2. Dry-run the CLI command locally (seconds):**
+```bash
+# Verify discovery and manifest selection without processing
+prediction-data silver process --platform polymarket --entity markets \
+    --dt 2026-02-06 --dry-run
+```
+
+**3. Run a small sample locally (1-2 min):**
+```bash
+# Process single day to verify end-to-end
+prediction-data silver process --platform polymarket --entity markets \
+    --dt 2026-02-06 --force-reprocess
+```
+
+**4. Test Docker image locally before pushing (2-3 min):**
+```bash
+# Build for amd64
+docker buildx build --platform linux/amd64 --load -t prediction-data:test .
+
+# Run the same command in container
+docker run --rm \
+    -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+    -e BRONZE_BUCKET=prediction-bronze-prod \
+    prediction-data:test \
+    silver process --platform polymarket --entity markets --dt 2026-02-06 --dry-run
+```
+
+**5. Only then push to ECR and run on ECS:**
+```bash
+docker tag prediction-data:test 434552667190.dkr.ecr.us-east-1.amazonaws.com/prediction-data:latest
+docker push ...
+aws ecs run-task ...
+```
+
+**Common mistakes that waste time:**
+- Pushing ARM64 image to ECR (Fargate needs amd64) → Always use `--platform linux/amd64`
+- Running full date range on ECS without testing single day locally first
+- Not checking memory requirements → Catalog entities need 16GB+
+- Waiting for ECS tasks without checking if they're producing logs
+
 **Running ECS tasks manually:**
 
 ```bash
