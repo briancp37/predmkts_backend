@@ -70,7 +70,7 @@
       "Create Alembic migration for tag_templates table",
       "Add unique constraint on (user_id, name) to prevent duplicate template names"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "API Tag Templates CRUD",

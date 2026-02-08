@@ -86,10 +86,28 @@ ORDER BY event_count DESC
 - Run: `uvicorn prediction_data.api.main:app --reload` then `curl http://localhost:8000/openapi.json > openapi.json`
 - Then: `cd web && npm run generate-api`
 
+### 2026-02-08: PostgreSQL Tag Templates (COMPLETE)
+- Created TagTemplate SQLAlchemy model in src/prediction_data/db/models/tag_template.py
+  - Fields: id (UUID), user_id (FK to users), name (str), include_tags (array), exclude_tags (array), is_default (bool), created_at, updated_at
+  - Foreign key to users with CASCADE delete
+  - Unique constraint on (user_id, name) to prevent duplicate template names
+- Implemented StringArrayType TypeDecorator for cross-database compatibility:
+  - Uses PostgreSQL ARRAY(String) in production
+  - Falls back to JSON in SQLite for tests
+- Added tag_templates relationship to User model
+- Exported TagTemplate from db/__init__.py and db/models/__init__.py
+- Table auto-created at API startup via Base.metadata.create_all()
+- All tests pass (frontend: 550, backend API: 52)
+- Type checking passes
+
+**Note for next developer:**
+- No Alembic migration needed - tables are auto-created on startup
+- For existing production databases, restart the API to create the table
+
 ## In Progress
 
-### PostgreSQL Tag Templates
-- Next step: Create tag_templates table migration
+### API Tag Templates CRUD
+- Next step: Create endpoints for template management
 
 ## Blockers/Issues
 

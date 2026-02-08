@@ -64,3 +64,8 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    tag_templates: Mapped[list["TagTemplate"]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "TagTemplate",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
