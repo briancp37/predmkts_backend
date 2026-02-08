@@ -86,12 +86,13 @@ async def get_markets(
             m.canonical_market_id AS conditionId,
             m.market_slug AS slug,
             e.slug AS eventSlug,
-            m.question,
-            m.description,
+            m.question AS question,
+            m.description AS description,
             e.category,
-            m.status,
-            m.tokens,
-            m.updated_at AS updatedAt
+            m.status AS status,
+            m.tokens AS tokens,
+            m.updated_at AS updatedAt,
+            e.image_url AS imageUrl
         FROM prediction_gold.dim_market m
         LEFT JOIN prediction_gold.dim_event e
             ON m.platform = e.platform AND m.event_id = e.platform_event_id
@@ -158,6 +159,9 @@ async def get_markets(
             else:
                 created_at_str = str(updated_at)
 
+        # Get image URL from event, use empty string if not available
+        image_url = row.get("imageUrl") or None
+
         results.append(
             {
                 "id": market_id,
@@ -173,7 +177,7 @@ async def get_markets(
                 "totalVolume": 0.0,  # Would come from market_mark_daily aggregate
                 "liquidity": 0.0,  # Would come from CLOB or market_mark_daily
                 "createdAt": created_at_str,
-                "imageUrl": None,  # Not in current schema
+                "imageUrl": image_url,
                 "outcomes": market_outcomes,
             }
         )
@@ -207,12 +211,13 @@ async def get_market_by_id(
             m.canonical_market_id AS conditionId,
             m.market_slug AS slug,
             e.slug AS eventSlug,
-            m.question,
-            m.description,
+            m.question AS question,
+            m.description AS description,
             e.category,
-            m.status,
-            m.tokens,
-            m.updated_at AS updatedAt
+            m.status AS status,
+            m.tokens AS tokens,
+            m.updated_at AS updatedAt,
+            e.image_url AS imageUrl
         FROM prediction_gold.dim_market m
         LEFT JOIN prediction_gold.dim_event e
             ON m.platform = e.platform AND m.event_id = e.platform_event_id
@@ -271,6 +276,9 @@ async def get_market_by_id(
         else:
             created_at_str = str(updated_at)
 
+    # Get image URL from event
+    image_url = row.get("imageUrl") or None
+
     return {
         "id": market_id_resolved,
         "polymarketId": row["polymarketId"],
@@ -285,7 +293,7 @@ async def get_market_by_id(
         "totalVolume": 0.0,  # Would come from market_mark_daily aggregate
         "liquidity": 0.0,  # Would come from CLOB or market_mark_daily
         "createdAt": created_at_str,
-        "imageUrl": None,  # Not in current schema
+        "imageUrl": image_url,
         "outcomes": market_outcomes,
     }
 
@@ -563,8 +571,10 @@ async def get_markets_advanced(
     clob_client: ClobApiClient,
     *,
     category: str | None = None,
+    exclude_categories: list[str] | None = None,
     search: str | None = None,
     resolved: bool | None = None,
+    active_only: bool = True,
     sort_by: str = "volume",
     sort_order: str = "desc",
     min_volume: float | None = None,
@@ -590,6 +600,8 @@ async def get_markets_advanced(
         category: Filter by category (exact match via event join).
         search: Search query for question/description (ILIKE).
         resolved: Filter by resolved status (True = "resolved", False = others).
+        active_only: If True (default), only include markets with recent trading
+            activity (within last 1-2 days). This filters out expired/resolved markets.
         sort_by: Sort field (volume, liquidity, spread, priceChange).
         sort_order: Sort direction (asc, desc).
         min_volume: Minimum 24h volume filter.
@@ -627,16 +639,48 @@ async def get_markets_advanced(
         conditions.append("e.category = {category:String}")
         params["category"] = category
 
+    if exclude_categories:
+        conditions.append("(e.category IS NULL OR e.category NOT IN {exclude_categories:Array(String)})")
+        params["exclude_categories"] = exclude_categories
+
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-    # Get total count first (without advanced filters that need CLOB data)
-    count_query = f"""
-        SELECT COUNT(DISTINCT m.platform_market_id)
-        FROM prediction_gold.dim_market m
-        LEFT JOIN prediction_gold.dim_event e
-            ON m.platform = e.platform AND m.event_id = e.platform_event_id
-        WHERE {where_clause}
+    # Build the recent activity subquery - used for both filtering and data
+    # When active_only=True, filter to markets with activity in recent days
+    # Uses MAX(day_utc) as reference to handle data lag/timezone issues
+    # Note: dim_market may lag behind market_mark_daily, so we use a 4-day window
+    # to ensure overlap between the two tables
+    recent_activity_days = 4
+    recent_activity_subquery = f"""
+        SELECT
+            market_id,
+            sum(volume_usd_24h) AS volume_24h,
+            0.0 AS price_change_24h
+        FROM prediction_gold.market_mark_daily
+        WHERE day_utc >= (SELECT MAX(day_utc) FROM prediction_gold.market_mark_daily) - {recent_activity_days}
+        GROUP BY market_id
+        HAVING sum(volume_usd_24h) > 0
     """
+
+    # Get total count first (without advanced filters that need CLOB data)
+    if active_only:
+        count_query = f"""
+            SELECT COUNT(DISTINCT m.platform_market_id)
+            FROM prediction_gold.dim_market m
+            LEFT JOIN prediction_gold.dim_event e
+                ON m.platform = e.platform AND m.event_id = e.platform_event_id
+            INNER JOIN ({recent_activity_subquery}) mark_recent
+                ON mark_recent.market_id = m.platform_market_id
+            WHERE {where_clause}
+        """
+    else:
+        count_query = f"""
+            SELECT COUNT(DISTINCT m.platform_market_id)
+            FROM prediction_gold.dim_market m
+            LEFT JOIN prediction_gold.dim_event e
+                ON m.platform = e.platform AND m.event_id = e.platform_event_id
+            WHERE {where_clause}
+        """
     base_total = await execute_query_count(count_query, params, client=client)
 
     if base_total == 0:
@@ -647,8 +691,17 @@ async def get_markets_advanced(
     fetch_limit = min(limit * 3, 500)  # Fetch up to 3x the limit, max 500
 
     # Get markets with volume data from market_mark_daily
-    # We aggregate both total historical volume and recent (last day) volume
-    # Uses the latest available date in case data is stale
+    # When active_only=True, use INNER JOIN to only get markets with recent activity
+    # Otherwise use LEFT JOIN to include all markets and sort by total volume
+    if active_only:
+        recent_join_type = "INNER JOIN"
+        recent_volume_filter = f"WHERE day_utc >= (SELECT MAX(day_utc) FROM prediction_gold.market_mark_daily) - {recent_activity_days}"
+        order_clause = "ORDER BY COALESCE(mark_recent.volume_24h, 0) DESC"
+    else:
+        recent_join_type = "LEFT JOIN"
+        recent_volume_filter = ""  # No date filter - get all volume
+        order_clause = "ORDER BY COALESCE(mark_total.total_volume, 0) DESC"
+
     markets_query = f"""
         SELECT
             m.platform_market_id AS id,
@@ -656,27 +709,29 @@ async def get_markets_advanced(
             m.canonical_market_id AS conditionId,
             m.market_slug AS slug,
             e.slug AS eventSlug,
-            m.question,
-            m.description,
+            m.question AS question,
+            m.description AS description,
             e.category,
-            m.status,
-            m.tokens,
+            m.status AS status,
+            m.tokens AS tokens,
             m.updated_at AS updatedAt,
+            e.image_url AS imageUrl,
             mark_recent.volume_24h,
             mark_recent.price_change_24h,
             mark_total.total_volume
         FROM prediction_gold.dim_market m
         LEFT JOIN prediction_gold.dim_event e
             ON m.platform = e.platform AND m.event_id = e.platform_event_id
-        LEFT JOIN (
-            -- Recent volume: use the latest available day's data
+        {recent_join_type} (
+            -- Recent volume: markets with activity in last N days (relative to latest data)
             SELECT
                 market_id,
                 sum(volume_usd_24h) AS volume_24h,
                 0.0 AS price_change_24h
             FROM prediction_gold.market_mark_daily
-            WHERE day_utc >= (SELECT MAX(day_utc) FROM prediction_gold.market_mark_daily)
+            {recent_volume_filter}
             GROUP BY market_id
+            HAVING sum(volume_usd_24h) > 0
         ) mark_recent ON mark_recent.market_id = m.platform_market_id
         LEFT JOIN (
             -- Total historical volume: sum across all available days
@@ -687,7 +742,7 @@ async def get_markets_advanced(
             GROUP BY market_id
         ) mark_total ON mark_total.market_id = m.platform_market_id
         WHERE {where_clause}
-        ORDER BY COALESCE(mark_total.total_volume, 0) DESC
+        {order_clause}
         LIMIT {fetch_limit}
     """
     market_rows = await execute_query(markets_query, params, client=client)
@@ -828,6 +883,9 @@ async def get_markets_advanced(
             else:
                 created_at_str = str(updated_at)
 
+        # Get image URL from event
+        image_url = row.get("imageUrl") or None
+
         results.append(
             {
                 "id": market_id,
@@ -843,7 +901,7 @@ async def get_markets_advanced(
                 "totalVolume": total_volume,  # Sum of all available daily volumes
                 "liquidity": liquidity,
                 "createdAt": created_at_str,
-                "imageUrl": None,  # Not in current schema
+                "imageUrl": image_url,
                 "outcomes": market_outcomes,
                 # Advanced CLOB fields
                 "bid": best_bid,
@@ -975,12 +1033,13 @@ async def get_markets_screener(
             m.canonical_market_id AS conditionId,
             m.market_slug AS slug,
             e.slug AS eventSlug,
-            m.question,
-            m.description,
+            m.question AS question,
+            m.description AS description,
             e.category,
-            m.status,
-            m.tokens,
+            m.status AS status,
+            m.tokens AS tokens,
             m.updated_at AS updatedAt,
+            e.image_url AS imageUrl,
             metrics.window_volume,
             metrics.price_change,
             metrics.latest_price,
@@ -1100,6 +1159,9 @@ async def get_markets_screener(
             else:
                 created_at_str = str(updated_at)
 
+        # Get image URL from event
+        image_url = row.get("imageUrl") or None
+
         results.append(
             {
                 "id": market_id,
@@ -1115,7 +1177,7 @@ async def get_markets_screener(
                 "totalVolume": window_volume,
                 "liquidity": 0.0,  # Not computed for screener
                 "createdAt": created_at_str,
-                "imageUrl": None,  # Not in current schema
+                "imageUrl": image_url,
                 "outcomes": market_outcomes,
                 # Advanced fields (no CLOB data for screener)
                 "bid": None,
@@ -1150,6 +1212,12 @@ def _parse_tokens_to_outcomes(
 ) -> list[dict[str, Any]]:
     """Parse tokens JSON string into outcome dicts.
 
+    Handles two formats:
+    - List of token ID strings: ["token_id_1", "token_id_2"]
+    - List of token dicts: [{"token_id": "...", "outcome": "..."}]
+
+    For binary markets (2 tokens), assigns "Yes"/"No" as default names.
+
     Args:
         market_id: The market ID for generating outcome IDs.
         tokens_json: JSON string of tokens array.
@@ -1168,13 +1236,24 @@ def _parse_tokens_to_outcomes(
     if not isinstance(tokens, list):
         return []
 
+    # Default outcome names for binary markets
+    default_names = ["Yes", "No"] if len(tokens) == 2 else None
+
     outcomes: list[dict[str, Any]] = []
     for idx, token in enumerate(tokens):
-        if not isinstance(token, dict):
+        # Handle string token IDs (current format from clobTokenIds)
+        if isinstance(token, str):
+            token_id = token
+            if default_names and idx < len(default_names):
+                outcome_name = default_names[idx]
+            else:
+                outcome_name = f"Outcome {idx + 1}"
+        # Handle dict format (legacy or future format)
+        elif isinstance(token, dict):
+            token_id = str(token.get("token_id", ""))
+            outcome_name = str(token.get("outcome", f"Outcome {idx + 1}"))
+        else:
             continue
-
-        token_id = str(token.get("token_id", ""))
-        outcome_name = str(token.get("outcome", f"Outcome {idx + 1}"))
 
         outcomes.append(
             {
