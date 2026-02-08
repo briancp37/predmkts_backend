@@ -158,3 +158,15 @@ export {
   type EventListResponse,
   type UseEventsParams,
 } from './use-event';
+
+// Tag template hooks (Sprint 07 - Event Tags)
+export {
+  useTagTemplates,
+  useCreateTagTemplate,
+  useUpdateTagTemplate,
+  useDeleteTagTemplate,
+  type TagTemplate,
+  type TagTemplatesResponse,
+  type CreateTagTemplateRequest,
+  type UpdateTagTemplateRequest,
+} from './use-tag-templates';

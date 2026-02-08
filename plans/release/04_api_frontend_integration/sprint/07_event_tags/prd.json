@@ -114,7 +114,7 @@
       "Auto-apply default template on page load if set",
       "Add edit and delete buttons for each template"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "Frontend Markets Page Integration",

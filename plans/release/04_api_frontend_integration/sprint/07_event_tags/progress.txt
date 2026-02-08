@@ -180,10 +180,61 @@ ORDER BY event_count DESC
 - The existing TagsModal in markets page only supports single-mode (include only)
 - TagFilter supports both include and exclude modes which is required for the API params
 
+### 2026-02-08: Frontend Tag Templates UI (COMPLETE)
+- Created web/src/hooks/use-tag-templates.ts with React Query hooks:
+  - useTagTemplates() - Fetch user's templates with auth check
+  - useCreateTagTemplate() - Create with optimistic updates
+  - useUpdateTagTemplate() - Update with optimistic updates
+  - useDeleteTagTemplate() - Delete with optimistic updates
+  - Automatic cache invalidation on mutations
+  - Error rollback on mutation failure
+- Created web/src/components/TagTemplateManager.tsx with full template management:
+  - TemplateDropdown: Selector dropdown with template names, tag counts, default indicator
+  - SaveTemplateModal: Modal for creating/editing templates with name, tags summary, default toggle
+  - TagTemplateManager: Main component integrating all functionality
+- Features implemented:
+  - Template selector dropdown to quickly apply saved templates
+  - "Save as Template" button (appears when tags are selected and no template is active)
+  - Star icon for default template indicator
+  - Auto-apply default template on page load
+  - Edit button opens modal with current template data
+  - Delete with confirmation step (Confirm/Cancel)
+  - Optimistic UI updates for all CRUD operations
+- Updated hooks/index.ts to export new hooks and types
+- All tests pass (frontend: 550)
+- Type checking passes (tsc --noEmit: no errors)
+
+**Usage example:**
+```tsx
+import { TagTemplateManager } from '@/components/TagTemplateManager';
+import type { TagFilterSelection } from '@/components/TagFilter';
+
+function MarketsPage() {
+  const [selection, setSelection] = useState<TagFilterSelection>({
+    includeTags: [],
+    excludeTags: [],
+  });
+
+  return (
+    <TagTemplateManager
+      currentSelection={selection}
+      onApplyTemplate={setSelection}
+      onClearSelection={() => setSelection({ includeTags: [], excludeTags: [] })}
+    />
+  );
+}
+```
+
+**Note for next developer:**
+- TagTemplateManager is ready to integrate into the Markets page
+- Works alongside TagFilter component for full tag filtering experience
+- Requires authentication - component returns null when not logged in
+- The TemplateDropdown can also be used standalone if needed
+
 ## In Progress
 
-### Frontend Tag Templates UI
-- Next step: Create web/src/components/TagTemplateManager.tsx for template CRUD
+### Frontend Markets Page Integration
+- Next step: Add TagFilter and TagTemplateManager to web/src/app/markets/page.tsx
 
 ## Blockers/Issues
 
