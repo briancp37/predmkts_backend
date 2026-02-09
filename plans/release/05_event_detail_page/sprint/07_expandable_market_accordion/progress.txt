@@ -31,8 +31,22 @@ Implementation notes:
 - Basic placeholder content in expanded state (tabs TBD in market_accordion_content)
 
 ### market_accordion_header
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/components/event/market-accordion.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Created MarketAccordionHeader component with enhanced visual design
+- Large probability display with color-coded background (getProbabilityColor)
+- Bid/ask spread shown inline in "Xc / Yc" format from bestBid/bestAsk
+- 24h volume and liquidity indicators with formatted numbers
+- PriceChangeIndicator component with TrendingUp/TrendingDown icons
+- Optional profile image/avatar support via imageUrl prop
+- Hover states: subtle bg-gray-50/80, shadow-md on item hover
+- Expanded state: bg-gray-50/50 for visual feedback
+- Added bestBid/bestAsk fields to MarketOutcome interface
+- Added imageUrl field to AccordionMarket interface
+- Memoized components (memo) for performance
 
 ### market_accordion_content
 Status: NOT STARTED
@@ -94,3 +108,22 @@ Next priority should be `market_accordion_header` to add proper header styling w
 probability display, bid/ask spread, and volume indicators. After that,
 `market_accordion_content` to implement the tabbed interface for Order Book, Graph,
 and Resolution views.
+
+### 2026-02-08: market_accordion_header
+Implemented enhanced MarketAccordionHeader component with:
+- Large probability display with color-coded backgrounds using getProbabilityColor
+- Bid/ask spread inline display (reads from bestBid/bestAsk on MarketOutcome)
+- 24h volume and liquidity indicators with abbreviated formatting
+- PriceChangeIndicator with TrendingUp/TrendingDown lucide icons
+- Optional candidate avatar/image support via imageUrl on AccordionMarket
+- Hover/selected state feedback with subtle background changes
+- Chevron rotation animation on expand/collapse
+- All header components memoized for performance
+
+Updated types:
+- MarketOutcome: added bestBid, bestAsk optional fields
+- AccordionMarket: added imageUrl optional field
+
+Next priority should be `market_accordion_content` to implement the tabbed interface
+with Order Book, Graph, and Resolution tabs. After that, `buy_buttons_inline` for
+quick trading from the header.
