@@ -117,8 +117,18 @@ Implementation notes:
 - Icons: AlertCircle, RefreshCw from lucide-react
 
 ### accordion_mobile_responsive
-Status: NOT STARTED
-Files: web/src/components/event/market-accordion.tsx
+Status: COMPLETE
+Files: web/src/components/event/market-accordion.tsx, web/src/index.css
+Completed: 2026-02-08
+
+Implementation notes:
+- Stacked vertical layout on mobile (< 640px) with reduced padding
+- Smaller font sizes and avatar on mobile for compact view
+- Tabs scrollable horizontally with hidden scrollbar
+- All touch targets meet 44px minimum accessibility requirement
+- Buy buttons show abbreviated labels (Y/N) on mobile
+- Secondary info (bid/ask, liquidity) hidden on mobile
+- Added active states for touch feedback
 
 ### event_page_integration
 Status: COMPLETE
@@ -328,3 +338,66 @@ Typecheck and all 550 tests pass.
 
 Next priority should be `accordion_mobile_responsive` to optimize the accordion
 for mobile viewports, or one of the remaining tab integration improvements.
+
+### 2026-02-08: accordion_mobile_responsive
+Implemented comprehensive mobile responsive optimizations for the market accordion:
+
+Changes to web/src/components/event/market-accordion.tsx:
+
+MarketAccordionHeader:
+- Refactored to use responsive flex layout (column on mobile, row on desktop)
+- Mobile layout stacks content vertically with reduced padding (p-3 vs p-4)
+- Top row shows: avatar (8x8 vs 10x10), question (text-sm vs text-base), probability badge, chevron
+- Bottom row shows: price change indicator, volume, and Buy Yes/No buttons
+- Secondary info (bid/ask, liquidity) hidden on mobile to reduce clutter
+- Probability display uses smaller format on mobile (text-lg vs text-2xl)
+
+BuyButton:
+- Added `size` prop ('sm' | 'default') for responsive sizing
+- Small size: reduced padding (px-2 py-1.5), smaller text (11px), min-h-[32px]
+- Small buttons show abbreviated labels ("Y" / "N" vs "Yes" / "No")
+- Added active states (active:bg-green-300/red-300) for touch feedback
+
+PriceChangeIndicator:
+- Added `size` prop ('sm' | 'default') for responsive sizing
+- Small size: reduced padding, smaller text (11px), smaller icon (2.5x2.5)
+
+MarketAccordionContent (tabs):
+- Tab list is horizontally scrollable with scrollbar-hide CSS utility
+- Tab triggers have min-h-[44px] on mobile for proper touch targets
+- Reduced padding on mobile (px-3 py-3 vs px-4 py-2.5)
+- Tab content container uses reduced padding on mobile (p-3 vs p-4)
+
+MarketAccordionRowSkeleton:
+- Separate mobile and desktop layouts for skeleton loading state
+- Mobile skeleton matches new stacked layout structure
+- Desktop skeleton unchanged
+
+MultiMarketControls:
+- Search input is full-width on mobile (no max-w-sm)
+- Taller input on mobile (py-2.5) for better touch target
+- Clear button has larger touch target (p-2)
+- Sort button has min-h-[44px] on mobile
+- Sort dropdown menu items have larger touch targets (py-3 vs py-2)
+- Count text shows abbreviated format on mobile ("X of Y" vs "X of Y markets")
+
+ShowMoreButton / ShowLessButton:
+- Increased vertical padding on mobile (py-3.5 vs py-3)
+- Added active states for touch feedback
+
+CSS additions (web/src/index.css):
+- Added .scrollbar-hide utility class for hiding scrollbars while allowing scroll
+- Works across all browsers (Firefox, Chrome/Safari/Opera, IE/Edge)
+
+Accessibility notes:
+- All interactive elements have minimum 44px touch target height on mobile
+- Tab navigation fully keyboard accessible via Radix primitives
+- Focus states maintained for all interactive elements
+
+Typecheck and all 550 tests pass.
+
+Remaining items:
+- orderbook_tab_integration: needs refresh button
+- graph_tab_integration: needs sync time range option
+- resolution_tab_integration: needs end date display
+- realtime_price_updates: not started

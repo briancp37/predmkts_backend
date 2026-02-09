@@ -360,15 +360,30 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
   );
 
   return (
-    <Accordion.Trigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 transition-colors data-[state=open]:bg-gray-50/50">
-      <div className="flex flex-1 items-center gap-3 min-w-0 pr-4">
+    <Accordion.Trigger className={cn(
+      'group flex w-full text-left transition-colors',
+      'hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500',
+      'data-[state=open]:bg-gray-50/50',
+      // Mobile: Stack vertically with reduced padding
+      'flex-col items-stretch p-3 gap-2',
+      // Desktop: Horizontal layout with full padding
+      'sm:flex-row sm:items-center sm:justify-between sm:p-4 sm:gap-0'
+    )}>
+      {/* Top section: Avatar, question, and probability (mobile) / Left side (desktop) */}
+      <div className="flex flex-1 items-center gap-2 sm:gap-3 min-w-0 sm:pr-4">
         {/* Optional avatar/image for candidate markets */}
         {market.imageUrl && (
           <div className="flex-shrink-0">
             <img
               src={market.imageUrl}
               alt=""
-              className="h-10 w-10 rounded-full object-cover ring-2 ring-gray-100"
+              className={cn(
+                'rounded-full object-cover ring-2 ring-gray-100',
+                // Mobile: Smaller avatar
+                'h-8 w-8',
+                // Desktop: Full-size avatar
+                'sm:h-10 sm:w-10'
+              )}
             />
           </div>
         )}
@@ -376,12 +391,18 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
         {/* Main content */}
         <div className="flex-1 min-w-0">
           {/* Market Question / Candidate Name */}
-          <h3 className="font-semibold text-gray-900 truncate text-base">
+          <h3 className={cn(
+            'font-semibold text-gray-900 truncate',
+            // Mobile: Smaller text
+            'text-sm',
+            // Desktop: Normal text
+            'sm:text-base'
+          )}>
             {market.question}
           </h3>
 
-          {/* Secondary info row: volume, bid/ask, liquidity */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
+          {/* Secondary info row: volume, bid/ask, liquidity - hidden on mobile */}
+          <div className="hidden sm:flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
             {market.volume24h !== undefined && market.volume24h > 0 && (
               <span className="inline-flex items-center gap-1">
                 <span className="text-gray-400">24h Vol:</span>
@@ -402,13 +423,69 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
             )}
           </div>
         </div>
+
+        {/* Mobile: Probability + chevron in top row */}
+        <div className="flex items-center gap-2 sm:hidden flex-shrink-0">
+          {primaryOutcome && colors && (
+            <div
+              className={cn(
+                'flex items-baseline gap-0.5 px-2 py-1 rounded-lg',
+                colors.bg
+              )}
+            >
+              <span className={cn('text-lg font-bold tabular-nums', colors.text)}>
+                {formatProbability(primaryOutcome.currentPrice)}
+              </span>
+            </div>
+          )}
+          <ChevronDown
+            className={cn(
+              'h-5 w-5 text-gray-400 transition-transform duration-200 flex-shrink-0',
+              'group-data-[state=open]:rotate-180'
+            )}
+            aria-hidden="true"
+          />
+        </div>
       </div>
 
-      {/* Right side: Buy buttons, Price display and indicators */}
-      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      {/* Mobile: Secondary info row with price change and volume */}
+      <div className="flex items-center justify-between gap-2 sm:hidden text-xs text-gray-500">
+        <div className="flex items-center gap-3">
+          {primaryOutcome?.priceChange24h !== undefined && primaryOutcome.priceChange24h !== 0 && (
+            <PriceChangeIndicator change={primaryOutcome.priceChange24h} size="sm" />
+          )}
+          {market.volume24h !== undefined && market.volume24h > 0 && (
+            <span className="text-gray-500">
+              Vol: ${formatVolume(market.volume24h)}
+            </span>
+          )}
+        </div>
+        {/* Mobile buy buttons */}
+        {yesOutcome && noOutcome && (
+          <div className="flex items-center gap-1">
+            <BuyButton
+              outcome={yesOutcome}
+              variant="yes"
+              disabled={isTradingDisabled}
+              onClick={(e) => handleBuyClick(e, yesOutcome)}
+              size="sm"
+            />
+            <BuyButton
+              outcome={noOutcome}
+              variant="no"
+              disabled={isTradingDisabled}
+              onClick={(e) => handleBuyClick(e, noOutcome)}
+              size="sm"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: Right side with Buy buttons, Price display and indicators */}
+      <div className="hidden sm:flex items-center gap-2 sm:gap-3 flex-shrink-0">
         {/* Buy Yes/No buttons - only show for binary markets with Yes/No outcomes */}
         {yesOutcome && noOutcome && (
-          <div className="hidden sm:flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5">
             <BuyButton
               outcome={yesOutcome}
               variant="yes"
@@ -474,12 +551,15 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
  * - Clicking opens trading panel with outcome pre-selected
  * - Disabled when market is resolved or trading is paused
  * - Hover tooltip shows estimated cost for 100 shares
+ * - Supports 'sm' size for mobile (reduced padding, min touch target 44px)
  */
 interface BuyButtonProps {
   outcome: MarketOutcome;
   variant: 'yes' | 'no';
   disabled: boolean;
   onClick: (e: React.MouseEvent) => void;
+  /** Size variant for responsive layouts */
+  size?: 'sm' | 'default';
 }
 
 const BuyButton = memo(function BuyButton({
@@ -487,6 +567,7 @@ const BuyButton = memo(function BuyButton({
   variant,
   disabled,
   onClick,
+  size = 'default',
 }: BuyButtonProps) {
   const priceInCents = Math.round(outcome.currentPrice * 100);
   const estimatedCost = (100 * outcome.currentPrice).toFixed(2);
@@ -498,19 +579,23 @@ const BuyButton = memo(function BuyButton({
       disabled={disabled}
       title={disabled ? 'Trading unavailable' : `Buy 100 shares for $${estimatedCost}`}
       className={cn(
-        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold',
+        'inline-flex items-center rounded-full font-semibold',
         'transition-all duration-150 whitespace-nowrap',
         'focus:outline-none focus:ring-2 focus:ring-offset-1',
+        // Size variants - ensure min 44px touch target on mobile
+        size === 'sm'
+          ? 'gap-0.5 px-2 py-1.5 text-[11px] min-h-[32px]'
+          : 'gap-1 px-2.5 py-1 text-xs',
         variant === 'yes'
           ? disabled
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500 hover:shadow-sm'
+            : 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500 hover:shadow-sm active:bg-green-300'
           : disabled
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500 hover:shadow-sm'
+            : 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500 hover:shadow-sm active:bg-red-300'
       )}
     >
-      <span>{outcome.outcomeName}</span>
+      <span>{size === 'sm' ? variant.charAt(0).toUpperCase() : outcome.outcomeName}</span>
       <span className="tabular-nums">{priceInCents}¢</span>
     </button>
   );
@@ -518,14 +603,21 @@ const BuyButton = memo(function BuyButton({
 
 /**
  * PriceChangeIndicator - Shows 24h price change with trend icon
+ *
+ * PRD: accordion_mobile_responsive
+ *
+ * Supports 'sm' size for mobile layouts with reduced padding.
  */
 interface PriceChangeIndicatorProps {
   /** Change value (absolute, e.g., 0.05 for 5%) */
   change: number;
+  /** Size variant for responsive layouts */
+  size?: 'sm' | 'default';
 }
 
 const PriceChangeIndicator = memo(function PriceChangeIndicator({
   change,
+  size = 'default',
 }: PriceChangeIndicatorProps) {
   const isPositive = change > 0;
   const absChange = Math.abs(change * 100);
@@ -534,12 +626,15 @@ const PriceChangeIndicator = memo(function PriceChangeIndicator({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md',
+        'flex items-center font-medium rounded-md',
+        size === 'sm'
+          ? 'gap-0.5 text-[11px] px-1.5 py-0.5'
+          : 'gap-1 text-xs px-2 py-1',
         isPositive ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'
       )}
       title={`24h change: ${isPositive ? '+' : '-'}${absChange.toFixed(1)}%`}
     >
-      <Icon className="h-3 w-3" />
+      <Icon className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
       <span>{absChange.toFixed(1)}%</span>
     </div>
   );
@@ -597,10 +692,16 @@ const MarketAccordionContent = memo(function MarketAccordionContent({
   return (
     <div className="animate-in fade-in duration-200">
       <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as AccordionTabValue)}>
-        {/* Tab List */}
-        <div className="border-b border-gray-200 bg-white rounded-t-lg">
+        {/* Tab List - scrollable on mobile */}
+        <div className="border-b border-gray-200 bg-white rounded-t-lg overflow-hidden">
           <Tabs.List
-            className="flex overflow-x-auto scrollbar-hide"
+            className={cn(
+              'flex overflow-x-auto',
+              // Hide scrollbar but allow scrolling
+              'scrollbar-hide',
+              // Ensure tabs don't wrap on mobile
+              '-mx-px'
+            )}
             aria-label="Market details tabs"
           >
             {ACCORDION_TABS.map((tab) => (
@@ -608,12 +709,16 @@ const MarketAccordionContent = memo(function MarketAccordionContent({
                 key={tab.value}
                 value={tab.value}
                 className={cn(
-                  'flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap',
+                  'flex items-center gap-1.5 font-medium whitespace-nowrap',
                   'border-b-2 transition-colors duration-200',
                   'hover:text-gray-900 hover:bg-gray-50',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
                   'data-[state=active]:border-indigo-600 data-[state=active]:text-indigo-600',
-                  'data-[state=inactive]:border-transparent data-[state=inactive]:text-gray-500'
+                  'data-[state=inactive]:border-transparent data-[state=inactive]:text-gray-500',
+                  // Mobile: Smaller padding, ensure 44px min touch target height
+                  'px-3 py-3 text-xs min-h-[44px]',
+                  // Desktop: Larger padding
+                  'sm:px-4 sm:py-2.5 sm:text-sm sm:gap-2'
                 )}
               >
                 {tab.icon}
@@ -623,8 +728,8 @@ const MarketAccordionContent = memo(function MarketAccordionContent({
           </Tabs.List>
         </div>
 
-        {/* Tab Content */}
-        <div className="p-4 bg-white rounded-b-lg">
+        {/* Tab Content - reduced padding on mobile */}
+        <div className="p-3 sm:p-4 bg-white rounded-b-lg">
           {/* Order Book Tab */}
           <Tabs.Content
             value="orderbook"
@@ -886,42 +991,71 @@ const MarketAccordionRowSkeleton = memo(function MarketAccordionRowSkeleton({
       style={{ animationDelay: `${index * 100}ms` }}
       data-testid="market-accordion-row-skeleton"
     >
-      <div className="flex w-full items-center justify-between p-4">
-        {/* Left side: avatar + content */}
-        <div className="flex flex-1 items-center gap-3 min-w-0 pr-4">
-          {/* Avatar placeholder */}
-          <SkeletonBlock className="h-10 w-10 rounded-full flex-shrink-0" />
-
-          {/* Main content */}
-          <div className="flex-1 min-w-0 space-y-2">
-            {/* Market question */}
-            <SkeletonBlock className="h-5 w-3/4" />
-
-            {/* Secondary info row */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <SkeletonBlock className="h-3 w-16" />
-              <SkeletonBlock className="h-3 w-20" />
-              <SkeletonBlock className="h-3 w-14" />
+      {/* Mobile layout */}
+      <div className="sm:hidden">
+        <div className="flex flex-col gap-2 p-3">
+          {/* Top row: avatar, question, probability, chevron */}
+          <div className="flex items-center gap-2">
+            <SkeletonBlock className="h-8 w-8 rounded-full flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <SkeletonBlock className="h-4 w-3/4" />
+            </div>
+            <SkeletonBlock className="h-8 w-14 rounded-lg" />
+            <SkeletonBlock className="h-5 w-5" />
+          </div>
+          {/* Bottom row: price change, volume, buy buttons */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <SkeletonBlock className="h-5 w-12 rounded-md" />
+              <SkeletonBlock className="h-4 w-16" />
+            </div>
+            <div className="flex items-center gap-1">
+              <SkeletonBlock className="h-7 w-10 rounded-full" />
+              <SkeletonBlock className="h-7 w-10 rounded-full" />
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Right side: buy buttons, probability, chevron */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Buy buttons (hidden on mobile) */}
-          <div className="hidden sm:flex items-center gap-1.5">
-            <SkeletonBlock className="h-7 w-16 rounded-full" />
-            <SkeletonBlock className="h-7 w-14 rounded-full" />
+      {/* Desktop layout */}
+      <div className="hidden sm:block">
+        <div className="flex w-full items-center justify-between p-4">
+          {/* Left side: avatar + content */}
+          <div className="flex flex-1 items-center gap-3 min-w-0 pr-4">
+            {/* Avatar placeholder */}
+            <SkeletonBlock className="h-10 w-10 rounded-full flex-shrink-0" />
+
+            {/* Main content */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {/* Market question */}
+              <SkeletonBlock className="h-5 w-3/4" />
+
+              {/* Secondary info row */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <SkeletonBlock className="h-3 w-16" />
+                <SkeletonBlock className="h-3 w-20" />
+                <SkeletonBlock className="h-3 w-14" />
+              </div>
+            </div>
           </div>
 
-          {/* Price change indicator */}
-          <SkeletonBlock className="h-6 w-14 rounded-md" />
+          {/* Right side: buy buttons, probability, chevron */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Buy buttons */}
+            <div className="flex items-center gap-1.5">
+              <SkeletonBlock className="h-7 w-16 rounded-full" />
+              <SkeletonBlock className="h-7 w-14 rounded-full" />
+            </div>
 
-          {/* Probability badge */}
-          <SkeletonBlock className="h-10 w-20 rounded-lg" />
+            {/* Price change indicator */}
+            <SkeletonBlock className="h-6 w-14 rounded-md" />
 
-          {/* Chevron */}
-          <SkeletonBlock className="h-5 w-5" />
+            {/* Probability badge */}
+            <SkeletonBlock className="h-10 w-20 rounded-lg" />
+
+            {/* Chevron */}
+            <SkeletonBlock className="h-5 w-5" />
+          </div>
         </div>
       </div>
     </div>
@@ -1528,10 +1662,10 @@ const MultiMarketControls = memo(function MultiMarketControls({
   showingCount,
 }: MultiMarketControlsProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-      {/* Search Input */}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+      {/* Search Input - full width on mobile */}
       {showSearch && (
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
@@ -1539,7 +1673,9 @@ const MultiMarketControls = memo(function MultiMarketControls({
             onChange={onSearchChange}
             placeholder="Search markets..."
             className={cn(
-              'w-full pl-9 pr-8 py-2 text-sm',
+              'w-full pl-9 pr-8 text-sm',
+              // Mobile: Taller input for better touch target (min 44px)
+              'py-2.5 sm:py-2',
               'border border-gray-200 rounded-lg',
               'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent',
               'placeholder:text-gray-400'
@@ -1549,7 +1685,11 @@ const MultiMarketControls = memo(function MultiMarketControls({
           {searchQuery && (
             <button
               onClick={onClearSearch}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+              className={cn(
+                'absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600',
+                // Ensure touch target
+                'p-2 -mr-1'
+              )}
               aria-label="Clear search"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1560,14 +1700,14 @@ const MultiMarketControls = memo(function MultiMarketControls({
         </div>
       )}
 
-      {/* Sort Dropdown and Count */}
-      <div className="flex items-center gap-3 sm:ml-auto">
+      {/* Sort Dropdown and Count - row on mobile, aligned right on desktop */}
+      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 sm:ml-auto">
         {/* Market Count */}
         {totalCount !== undefined && showingCount !== undefined && (
           <span className="text-xs text-gray-500" data-testid="market-count">
             {showingCount === totalCount
               ? `${totalCount} market${totalCount === 1 ? '' : 's'}`
-              : `${showingCount} of ${totalCount} markets`}
+              : `${showingCount} of ${totalCount}`}
           </span>
         )}
 
@@ -1577,10 +1717,12 @@ const MultiMarketControls = memo(function MultiMarketControls({
             <button
               onClick={onSortToggle}
               className={cn(
-                'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium',
+                'inline-flex items-center gap-1.5 text-sm font-medium',
                 'border border-gray-200 rounded-lg bg-white',
                 'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500',
-                'transition-colors'
+                'transition-colors',
+                // Mobile: Ensure min touch target
+                'px-2.5 py-2 min-h-[44px] sm:px-3 sm:py-2 sm:min-h-0 sm:gap-2'
               )}
               aria-expanded={isSortOpen}
               aria-haspopup="true"
@@ -1611,7 +1753,9 @@ const MultiMarketControls = memo(function MultiMarketControls({
                     key={option}
                     onClick={() => onSortChange(option)}
                     className={cn(
-                      'w-full text-left px-4 py-2 text-sm',
+                      'w-full text-left px-4 text-sm',
+                      // Mobile: Larger touch targets in dropdown
+                      'py-3 sm:py-2',
                       'hover:bg-gray-50 transition-colors',
                       sortOption === option
                         ? 'text-indigo-600 font-medium bg-indigo-50'
@@ -1649,10 +1793,13 @@ const ShowMoreButton = memo(function ShowMoreButton({
     <button
       onClick={onToggle}
       className={cn(
-        'w-full py-3 px-4',
+        'w-full px-4',
+        // Mobile: Larger touch target (min 44px)
+        'py-3.5 sm:py-3',
         'text-sm font-medium text-indigo-600',
         'border border-dashed border-gray-300 rounded-lg',
         'hover:border-indigo-300 hover:bg-indigo-50/50',
+        'active:bg-indigo-100',
         'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
         'transition-colors flex items-center justify-center gap-2'
       )}
@@ -1676,10 +1823,13 @@ const ShowLessButton = memo(function ShowLessButton({ onToggle }: ShowLessButton
     <button
       onClick={onToggle}
       className={cn(
-        'w-full py-3 px-4',
+        'w-full px-4',
+        // Mobile: Larger touch target (min 44px)
+        'py-3.5 sm:py-3',
         'text-sm font-medium text-gray-600',
         'border border-dashed border-gray-300 rounded-lg',
         'hover:border-gray-400 hover:bg-gray-50',
+        'active:bg-gray-100',
         'focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2',
         'transition-colors flex items-center justify-center gap-2'
       )}

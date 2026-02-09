@@ -132,7 +132,7 @@
       "Test accordion interaction on touch devices",
       "Consider bottom sheet pattern for tab content on mobile"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "event_page_integration",
