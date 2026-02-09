@@ -162,7 +162,34 @@ Pushed deduplication logic to ClickHouse instead of Python for streaming loaders
 
 6. **PRD status**: `clickhouse_deduplication` category marked as `passes: true`
 
+### 2026-02-09: EventBridge Schedule Resource Configuration
+
+Updated Gold layer EventBridge schedules with configurable CPU/memory overrides:
+
+1. **New CloudFormation parameters** in `infrastructure/eventbridge-gold-schedules.yaml`:
+   - `DailyRunCpu` (default: 1024 = 1 vCPU) and `DailyRunMemory` (default: 4096 = 4GB)
+   - `CHLoadCpu` (default: 512) and `CHLoadMemory` (default: 2048 = 2GB)
+   - `FreshnessCheckCpu` (default: 256) and `FreshnessCheckMemory` (default: 512MB)
+
+2. **Schedule target overrides**:
+   - All three Gold schedules (daily-run, ch-load, freshness-check) now include container overrides
+   - Uses ECS RunTask `containerOverrides` with cpu/memory fields
+   - Task-level cpu/memory also set to match container requirements
+
+3. **Resource recommendations**:
+   - `gold daily-run` (streaming mode): 1 vCPU / 4GB memory
+   - `gold ch-load`: 0.5 vCPU / 2GB memory
+   - `gold freshness`: 0.25 vCPU / 512MB memory
+
+4. **Documentation updated**:
+   - CLAUDE.md now includes "Gold Command Memory Usage" table
+   - Documents streaming vs standard mode memory requirements
+   - Lists EventBridge schedule resource configurations
+
+5. **PRD status**: `eventbridge_schedule_update` category marked as `passes: true`
+
 ### Next Steps
-- Deploy to ECS and verify gold daily-run completes without OOM with reduced memory (try 4GB)
-- Add incremental loading support for large tables
-- Consider S3 direct loading for additional optimization
+- Deploy updated stack to production: `aws cloudformation deploy --template-file infrastructure/eventbridge-gold-schedules.yaml ...`
+- Verify gold daily-run completes without OOM in 4GB task
+- Add incremental loading support for large tables (future sprint)
+- Consider S3 direct loading for additional optimization (future sprint)

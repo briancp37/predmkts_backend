@@ -8,7 +8,7 @@
             "Measure Silver table sizes (row counts) to establish baseline: markets ~426K, outcomes ~853K, trades ~millions",
             "Define target memory budget: dimension loading should work within 4GB Fargate task"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "streaming_architecture",
@@ -75,7 +75,7 @@
             "Add memory/cpu overrides to schedule target configurations",
             "Document expected memory usage per Gold command in CLAUDE.md"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "testing_and_validation",

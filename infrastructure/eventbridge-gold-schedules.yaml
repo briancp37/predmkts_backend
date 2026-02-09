@@ -55,6 +55,65 @@ Parameters:
       - DISABLED
     Description: Whether schedules are enabled or disabled
 
+  # Resource overrides for memory-intensive Gold commands
+  # These override the task definition defaults for specific schedules
+  DailyRunCpu:
+    Type: String
+    Default: '1024'
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+    Description: CPU units for Gold daily-run (1024 = 1 vCPU, recommended for streaming dimension loading)
+
+  DailyRunMemory:
+    Type: String
+    Default: '4096'
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+      - '8192'
+    Description: Memory in MB for Gold daily-run (4GB recommended with streaming mode)
+
+  CHLoadCpu:
+    Type: String
+    Default: '512'
+    AllowedValues:
+      - '256'
+      - '512'
+      - '1024'
+    Description: CPU units for Gold CH load (lighter workload than daily-run)
+
+  CHLoadMemory:
+    Type: String
+    Default: '2048'
+    AllowedValues:
+      - '512'
+      - '1024'
+      - '2048'
+      - '4096'
+    Description: Memory in MB for Gold CH load (2GB is typically sufficient)
+
+  FreshnessCheckCpu:
+    Type: String
+    Default: '256'
+    AllowedValues:
+      - '256'
+      - '512'
+    Description: CPU units for freshness check (very light workload)
+
+  FreshnessCheckMemory:
+    Type: String
+    Default: '512'
+    AllowedValues:
+      - '512'
+      - '1024'
+    Description: Memory in MB for freshness check (very light workload)
+
 Resources:
   # IAM Role for EventBridge Scheduler to invoke ECS tasks
   GoldSchedulerExecutionRole:
@@ -110,7 +169,8 @@ Resources:
           Value: !Ref Environment
 
   # Gold Daily Run - midnight UTC
-  # Executes: load-dims, process-trades, compute-marks, compute-wallet-metrics
+  # Executes: load-dims (streaming), process-trades, compute-marks, compute-wallet-metrics
+  # Memory-intensive due to dimension loading - uses streaming mode by default
   GoldDailyRunSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
@@ -139,9 +199,13 @@ Resources:
             "containerOverrides": [
               {
                 "name": "prediction-data",
-                "command": ["gold", "daily-run"]
+                "command": ["gold", "daily-run"],
+                "cpu": ${DailyRunCpu},
+                "memory": ${DailyRunMemory}
               }
-            ]
+            ],
+            "cpu": "${DailyRunCpu}",
+            "memory": "${DailyRunMemory}"
           }
         RetryPolicy:
           MaximumEventAgeInSeconds: 1800
@@ -149,6 +213,7 @@ Resources:
 
   # Gold CH Load - 00:30 UTC (after daily-run completes)
   # Loads all Gold tables from S3 into ClickHouse with 90-day lookback
+  # Lighter memory footprint than daily-run (reads S3 Parquet, streams to ClickHouse)
   GoldCHLoadSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
@@ -177,9 +242,13 @@ Resources:
             "containerOverrides": [
               {
                 "name": "prediction-data",
-                "command": ["gold", "ch-load", "--all", "--lookback-days", "90"]
+                "command": ["gold", "ch-load", "--all", "--lookback-days", "90"],
+                "cpu": ${CHLoadCpu},
+                "memory": ${CHLoadMemory}
               }
-            ]
+            ],
+            "cpu": "${CHLoadCpu}",
+            "memory": "${CHLoadMemory}"
           }
         RetryPolicy:
           MaximumEventAgeInSeconds: 1800
@@ -187,6 +256,7 @@ Resources:
 
   # Gold Freshness Check - 01:00 UTC (1 hour after daily-run)
   # Verifies all Gold datasets are fresh and within SLA
+  # Very light workload - just queries ClickHouse for timestamps
   GoldFreshnessCheckSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
@@ -215,9 +285,13 @@ Resources:
             "containerOverrides": [
               {
                 "name": "prediction-data",
-                "command": ["gold", "freshness"]
+                "command": ["gold", "freshness"],
+                "cpu": ${FreshnessCheckCpu},
+                "memory": ${FreshnessCheckMemory}
               }
-            ]
+            ],
+            "cpu": "${FreshnessCheckCpu}",
+            "memory": "${FreshnessCheckMemory}"
           }
         RetryPolicy:
           MaximumEventAgeInSeconds: 300
@@ -254,4 +328,8 @@ Outputs:
           TaskDefinitionArn=<task-def-arn-from-ecs-stack> \
           SubnetIds=subnet-xxx,subnet-yyy \
           SecurityGroupIds=sg-xxx \
+          DailyRunCpu=1024 \
+          DailyRunMemory=4096 \
+          CHLoadCpu=512 \
+          CHLoadMemory=2048 \
         --capabilities CAPABILITY_NAMED_IAM

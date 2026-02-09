@@ -108,11 +108,30 @@ prediction-data silver maintain --op compact --op dedup
 ```bash
 prediction-data gold daily-run
 prediction-data gold load-dims
+prediction-data gold load-dims --streaming  # Memory-efficient mode for ECS
 prediction-data gold process-trades --dt 2024-06-15
 prediction-data gold compute-marks --dt 2024-06-15
 prediction-data gold ch-load --all --lookback-days 90
 prediction-data gold freshness
 ```
+
+#### Gold Command Memory Usage
+
+| Command | Mode | Recommended Memory | Notes |
+|---|---|---|---|
+| `gold daily-run` | streaming (default) | 4GB | Streaming dimension loaders, batched processing |
+| `gold daily-run --no-streaming` | standard | 16GB+ | Loads full tables into memory, writes to S3 |
+| `gold load-dims --streaming` | streaming | 4GB | Direct ClickHouse inserts, skips S3 |
+| `gold load-dims` | standard | 16GB+ | Full table loads + S3 writes |
+| `gold ch-load --all` | - | 2GB | Reads S3 Parquet, streams to ClickHouse |
+| `gold freshness` | - | 512MB | ClickHouse queries only |
+| `gold process-trades` | - | 2GB | Per-day trade processing |
+| `gold compute-marks` | - | 2GB | Per-day market marks |
+
+EventBridge schedules in `infrastructure/eventbridge-gold-schedules.yaml` use configurable CPU/memory overrides:
+- `gold-daily-run`: 1 vCPU / 4GB (streaming mode)
+- `gold-ch-load`: 0.5 vCPU / 2GB
+- `gold-freshness-check`: 0.25 vCPU / 512MB
 
 ### Pipeline Diagnostics
 ```bash
