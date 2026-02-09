@@ -66,7 +66,7 @@
       "Default to 1D range for initial view",
       "Sync time range across all markets or keep independent (configurable)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "resolution_tab_integration",

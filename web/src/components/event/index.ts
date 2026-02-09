@@ -205,4 +205,5 @@ export {
   type TradeSelection,
   type MarketSortOption,
   type RealtimePriceConfig,
+  type TimeRangeSyncConfig,
 } from './market-accordion';

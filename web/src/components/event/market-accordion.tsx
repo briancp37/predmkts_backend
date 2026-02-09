@@ -133,6 +133,16 @@ export interface RealtimePriceConfig {
   pauseWhenCollapsed?: boolean;
 }
 
+/**
+ * Time range sync configuration for Graph tabs
+ */
+export interface TimeRangeSyncConfig {
+  /** Whether to sync time range across all markets (default: false = independent) */
+  enabled?: boolean;
+  /** Default time range for all markets when sync is enabled */
+  defaultRange?: TimeRange;
+}
+
 export interface MarketAccordionProps {
   /** List of markets to display */
   markets: AccordionMarket[];
@@ -148,6 +158,8 @@ export interface MarketAccordionProps {
   persistToUrl?: boolean;
   /** Real-time price update configuration */
   realtimePrices?: RealtimePriceConfig;
+  /** Time range sync configuration for Graph tabs */
+  timeRangeSync?: TimeRangeSyncConfig;
   /** Additional CSS classes */
   className?: string;
 }
@@ -196,8 +208,14 @@ export function MarketAccordion({
   onTradeClick,
   persistToUrl = true,
   realtimePrices,
+  timeRangeSync,
   className,
 }: MarketAccordionProps) {
+  // Shared time range state for synced mode
+  const [sharedTimeRange, setSharedTimeRange] = useState<TimeRange>(
+    timeRangeSync?.defaultRange ?? DEFAULT_TIME_RANGE
+  );
+
   // Initialize expanded state from URL hash or defaultExpanded
   const [expandedIds, setExpandedIds] = useState<string[]>(() => {
     if (persistToUrl) {
@@ -309,6 +327,9 @@ export function MarketAccordion({
     );
   }
 
+  // Props for time range sync
+  const timeRangeSyncEnabled = timeRangeSync?.enabled ?? false;
+
   // Render based on mode
   if (mode === 'single') {
     return (
@@ -325,6 +346,9 @@ export function MarketAccordion({
             market={market}
             onTradeClick={onTradeClick}
             pricesLastUpdated={realtimePrices?.enabled ? pricesLastUpdated : undefined}
+            syncTimeRange={timeRangeSyncEnabled}
+            sharedTimeRange={sharedTimeRange}
+            onTimeRangeChange={setSharedTimeRange}
           />
         ))}
       </Accordion.Root>
@@ -345,6 +369,9 @@ export function MarketAccordion({
           market={market}
           onTradeClick={onTradeClick}
           pricesLastUpdated={realtimePrices?.enabled ? pricesLastUpdated : undefined}
+          syncTimeRange={timeRangeSyncEnabled}
+          sharedTimeRange={sharedTimeRange}
+          onTimeRangeChange={setSharedTimeRange}
         />
       ))}
     </Accordion.Root>
@@ -356,6 +383,12 @@ interface MarketAccordionItemProps {
   onTradeClick?: (selection: TradeSelection) => void;
   /** Last price update timestamp for real-time updates */
   pricesLastUpdated?: number | null;
+  /** Whether to use shared time range (sync mode) */
+  syncTimeRange?: boolean;
+  /** Shared time range value (when sync is enabled) */
+  sharedTimeRange?: TimeRange;
+  /** Callback to update shared time range */
+  onTimeRangeChange?: (range: TimeRange) => void;
 }
 
 /**
@@ -800,10 +833,17 @@ function usePreviousValue<T>(value: T): T | undefined {
  * - Smooth fade-in animation when content appears
  * - Lazy load tab content to minimize API calls for collapsed markets
  * - Loading skeleton while tab content is fetching
+ * - Optional time range sync across all markets
  */
 interface MarketAccordionContentProps {
   market: AccordionMarket;
   primaryOutcome: MarketOutcome | null;
+  /** Whether to use shared time range (sync mode) */
+  syncTimeRange?: boolean;
+  /** Shared time range value (when sync is enabled) */
+  sharedTimeRange?: TimeRange;
+  /** Callback to update shared time range */
+  onTimeRangeChange?: (range: TimeRange) => void;
 }
 
 interface TabConfig {
@@ -821,10 +861,17 @@ const ACCORDION_TABS: TabConfig[] = [
 const MarketAccordionContent = memo(function MarketAccordionContent({
   market,
   primaryOutcome,
+  syncTimeRange,
+  sharedTimeRange,
+  onTimeRangeChange: parentOnTimeRangeChange,
 }: MarketAccordionContentProps) {
   const [activeTab, setActiveTab] = useState<AccordionTabValue>('orderbook');
-  const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
+  // Local time range state (used when sync is disabled)
+  const [localTimeRange, setLocalTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
   const [isTimeseriesLoading, setIsTimeseriesLoading] = useState(false);
+
+  // Use shared time range if sync is enabled, otherwise use local
+  const timeRange = syncTimeRange && sharedTimeRange ? sharedTimeRange : localTimeRange;
 
   // Get the primary token ID for Order Book and Graph
   const primaryTokenId = primaryOutcome?.tokenId;
@@ -833,10 +880,17 @@ const MarketAccordionContent = memo(function MarketAccordionContent({
   // Handle time range change with loading state
   const handleTimeRangeChange = useCallback((range: TimeRange) => {
     setIsTimeseriesLoading(true);
-    setTimeRange(range);
+
+    // Update local or shared state based on sync mode
+    if (syncTimeRange && parentOnTimeRangeChange) {
+      parentOnTimeRangeChange(range);
+    } else {
+      setLocalTimeRange(range);
+    }
+
     // Reset loading state after a short delay (data fetch will update it)
     setTimeout(() => setIsTimeseriesLoading(false), 100);
-  }, []);
+  }, [syncTimeRange, parentOnTimeRangeChange]);
 
   return (
     <div className="animate-in fade-in duration-200">
@@ -1173,6 +1227,9 @@ const MarketAccordionItem = memo(function MarketAccordionItem({
   market,
   onTradeClick,
   pricesLastUpdated,
+  syncTimeRange,
+  sharedTimeRange,
+  onTimeRangeChange,
 }: MarketAccordionItemProps) {
   // Get the primary outcome (highest probability) for header display
   const primaryOutcome = market.outcomes.length > 0
@@ -1199,7 +1256,13 @@ const MarketAccordionItem = memo(function MarketAccordionItem({
 
       <Accordion.Content className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
         <div className="border-t border-gray-100 bg-gray-50/30">
-          <MarketAccordionContent market={market} primaryOutcome={primaryOutcome} />
+          <MarketAccordionContent
+            market={market}
+            primaryOutcome={primaryOutcome}
+            syncTimeRange={syncTimeRange}
+            sharedTimeRange={sharedTimeRange}
+            onTimeRangeChange={onTimeRangeChange}
+          />
         </div>
       </Accordion.Content>
     </Accordion.Item>
@@ -1670,6 +1733,8 @@ export interface MultiMarketAccordionProps {
   persistToUrl?: boolean;
   /** Real-time price update configuration */
   realtimePrices?: RealtimePriceConfig;
+  /** Time range sync configuration for Graph tabs */
+  timeRangeSync?: TimeRangeSyncConfig;
   /** Additional CSS classes */
   className?: string;
 }
@@ -1775,6 +1840,7 @@ export function MultiMarketAccordion({
   onTradeClick,
   persistToUrl = true,
   realtimePrices,
+  timeRangeSync,
   className,
 }: MultiMarketAccordionProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -1917,6 +1983,7 @@ export function MultiMarketAccordion({
         onTradeClick={onTradeClick}
         persistToUrl={persistToUrl}
         realtimePrices={realtimePrices}
+        timeRangeSync={timeRangeSync}
       />
 
       {/* Show More/Less Button */}

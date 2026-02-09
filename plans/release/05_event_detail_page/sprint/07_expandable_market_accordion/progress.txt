@@ -559,5 +559,71 @@ Features implemented per PRD:
 
 Typecheck and all 550 tests pass.
 
-Remaining items:
-- graph_tab_integration: needs sync time range option
+### 2026-02-09: graph_tab_integration
+Completed the graph tab integration with configurable time range sync feature:
+
+New interface added to web/src/components/event/market-accordion.tsx:
+- TimeRangeSyncConfig: Configuration for syncing time range across markets
+  - enabled?: boolean (default: false = independent time ranges)
+  - defaultRange?: TimeRange (default: 1D when sync is enabled)
+
+Changes to MarketAccordionProps:
+- Added timeRangeSync?: TimeRangeSyncConfig prop
+
+Changes to MultiMarketAccordionProps:
+- Added timeRangeSync?: TimeRangeSyncConfig prop (passes through to MarketAccordion)
+
+Changes to MarketAccordion component:
+- Added sharedTimeRange state for synced mode
+- Passes sync configuration down through MarketAccordionItem to MarketAccordionContent
+
+Changes to MarketAccordionItemProps:
+- Added syncTimeRange?: boolean
+- Added sharedTimeRange?: TimeRange
+- Added onTimeRangeChange?: (range: TimeRange) => void
+
+Changes to MarketAccordionContent:
+- Supports both local and shared time range modes
+- When syncTimeRange is enabled, uses sharedTimeRange and calls parent onTimeRangeChange
+- When syncTimeRange is disabled (default), uses local state per accordion item
+
+Updated exports in web/src/components/event/index.ts:
+- Added TimeRangeSyncConfig type export
+
+Features implemented per PRD:
+1. Create GraphTab wrapper component ✓ (already existed)
+2. Pass tokenId from expanded market to useTimeseries hook ✓ (already existed)
+3. Include TimeRangeSelector for 1H/6H/1D/1W/1M/ALL options ✓ (already existed)
+4. Display PriceChart component with responsive height for accordion ✓ (already existed)
+5. Show ChartLoadingSkeleton while data is loading ✓ (already existed)
+6. Default to 1D range for initial view ✓ (already existed)
+7. Sync time range across all markets or keep independent (configurable) ✓ (NEW)
+
+Usage example for enabling sync mode:
+```tsx
+<MultiMarketAccordion
+  markets={markets}
+  timeRangeSync={{
+    enabled: true,
+    defaultRange: '1D',
+  }}
+/>
+```
+
+Typecheck and all 550 tests pass.
+
+## Sprint 07 Complete
+
+All categories in the PRD now pass:
+- market_accordion_container ✓
+- market_accordion_header ✓
+- market_accordion_content ✓
+- orderbook_tab_integration ✓
+- graph_tab_integration ✓
+- resolution_tab_integration ✓
+- multi_market_layout ✓
+- buy_buttons_inline ✓
+- accordion_loading_states ✓
+- accordion_mobile_responsive ✓
+- event_page_integration ✓
+- realtime_price_updates ✓
