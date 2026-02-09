@@ -92,7 +92,7 @@
       "Sort markets by: probability (default), volume, alphabetical",
       "Show 'X more markets' indicator when collapsed"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "buy_buttons_inline",

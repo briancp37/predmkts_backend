@@ -22,7 +22,7 @@ import { Tag, Clock } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
-import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel, MarketAccordion, type Outcome, type AccordionMarket, type MarketOutcome } from '@/components/event';
+import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel, MultiMarketAccordion, type Outcome, type AccordionMarket, type MarketOutcome } from '@/components/event';
 import type { EventMarketResponse } from '@/hooks';
 
 interface EventPageProps {
@@ -247,11 +247,13 @@ export default function EventDetailPage({ params }: EventPageProps) {
         status={event.status}
       />
 
-      {/* Expandable Market Accordion */}
-      <MarketAccordion
+      {/* Expandable Market Accordion with multi-market support */}
+      <MultiMarketAccordion
         markets={mapToAccordionMarkets(event.markets)}
         mode="single"
         persistToUrl
+        initialDisplayCount={5}
+        defaultSort="probability"
       />
 
       {/* Price Chart Placeholder */}

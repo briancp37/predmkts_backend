@@ -82,8 +82,9 @@ Files: web/src/components/event/market-accordion.tsx
 Notes: Basic integration complete in MarketAccordionContent. Remaining: end date display.
 
 ### multi_market_layout
-Status: NOT STARTED
-Files: web/src/components/event/market-accordion.tsx
+Status: COMPLETE
+Files: web/src/components/event/market-accordion.tsx, web/src/app/(dashboard)/event/[slug]/page.tsx
+Completed: 2026-02-08
 
 ### buy_buttons_inline
 Status: COMPLETE
@@ -288,3 +289,42 @@ Typecheck and all 550 tests pass.
 
 Next priority should be `accordion_mobile_responsive` to optimize the accordion
 for mobile viewports, or `multi_market_layout` to handle events with many markets.
+
+### 2026-02-08: multi_market_layout
+Implemented the MultiMarketAccordion component for handling events with many markets:
+
+New component added to web/src/components/event/market-accordion.tsx:
+- MultiMarketAccordion: wrapper component for handling 10+ market events
+
+Features implemented:
+- Support for events with 10+ markets (like Fed Chair nominees)
+- "Show all X markets" expandable section with show more/less buttons
+- Display top N markets initially (configurable via initialDisplayCount, default: 5)
+- Search/filter input for finding specific markets (searches question and outcome names)
+- Sort dropdown with three options: Probability (default), Volume, Alphabetical
+- "X more markets" indicator when list is collapsed
+- Market count display showing "X of Y markets" when filtered
+- No results state with clear search button
+- Auto-show all results when searching (to not hide matches)
+
+Helper functions added:
+- getPrimaryProbability: gets highest outcome price for sorting
+- sortMarkets: sorts by probability (desc), volume (desc), or alphabetical
+- filterMarkets: filters by search query in question or outcome names
+
+Sub-components:
+- MultiMarketControls: search input and sort dropdown with market count
+- ShowMoreButton: dashed border button showing hidden count
+- ShowLessButton: collapse button to return to initial display count
+
+Updated exports in web/src/components/event/index.ts:
+- MultiMarketAccordion, MultiMarketAccordionProps, MarketSortOption
+
+Updated event page (web/src/app/(dashboard)/event/[slug]/page.tsx):
+- Replaced MarketAccordion with MultiMarketAccordion
+- Set initialDisplayCount=5 and defaultSort="probability"
+
+Typecheck and all 550 tests pass.
+
+Next priority should be `accordion_mobile_responsive` to optimize the accordion
+for mobile viewports, or one of the remaining tab integration improvements.

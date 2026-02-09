@@ -25,10 +25,10 @@
 'use client';
 
 import * as React from 'react';
-import { useCallback, useEffect, useState, memo } from 'react';
+import { useCallback, useEffect, useState, useMemo, memo } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Tabs from '@radix-ui/react-tabs';
-import { ChevronDown, TrendingUp, TrendingDown, BookOpen, LineChart, FileText, AlertCircle, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, BookOpen, LineChart, FileText, AlertCircle, RefreshCw, Search, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   formatProbability,
@@ -1198,5 +1198,497 @@ export function MarketAccordionLoading({
     </div>
   );
 }
+
+// ============================================================================
+// Multi-Market Layout Components
+// PRD: multi_market_layout
+// ============================================================================
+
+/**
+ * Sort options for multi-market layout
+ */
+export type MarketSortOption = 'probability' | 'volume' | 'alphabetical';
+
+/**
+ * Props for MultiMarketAccordion
+ */
+export interface MultiMarketAccordionProps {
+  /** List of markets to display */
+  markets: AccordionMarket[];
+  /** Number of markets to show initially (default: 5) */
+  initialDisplayCount?: number;
+  /** Whether to show the search input (default: true for 5+ markets) */
+  showSearch?: boolean;
+  /** Whether to show the sort dropdown (default: true for 3+ markets) */
+  showSort?: boolean;
+  /** Default sort option (default: 'probability') */
+  defaultSort?: MarketSortOption;
+  /** Expansion mode: 'single' allows one open, 'multiple' allows many */
+  mode?: AccordionMode;
+  /** Default expanded market ID(s) */
+  defaultExpanded?: string | string[];
+  /** Callback when expansion changes */
+  onExpandChange?: (expandedIds: string[]) => void;
+  /** Callback when a buy button is clicked */
+  onTradeClick?: (selection: TradeSelection) => void;
+  /** Whether to sync expanded state with URL hash */
+  persistToUrl?: boolean;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * Sort label display names
+ */
+const SORT_LABELS: Record<MarketSortOption, string> = {
+  probability: 'Probability',
+  volume: 'Volume',
+  alphabetical: 'A-Z',
+};
+
+/**
+ * Get the primary probability for sorting (highest outcome price)
+ */
+function getPrimaryProbability(market: AccordionMarket): number {
+  if (market.outcomes.length === 0) return 0;
+  return Math.max(...market.outcomes.map((o) => o.currentPrice));
+}
+
+/**
+ * Sort markets based on the selected option
+ */
+function sortMarkets(
+  markets: AccordionMarket[],
+  sortOption: MarketSortOption
+): AccordionMarket[] {
+  const sorted = [...markets];
+
+  switch (sortOption) {
+    case 'probability':
+      // Sort by highest outcome probability, descending
+      return sorted.sort((a, b) => getPrimaryProbability(b) - getPrimaryProbability(a));
+
+    case 'volume':
+      // Sort by total volume, descending
+      return sorted.sort((a, b) => (b.totalVolume || 0) - (a.totalVolume || 0));
+
+    case 'alphabetical':
+      // Sort by question, ascending
+      return sorted.sort((a, b) => a.question.localeCompare(b.question));
+
+    default:
+      return sorted;
+  }
+}
+
+/**
+ * Filter markets based on search query
+ */
+function filterMarkets(
+  markets: AccordionMarket[],
+  searchQuery: string
+): AccordionMarket[] {
+  if (!searchQuery.trim()) return markets;
+
+  const query = searchQuery.toLowerCase().trim();
+  return markets.filter((market) => {
+    // Search in market question
+    if (market.question.toLowerCase().includes(query)) return true;
+
+    // Search in outcome names
+    if (market.outcomes.some((o) => o.outcomeName.toLowerCase().includes(query))) {
+      return true;
+    }
+
+    return false;
+  });
+}
+
+/**
+ * MultiMarketAccordion - Wrapper for handling events with many markets
+ *
+ * PRD: multi_market_layout
+ *
+ * Features:
+ * - Support events with 10+ markets
+ * - 'Show all X markets' expandable section for long lists
+ * - Display top N markets by volume/probability, collapse rest
+ * - Search/filter input for finding specific markets
+ * - Sort markets by: probability (default), volume, alphabetical
+ * - 'X more markets' indicator when collapsed
+ *
+ * @example
+ * ```tsx
+ * <MultiMarketAccordion
+ *   markets={markets}
+ *   initialDisplayCount={5}
+ *   defaultSort="probability"
+ * />
+ * ```
+ */
+export function MultiMarketAccordion({
+  markets,
+  initialDisplayCount = 5,
+  showSearch,
+  showSort,
+  defaultSort = 'probability',
+  mode = 'single',
+  defaultExpanded,
+  onExpandChange,
+  onTradeClick,
+  persistToUrl = true,
+  className,
+}: MultiMarketAccordionProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<MarketSortOption>(defaultSort);
+  const [showAll, setShowAll] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
+
+  // Determine whether to show search and sort based on market count
+  const shouldShowSearch = showSearch ?? markets.length >= 5;
+  const shouldShowSort = showSort ?? markets.length >= 3;
+
+  // Filter and sort markets
+  const processedMarkets = useMemo(() => {
+    const filtered = filterMarkets(markets, searchQuery);
+    return sortMarkets(filtered, sortOption);
+  }, [markets, searchQuery, sortOption]);
+
+  // Determine visible markets
+  const visibleMarkets = useMemo(() => {
+    // If searching, show all matching results
+    if (searchQuery.trim()) return processedMarkets;
+
+    // If show all is enabled, show all
+    if (showAll) return processedMarkets;
+
+    // Otherwise, limit to initial display count
+    return processedMarkets.slice(0, initialDisplayCount);
+  }, [processedMarkets, searchQuery, showAll, initialDisplayCount]);
+
+  // Calculate hidden count
+  const hiddenCount = processedMarkets.length - visibleMarkets.length;
+  const hasMore = hiddenCount > 0;
+
+  // Handle search input change
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    // Reset show all when searching
+    setShowAll(false);
+  }, []);
+
+  // Clear search
+  const clearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  // Toggle show all
+  const toggleShowAll = useCallback(() => {
+    setShowAll((prev) => !prev);
+  }, []);
+
+  // Handle sort selection
+  const handleSortChange = useCallback((option: MarketSortOption) => {
+    setSortOption(option);
+    setIsSortOpen(false);
+  }, []);
+
+  // Close sort dropdown on click outside
+  useEffect(() => {
+    if (!isSortOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-sort-dropdown]')) {
+        setIsSortOpen(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [isSortOpen]);
+
+  // Empty state when no markets
+  if (markets.length === 0) {
+    return (
+      <div className={cn('rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500', className)}>
+        No markets found for this event.
+      </div>
+    );
+  }
+
+  // No search results
+  if (processedMarkets.length === 0 && searchQuery.trim()) {
+    return (
+      <div className={cn('space-y-3', className)}>
+        {/* Search and Sort Controls */}
+        <MultiMarketControls
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          onClearSearch={clearSearch}
+          showSearch={shouldShowSearch}
+          sortOption={sortOption}
+          onSortChange={handleSortChange}
+          showSort={shouldShowSort}
+          isSortOpen={isSortOpen}
+          onSortToggle={() => setIsSortOpen(!isSortOpen)}
+        />
+
+        {/* No results message */}
+        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <Search className="h-8 w-8 mx-auto text-gray-300 mb-3" />
+          <p className="text-gray-500">
+            No markets found matching &ldquo;{searchQuery}&rdquo;
+          </p>
+          <button
+            onClick={clearSearch}
+            className="mt-3 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+          >
+            Clear search
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn('space-y-3', className)}>
+      {/* Search and Sort Controls */}
+      {(shouldShowSearch || shouldShowSort) && (
+        <MultiMarketControls
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+          onClearSearch={clearSearch}
+          showSearch={shouldShowSearch}
+          sortOption={sortOption}
+          onSortChange={handleSortChange}
+          showSort={shouldShowSort}
+          isSortOpen={isSortOpen}
+          onSortToggle={() => setIsSortOpen(!isSortOpen)}
+          totalCount={processedMarkets.length}
+          showingCount={visibleMarkets.length}
+        />
+      )}
+
+      {/* Market Accordion */}
+      <MarketAccordion
+        markets={visibleMarkets}
+        mode={mode}
+        defaultExpanded={defaultExpanded}
+        onExpandChange={onExpandChange}
+        onTradeClick={onTradeClick}
+        persistToUrl={persistToUrl}
+      />
+
+      {/* Show More/Less Button */}
+      {hasMore && !searchQuery.trim() && (
+        <ShowMoreButton
+          hiddenCount={hiddenCount}
+          showAll={showAll}
+          onToggle={toggleShowAll}
+        />
+      )}
+
+      {/* Show Less Button when expanded */}
+      {showAll && processedMarkets.length > initialDisplayCount && !searchQuery.trim() && (
+        <ShowLessButton onToggle={toggleShowAll} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Controls for search and sort
+ */
+interface MultiMarketControlsProps {
+  searchQuery: string;
+  onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClearSearch: () => void;
+  showSearch: boolean;
+  sortOption: MarketSortOption;
+  onSortChange: (option: MarketSortOption) => void;
+  showSort: boolean;
+  isSortOpen: boolean;
+  onSortToggle: () => void;
+  totalCount?: number;
+  showingCount?: number;
+}
+
+const MultiMarketControls = memo(function MultiMarketControls({
+  searchQuery,
+  onSearchChange,
+  onClearSearch,
+  showSearch,
+  sortOption,
+  onSortChange,
+  showSort,
+  isSortOpen,
+  onSortToggle,
+  totalCount,
+  showingCount,
+}: MultiMarketControlsProps) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      {/* Search Input */}
+      {showSearch && (
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={onSearchChange}
+            placeholder="Search markets..."
+            className={cn(
+              'w-full pl-9 pr-8 py-2 text-sm',
+              'border border-gray-200 rounded-lg',
+              'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent',
+              'placeholder:text-gray-400'
+            )}
+            data-testid="market-search-input"
+          />
+          {searchQuery && (
+            <button
+              onClick={onClearSearch}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+              aria-label="Clear search"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Sort Dropdown and Count */}
+      <div className="flex items-center gap-3 sm:ml-auto">
+        {/* Market Count */}
+        {totalCount !== undefined && showingCount !== undefined && (
+          <span className="text-xs text-gray-500" data-testid="market-count">
+            {showingCount === totalCount
+              ? `${totalCount} market${totalCount === 1 ? '' : 's'}`
+              : `${showingCount} of ${totalCount} markets`}
+          </span>
+        )}
+
+        {/* Sort Dropdown */}
+        {showSort && (
+          <div className="relative" data-sort-dropdown>
+            <button
+              onClick={onSortToggle}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium',
+                'border border-gray-200 rounded-lg bg-white',
+                'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500',
+                'transition-colors'
+              )}
+              aria-expanded={isSortOpen}
+              aria-haspopup="true"
+              data-testid="market-sort-button"
+            >
+              <ArrowUpDown className="h-4 w-4 text-gray-400" />
+              <span className="text-gray-700">{SORT_LABELS[sortOption]}</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 text-gray-400 transition-transform',
+                  isSortOpen && 'rotate-180'
+                )}
+              />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isSortOpen && (
+              <div
+                className={cn(
+                  'absolute right-0 mt-1 w-40 py-1',
+                  'bg-white border border-gray-200 rounded-lg shadow-lg',
+                  'z-10 animate-in fade-in slide-in-from-top-2 duration-150'
+                )}
+                role="menu"
+              >
+                {(Object.keys(SORT_LABELS) as MarketSortOption[]).map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => onSortChange(option)}
+                    className={cn(
+                      'w-full text-left px-4 py-2 text-sm',
+                      'hover:bg-gray-50 transition-colors',
+                      sortOption === option
+                        ? 'text-indigo-600 font-medium bg-indigo-50'
+                        : 'text-gray-700'
+                    )}
+                    role="menuitem"
+                    data-testid={`sort-option-${option}`}
+                  >
+                    {SORT_LABELS[option]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+/**
+ * Show More Button
+ */
+interface ShowMoreButtonProps {
+  hiddenCount: number;
+  showAll: boolean;
+  onToggle: () => void;
+}
+
+const ShowMoreButton = memo(function ShowMoreButton({
+  hiddenCount,
+  onToggle,
+}: ShowMoreButtonProps) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        'w-full py-3 px-4',
+        'text-sm font-medium text-indigo-600',
+        'border border-dashed border-gray-300 rounded-lg',
+        'hover:border-indigo-300 hover:bg-indigo-50/50',
+        'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+        'transition-colors flex items-center justify-center gap-2'
+      )}
+      data-testid="show-more-button"
+    >
+      <ChevronDown className="h-4 w-4" />
+      Show {hiddenCount} more market{hiddenCount === 1 ? '' : 's'}
+    </button>
+  );
+});
+
+/**
+ * Show Less Button
+ */
+interface ShowLessButtonProps {
+  onToggle: () => void;
+}
+
+const ShowLessButton = memo(function ShowLessButton({ onToggle }: ShowLessButtonProps) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        'w-full py-3 px-4',
+        'text-sm font-medium text-gray-600',
+        'border border-dashed border-gray-300 rounded-lg',
+        'hover:border-gray-400 hover:bg-gray-50',
+        'focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2',
+        'transition-colors flex items-center justify-center gap-2'
+      )}
+      data-testid="show-less-button"
+    >
+      <ChevronUp className="h-4 w-4" />
+      Show fewer markets
+    </button>
+  );
+});
 
 export default MarketAccordion;
