@@ -279,7 +279,7 @@ export default function EventDetailPage({ params }: EventPageProps) {
       {/* Activity Tabs - Comments, Top Holders, Activity Feed */}
       <ActivityTabs
         defaultTab="activity"
-        conditionId={event.markets?.[0]?.id}
+        conditionId={event.markets?.[0]?.conditionId ?? undefined}
       />
     </EventDetailLayout>
   );
