@@ -18,43 +18,40 @@
 'use client';
 
 import { use, useEffect } from 'react';
-import { Tag, TrendingUp, TrendingDown, Clock, BarChart2 } from 'lucide-react';
+import { Tag, Clock } from 'lucide-react';
 import { useEvent } from '@/hooks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EventDetailPageSkeleton } from '@/components/loading-skeleton';
-import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel, type Outcome } from '@/components/event';
+import { EventDetailLayout, SectionPlaceholder, EventNotFound, EventError, ActivityTabs, TradingPanel, MarketAccordion, type Outcome, type AccordionMarket, type MarketOutcome } from '@/components/event';
+import type { EventMarketResponse } from '@/hooks';
 
 interface EventPageProps {
   params: Promise<{ slug: string }>;
 }
 
 /**
- * Format a price as a percentage (0-100)
+ * Map API market response to AccordionMarket format
  */
-function formatPrice(price: number): string {
-  return `${(price * 100).toFixed(1)}%`;
-}
+function mapToAccordionMarkets(markets: EventMarketResponse[] | undefined): AccordionMarket[] {
+  if (!markets) return [];
 
-/**
- * Format price change with sign and color indicator
- */
-function formatPriceChange(change: number): { text: string; isPositive: boolean } {
-  const isPositive = change >= 0;
-  const text = `${isPositive ? '+' : ''}${(change * 100).toFixed(1)}%`;
-  return { text, isPositive };
-}
-
-/**
- * Format currency
- */
-function formatCurrency(value: number): string {
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
-  }
-  if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(1)}K`;
-  }
-  return `$${value.toFixed(2)}`;
+  return markets.map((market): AccordionMarket => ({
+    id: market.id,
+    question: market.question,
+    outcomes: (market.outcomes ?? []).map((outcome): MarketOutcome => ({
+      id: outcome.id,
+      tokenId: outcome.tokenId,
+      outcomeName: outcome.outcomeName,
+      currentPrice: outcome.currentPrice,
+      priceChange24h: outcome.priceChange24h,
+    })),
+    totalVolume: market.totalVolume,
+    liquidity: market.liquidity,
+    volume24h: market.volume24h,
+    imageUrl: market.imageUrl ?? undefined,
+    description: market.description ?? undefined,
+    isResolved: market.resolved,
+  }));
 }
 
 
@@ -117,97 +114,6 @@ function EventHeader({
   );
 }
 
-/**
- * Outcomes List Component
- */
-function OutcomesList({
-  markets,
-}: {
-  markets: Array<{
-    id: string;
-    question: string;
-    totalVolume: number;
-    liquidity: number;
-    volume24h?: number;
-    outcomes?: Array<{
-      id: string;
-      outcomeName: string;
-      currentPrice: number;
-      priceChange24h: number;
-    }>;
-  }>;
-}) {
-  if (!markets || markets.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-8 text-center text-gray-500">
-          No markets found for this event.
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {markets.map((market) => (
-        <Card key={market.id}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium leading-tight flex items-start justify-between gap-4">
-              <span>{market.question}</span>
-              <BarChart2 className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* Outcomes */}
-            {market.outcomes && market.outcomes.length > 0 && (
-              <div className="space-y-2">
-                {market.outcomes.map((outcome) => {
-                  const priceChange = formatPriceChange(outcome.priceChange24h);
-                  return (
-                    <div
-                      key={outcome.id}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      <span className="font-medium text-gray-900">
-                        {outcome.outcomeName}
-                      </span>
-                      <div className="flex items-center gap-4">
-                        <span className="text-lg font-semibold text-gray-900">
-                          {formatPrice(outcome.currentPrice)}
-                        </span>
-                        <span
-                          className={`flex items-center gap-1 text-sm font-medium ${
-                            priceChange.isPositive ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          {priceChange.isPositive ? (
-                            <TrendingUp className="h-4 w-4" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4" />
-                          )}
-                          {priceChange.text}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Market Stats */}
-            <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t">
-              <div className="flex items-center gap-4">
-                <span>Volume: {formatCurrency(market.totalVolume)}</span>
-                <span>24h: {formatCurrency(market.volume24h ?? 0)}</span>
-              </div>
-              <span>Liquidity: {formatCurrency(market.liquidity)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
 
 /**
  * Trading Panel Sidebar Component
@@ -341,8 +247,12 @@ export default function EventDetailPage({ params }: EventPageProps) {
         status={event.status}
       />
 
-      {/* Outcomes / Markets */}
-      <OutcomesList markets={event.markets ?? []} />
+      {/* Expandable Market Accordion */}
+      <MarketAccordion
+        markets={mapToAccordionMarkets(event.markets)}
+        mode="single"
+        persistToUrl
+      />
 
       {/* Price Chart Placeholder */}
       <Card>

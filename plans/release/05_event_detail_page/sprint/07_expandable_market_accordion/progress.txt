@@ -98,8 +98,19 @@ Status: NOT STARTED
 Files: web/src/components/event/market-accordion.tsx
 
 ### event_page_integration
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/app/(dashboard)/event/[slug]/page.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Replaced OutcomesList component with MarketAccordion
+- Created mapToAccordionMarkets function to transform EventMarketResponse to AccordionMarket
+- Maps all market fields: id, question, outcomes, totalVolume, liquidity, volume24h, imageUrl, description, isResolved
+- Maps outcome fields: id, tokenId, outcomeName, currentPrice, priceChange24h
+- Uses 'single' mode (only one market expanded at a time)
+- URL hash persistence enabled for deep linking
+- Removed unused imports and OutcomesList component
+- Typecheck and all 550 tests pass
 
 ### realtime_price_updates
 Status: NOT STARTED
@@ -165,3 +176,24 @@ Updated types:
 Next priority should be `buy_buttons_inline` to add quick Buy Yes/No buttons to the
 accordion header for faster trading. After that, `event_page_integration` to wire
 up the accordion on the actual event page.
+
+### 2026-02-08: event_page_integration
+Integrated MarketAccordion into the event detail page, replacing the simple OutcomesList:
+
+Changes to web/src/app/(dashboard)/event/[slug]/page.tsx:
+- Imported MarketAccordion, AccordionMarket, and MarketOutcome types from @/components/event
+- Created mapToAccordionMarkets() function to transform API EventMarketResponse to AccordionMarket
+- Removed OutcomesList component (no longer needed)
+- Replaced <OutcomesList markets={...} /> with <MarketAccordion markets={...} mode="single" persistToUrl />
+- Cleaned up unused imports (TrendingUp, TrendingDown, BarChart2)
+- Removed helper functions (formatPrice, formatPriceChange, formatCurrency) that were only used by OutcomesList
+
+The accordion now shows on the event page with:
+- Clickable market rows that expand to show Order Book, Graph, and Resolution tabs
+- Single expansion mode (only one market open at a time)
+- URL hash persistence for deep linking to specific markets
+- All market data passed through: outcomes, prices, volume, liquidity, images, resolution info
+
+Next priority should be `buy_buttons_inline` to add quick Buy Yes/No buttons to the
+accordion header for faster trading. Consider also `accordion_loading_states` for
+better loading UX and `accordion_mobile_responsive` for mobile optimization.

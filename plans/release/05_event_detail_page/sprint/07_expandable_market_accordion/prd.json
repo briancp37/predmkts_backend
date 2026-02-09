@@ -146,7 +146,7 @@
       "Test with binary (Yes/No) and multi-outcome events",
       "Verify mobile and desktop layouts work correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "realtime_price_updates",
