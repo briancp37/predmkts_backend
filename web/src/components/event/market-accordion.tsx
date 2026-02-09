@@ -35,11 +35,11 @@ import {
   formatProbabilityAsCents,
   getProbabilityColor,
 } from './probability-display';
-import { OrderBook } from './order-book';
+import { OrderBook, OrderBookSkeleton } from './order-book';
 import { PriceChart } from './price-chart';
 import { TimeRangeSelector, TIME_RANGE_TO_INTERVAL, DEFAULT_TIME_RANGE, type TimeRange } from './time-range-selector';
 import { ResolutionRules } from './resolution-rules';
-import { useRealtimePrices } from '@/hooks';
+import { useRealtimePrices, useOrderbook } from '@/hooks';
 
 /**
  * Outcome data for a market
@@ -914,7 +914,15 @@ const MarketAccordionContent = memo(function MarketAccordionContent({
 });
 
 /**
- * OrderBookTabContent - Lazy-loaded Order Book tab wrapper
+ * OrderBookTabContent - Lazy-loaded Order Book tab wrapper with refresh capability
+ *
+ * PRD: orderbook_tab_integration
+ *
+ * Features:
+ * - Wraps OrderBook component with proper sizing for accordion context
+ * - Shows loading skeleton while data is loading
+ * - Handles orderbook unavailable gracefully (show message, not error)
+ * - Provides refresh button for manual orderbook update
  */
 interface OrderBookTabContentProps {
   tokenId: string | undefined;
@@ -923,6 +931,19 @@ interface OrderBookTabContentProps {
 const OrderBookTabContent = memo(function OrderBookTabContent({
   tokenId,
 }: OrderBookTabContentProps) {
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+
+  // Handle manual refresh
+  const handleRefresh = useCallback(async (refetchFn: () => Promise<unknown>) => {
+    setIsManualRefreshing(true);
+    try {
+      await refetchFn();
+    } finally {
+      // Reset after a short delay to show the animation
+      setTimeout(() => setIsManualRefreshing(false), 500);
+    }
+  }, []);
+
   if (!tokenId) {
     return (
       <div className="flex items-center justify-center py-8 text-sm text-gray-500">
@@ -933,6 +954,134 @@ const OrderBookTabContent = memo(function OrderBookTabContent({
 
   return (
     <div className="max-w-2xl mx-auto">
+      <OrderBookWithRefresh
+        tokenId={tokenId}
+        isManualRefreshing={isManualRefreshing}
+        onRefresh={handleRefresh}
+      />
+    </div>
+  );
+});
+
+/**
+ * OrderBookWithRefresh - OrderBook wrapper with refresh button
+ *
+ * Separated component to use the useOrderbook hook directly
+ * and provide the refresh button functionality.
+ */
+interface OrderBookWithRefreshProps {
+  tokenId: string;
+  isManualRefreshing: boolean;
+  onRefresh: (refetchFn: () => Promise<unknown>) => void;
+}
+
+const OrderBookWithRefresh = memo(function OrderBookWithRefresh({
+  tokenId,
+  isManualRefreshing,
+  onRefresh,
+}: OrderBookWithRefreshProps) {
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+    dataUpdatedAt,
+    isFetching,
+  } = useOrderbook(tokenId, { depth: 5, refetchInterval: 5000, enabled: !!tokenId });
+
+  // Format last updated time
+  const lastUpdatedText = useMemo(() => {
+    if (!dataUpdatedAt) return null;
+    const date = new Date(dataUpdatedAt);
+    return date.toLocaleTimeString();
+  }, [dataUpdatedAt]);
+
+  // Handle error state with graceful message
+  if (error && !data) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
+        <div className="flex flex-col items-center justify-center text-center gap-3">
+          <AlertCircle className="h-8 w-8 text-gray-400" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-gray-700">Order book unavailable</p>
+            <p className="text-xs text-gray-500">
+              {error instanceof Error ? error.message : 'Unable to load order book data'}
+            </p>
+          </div>
+          <button
+            onClick={() => onRefresh(refetch)}
+            disabled={isFetching}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium',
+              'text-gray-700 bg-white border border-gray-300 rounded-md',
+              'hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1',
+              'transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+            )}
+          >
+            <RefreshCw className={cn('h-3 w-3', isFetching && 'animate-spin')} />
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (isLoading) {
+    return <OrderBookSkeleton levels={5} className="border-0 shadow-none" />;
+  }
+
+  // Empty state
+  if (!data || (data.bids.length === 0 && data.asks.length === 0)) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 flex flex-col items-center justify-center text-center gap-2">
+        <BookOpen className="h-8 w-8 text-gray-300" />
+        <p className="text-sm text-gray-500">No orders available</p>
+        <button
+          onClick={() => onRefresh(refetch)}
+          disabled={isFetching}
+          className={cn(
+            'inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700',
+            'focus:outline-none disabled:opacity-50'
+          )}
+        >
+          <RefreshCw className={cn('h-3 w-3', isFetching && 'animate-spin')} />
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {/* Refresh button in header area */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          {lastUpdatedText && (
+            <span>Updated {lastUpdatedText}</span>
+          )}
+          {isFetching && !isManualRefreshing && (
+            <span className="text-indigo-500">Updating...</span>
+          )}
+        </div>
+        <button
+          onClick={() => onRefresh(refetch)}
+          disabled={isFetching}
+          title="Refresh order book"
+          className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-md',
+            'text-gray-600 hover:text-gray-900 hover:bg-gray-100',
+            'focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1',
+            'transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+            isManualRefreshing && 'bg-indigo-50 text-indigo-600'
+          )}
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5', (isManualRefreshing || isFetching) && 'animate-spin')} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+
+      {/* Order book component */}
       <OrderBook tokenId={tokenId} levels={5} className="border-0 shadow-none" />
     </div>
   );

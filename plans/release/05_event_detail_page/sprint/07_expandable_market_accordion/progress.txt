@@ -67,9 +67,17 @@ Implementation notes:
 - All tab content components memoized for performance
 
 ### orderbook_tab_integration
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/components/event/market-accordion.tsx
-Notes: Basic integration complete in MarketAccordionContent. Remaining: refresh button, additional error handling.
+Completed: 2026-02-09
+
+Implementation notes:
+- OrderBookTabContent manages manual refresh state
+- New OrderBookWithRefresh component uses useOrderbook hook directly
+- Displays last updated timestamp and "Updating..." during background refetch
+- Refresh button with spinning animation during refresh
+- Graceful error state showing "Order book unavailable" with retry button
+- Empty state with BookOpen icon and refresh link
 
 ### graph_tab_integration
 Status: NOT STARTED
@@ -449,6 +457,49 @@ Features implemented per PRD:
 Typecheck and all 550 tests pass.
 
 Remaining items:
-- orderbook_tab_integration: needs refresh button
+- graph_tab_integration: needs sync time range option
+- resolution_tab_integration: needs end date display
+
+### 2026-02-09: orderbook_tab_integration
+Completed the orderbook tab integration with refresh button and improved error handling:
+
+Changes to web/src/components/event/market-accordion.tsx:
+
+Updated OrderBookTabContent component:
+- Added isManualRefreshing state for tracking manual refresh operations
+- Created handleRefresh callback that sets refresh state and awaits refetch
+
+New OrderBookWithRefresh component:
+- Separated component to use useOrderbook hook directly with refetch capability
+- Displays last updated timestamp (e.g., "Updated 2:30:15 PM")
+- Shows "Updating..." indicator during background refetches
+- Refresh button with spinning icon animation during refresh
+- Button shows "Refresh" text on desktop, icon-only on mobile
+
+Error handling improvements:
+- Graceful error state with AlertCircle icon and friendly message
+- Shows "Order book unavailable" instead of raw error text
+- Error details displayed in smaller text below
+- Retry button to attempt refetch
+
+Empty state improvements:
+- Shows BookOpen icon when no orders available
+- Provides refresh link to manually retry
+
+Updated imports:
+- Added OrderBookSkeleton import from order-book component
+- Added useOrderbook import from hooks
+
+Features implemented per PRD:
+1. Create OrderBookTab wrapper component ✓
+2. Pass tokenId from expanded market to useOrderbook hook ✓
+3. Display OrderBook component with proper sizing for accordion context ✓
+4. Show OrderBookSkeleton while data is loading ✓
+5. Handle orderbook unavailable gracefully (show message, not error) ✓
+6. Add refresh button for manual orderbook update ✓
+
+Typecheck and all 550 tests pass.
+
+Remaining items:
 - graph_tab_integration: needs sync time range option
 - resolution_tab_integration: needs end date display

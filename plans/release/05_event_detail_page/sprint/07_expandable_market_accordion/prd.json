@@ -52,7 +52,7 @@
       "Handle orderbook unavailable gracefully (show message, not error)",
       "Add refresh button for manual orderbook update"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "graph_tab_integration",
