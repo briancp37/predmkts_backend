@@ -790,7 +790,7 @@ async def get_markets_advanced(
 
     # Group outcomes by market_id
     outcomes_by_market: dict[str, list[dict[str, Any]]] = {}
-    token_ids_to_fetch: list[str] = []
+    token_ids_to_fetch: set[str] = set()
 
     for outcome in outcome_rows:
         market_id = outcome["market_id"]
@@ -799,7 +799,7 @@ async def get_markets_advanced(
 
         token_id = outcome["tokenId"]
         if token_id:
-            token_ids_to_fetch.append(token_id)
+            token_ids_to_fetch.add(token_id)
 
         outcomes_by_market[market_id].append(
             {
@@ -811,10 +811,22 @@ async def get_markets_advanced(
             }
         )
 
-    # Fetch CLOB data for all token IDs
+    # Pre-parse tokens JSON for markets without dim_outcome entries
+    # and collect their token IDs for batch CLOB fetch
+    for row in market_rows:
+        market_id = row["id"]
+        if market_id not in outcomes_by_market and row.get("tokens"):
+            parsed_outcomes = _parse_tokens_to_outcomes(market_id, row["tokens"])
+            outcomes_by_market[market_id] = parsed_outcomes
+            for outcome in parsed_outcomes:
+                token_id = outcome.get("tokenId")
+                if token_id:
+                    token_ids_to_fetch.add(token_id)
+
+    # Fetch CLOB data for ALL token IDs in a single batch
     clob_data: dict[str, OrderBookSummary] = {}
     if token_ids_to_fetch:
-        clob_data = await clob_client.get_order_books(token_ids_to_fetch)
+        clob_data = await clob_client.get_order_books(list(token_ids_to_fetch))
 
     # Build response dicts with CLOB enrichment
     results: list[dict[str, Any]] = []
@@ -822,18 +834,8 @@ async def get_markets_advanced(
     for row in market_rows:
         market_id = row["id"]
 
-        # Parse tokens JSON if outcomes not in dim_outcome
+        # Get pre-parsed outcomes (already collected above)
         market_outcomes = outcomes_by_market.get(market_id, [])
-        if not market_outcomes and row.get("tokens"):
-            market_outcomes = _parse_tokens_to_outcomes(market_id, row["tokens"])
-            # Collect token IDs from parsed outcomes for CLOB lookup
-            for outcome in market_outcomes:
-                token_id = outcome.get("tokenId")
-                if token_id and token_id not in clob_data:
-                    # Fetch individually if not in batch
-                    summary = await clob_client.get_order_book(token_id)
-                    if summary:
-                        clob_data[token_id] = summary
 
         # Update outcomes with CLOB prices and aggregate CLOB data for the market
         best_bid: float | None = None
