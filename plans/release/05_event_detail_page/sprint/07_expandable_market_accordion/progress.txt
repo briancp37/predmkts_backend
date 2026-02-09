@@ -86,8 +86,18 @@ Status: NOT STARTED
 Files: web/src/components/event/market-accordion.tsx
 
 ### buy_buttons_inline
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/components/event/market-accordion.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Added BuyButton component as compact pill buttons (green for Yes, red for No)
+- Shows current price in cents (e.g., "Yes 95¢")
+- Hover tooltip shows estimated cost for 100 shares
+- Buttons disabled when market.isResolved is true
+- Added TradeSelection type and onTradeClick callback for parent integration
+- Stops event propagation to prevent accordion toggle
+- Hidden on mobile (< sm) to keep header clean
 
 ### accordion_loading_states
 Status: NOT STARTED
@@ -197,3 +207,40 @@ The accordion now shows on the event page with:
 Next priority should be `buy_buttons_inline` to add quick Buy Yes/No buttons to the
 accordion header for faster trading. Consider also `accordion_loading_states` for
 better loading UX and `accordion_mobile_responsive` for mobile optimization.
+
+### 2026-02-08: buy_buttons_inline
+Implemented inline Buy Yes/No buttons in the accordion header for quick trading:
+
+Changes to web/src/components/event/market-accordion.tsx:
+- Added BuyButton component as a compact pill button with green (Yes) and red (No) styling
+- Integrated buttons into MarketAccordionHeader on the right side, hidden on mobile (< sm breakpoint)
+- Shows current price on each button in cents format (e.g., "Yes 95¢")
+- Added TradeSelection interface for structured callback data
+- Added onTradeClick callback prop to MarketAccordion for parent component integration
+- Buttons use stopPropagation to prevent accordion toggle when clicked
+- Hover tooltip shows estimated cost for 100 shares ("Buy 100 shares for $X")
+- Buttons are disabled when market.isResolved is true
+- All components memoized for performance (BuyButton wrapped in memo)
+- Added allOutcomes prop to MarketAccordionHeader for accessing Yes/No outcomes
+- Finds Yes/No outcomes by matching outcomeName.toLowerCase()
+
+Updated exports in web/src/components/event/index.ts:
+- Added TradeSelection type export
+
+Features implemented:
+- Compact pill buttons with appropriate colors (green-100/700 for Yes, red-100/700 for No)
+- Price display in cents with tabular-nums for consistent width
+- Proper focus states with ring-2 and appropriate color
+- Hover states with shadow-sm and color intensity increase
+- Disabled state with gray styling and cursor-not-allowed
+- Responsive: hidden on mobile to avoid header crowding
+
+Parent integration notes:
+- Parent can pass onTradeClick callback to receive TradeSelection with:
+  - marketId, outcomeId, tokenId, outcomeName, currentPrice, direction
+- This enables wiring to TradingPanel to pre-select the outcome for trading
+
+Typecheck and all 550 tests pass.
+
+Next priority should be `accordion_loading_states` for better loading UX, or
+`accordion_mobile_responsive` to ensure buttons work well on all screen sizes.

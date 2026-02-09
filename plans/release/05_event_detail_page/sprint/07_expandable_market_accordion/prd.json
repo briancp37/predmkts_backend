@@ -106,7 +106,7 @@
       "Add hover tooltip showing 'Buy 100 shares for $X'",
       "Disable buttons if market is resolved or trading is paused"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "accordion_loading_states",

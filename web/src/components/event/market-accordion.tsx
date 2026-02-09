@@ -97,6 +97,24 @@ export type AccordionTabValue = 'orderbook' | 'graph' | 'resolution';
  */
 export type AccordionMode = 'single' | 'multiple';
 
+/**
+ * Trade selection data passed to onTradeClick callback
+ */
+export interface TradeSelection {
+  /** Market ID */
+  marketId: string;
+  /** Outcome ID (e.g., "yes" or "no") */
+  outcomeId: string;
+  /** Token ID for trading */
+  tokenId: string;
+  /** Outcome name (e.g., "Yes", "No") */
+  outcomeName: string;
+  /** Current price (0.0 to 1.0) */
+  currentPrice: number;
+  /** Trade direction */
+  direction: 'buy';
+}
+
 export interface MarketAccordionProps {
   /** List of markets to display */
   markets: AccordionMarket[];
@@ -106,6 +124,8 @@ export interface MarketAccordionProps {
   defaultExpanded?: string | string[];
   /** Callback when expansion changes */
   onExpandChange?: (expandedIds: string[]) => void;
+  /** Callback when a buy button is clicked */
+  onTradeClick?: (selection: TradeSelection) => void;
   /** Whether to sync expanded state with URL hash */
   persistToUrl?: boolean;
   /** Additional CSS classes */
@@ -153,6 +173,7 @@ export function MarketAccordion({
   mode = 'single',
   defaultExpanded,
   onExpandChange,
+  onTradeClick,
   persistToUrl = true,
   className,
 }: MarketAccordionProps) {
@@ -236,6 +257,7 @@ export function MarketAccordion({
           <MarketAccordionItem
             key={market.id}
             market={market}
+            onTradeClick={onTradeClick}
           />
         ))}
       </Accordion.Root>
@@ -254,6 +276,7 @@ export function MarketAccordion({
         <MarketAccordionItem
           key={market.id}
           market={market}
+          onTradeClick={onTradeClick}
         />
       ))}
     </Accordion.Root>
@@ -262,6 +285,7 @@ export function MarketAccordion({
 
 interface MarketAccordionItemProps {
   market: AccordionMarket;
+  onTradeClick?: (selection: TradeSelection) => void;
 }
 
 /**
@@ -281,11 +305,17 @@ interface MarketAccordionItemProps {
 interface MarketAccordionHeaderProps {
   market: AccordionMarket;
   primaryOutcome: MarketOutcome | null;
+  /** All outcomes for the market (for buy buttons) */
+  allOutcomes: MarketOutcome[];
+  /** Callback when buy button is clicked */
+  onTradeClick?: (selection: TradeSelection) => void;
 }
 
 const MarketAccordionHeader = memo(function MarketAccordionHeader({
   market,
   primaryOutcome,
+  allOutcomes,
+  onTradeClick,
 }: MarketAccordionHeaderProps) {
   const colors = primaryOutcome ? getProbabilityColor(primaryOutcome.currentPrice) : null;
 
@@ -294,6 +324,37 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
     primaryOutcome?.bestBid !== undefined && primaryOutcome?.bestAsk !== undefined
       ? `${Math.round(primaryOutcome.bestBid * 100)}¢ / ${Math.round(primaryOutcome.bestAsk * 100)}¢`
       : null;
+
+  // Find Yes and No outcomes for buy buttons
+  const yesOutcome = allOutcomes.find(
+    (o) => o.outcomeName.toLowerCase() === 'yes'
+  );
+  const noOutcome = allOutcomes.find(
+    (o) => o.outcomeName.toLowerCase() === 'no'
+  );
+
+  // Determine if trading is available
+  const isTradingDisabled = market.isResolved === true;
+
+  // Handle buy button click
+  const handleBuyClick = useCallback(
+    (e: React.MouseEvent, outcome: MarketOutcome) => {
+      e.stopPropagation(); // Prevent accordion toggle
+      e.preventDefault();
+
+      if (isTradingDisabled || !onTradeClick) return;
+
+      onTradeClick({
+        marketId: market.id,
+        outcomeId: outcome.id,
+        tokenId: outcome.tokenId,
+        outcomeName: outcome.outcomeName,
+        currentPrice: outcome.currentPrice,
+        direction: 'buy',
+      });
+    },
+    [market.id, isTradingDisabled, onTradeClick]
+  );
 
   return (
     <Accordion.Trigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-gray-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 transition-colors data-[state=open]:bg-gray-50/50">
@@ -340,8 +401,26 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
         </div>
       </div>
 
-      {/* Right side: Price display and indicators */}
-      <div className="flex items-center gap-3 flex-shrink-0">
+      {/* Right side: Buy buttons, Price display and indicators */}
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+        {/* Buy Yes/No buttons - only show for binary markets with Yes/No outcomes */}
+        {yesOutcome && noOutcome && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            <BuyButton
+              outcome={yesOutcome}
+              variant="yes"
+              disabled={isTradingDisabled}
+              onClick={(e) => handleBuyClick(e, yesOutcome)}
+            />
+            <BuyButton
+              outcome={noOutcome}
+              variant="no"
+              disabled={isTradingDisabled}
+              onClick={(e) => handleBuyClick(e, noOutcome)}
+            />
+          </div>
+        )}
+
         {primaryOutcome && (
           <>
             {/* 24h price change indicator */}
@@ -378,6 +457,59 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
         />
       </div>
     </Accordion.Trigger>
+  );
+});
+
+/**
+ * BuyButton - Compact buy button for Yes/No outcomes
+ *
+ * PRD: buy_buttons_inline
+ *
+ * Features:
+ * - Compact pill button style (green for Yes, red for No)
+ * - Shows current price on button (e.g., "Yes 95¢")
+ * - Clicking opens trading panel with outcome pre-selected
+ * - Disabled when market is resolved or trading is paused
+ * - Hover tooltip shows estimated cost for 100 shares
+ */
+interface BuyButtonProps {
+  outcome: MarketOutcome;
+  variant: 'yes' | 'no';
+  disabled: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}
+
+const BuyButton = memo(function BuyButton({
+  outcome,
+  variant,
+  disabled,
+  onClick,
+}: BuyButtonProps) {
+  const priceInCents = Math.round(outcome.currentPrice * 100);
+  const estimatedCost = (100 * outcome.currentPrice).toFixed(2);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={disabled ? 'Trading unavailable' : `Buy 100 shares for $${estimatedCost}`}
+      className={cn(
+        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold',
+        'transition-all duration-150 whitespace-nowrap',
+        'focus:outline-none focus:ring-2 focus:ring-offset-1',
+        variant === 'yes'
+          ? disabled
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-green-100 text-green-700 hover:bg-green-200 focus:ring-green-500 hover:shadow-sm'
+          : disabled
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-red-100 text-red-700 hover:bg-red-200 focus:ring-red-500 hover:shadow-sm'
+      )}
+    >
+      <span>{outcome.outcomeName}</span>
+      <span className="tabular-nums">{priceInCents}¢</span>
+    </button>
   );
 });
 
@@ -630,7 +762,10 @@ const ResolutionTabContent = memo(function ResolutionTabContent({
 /**
  * Individual accordion item for a market
  */
-const MarketAccordionItem = memo(function MarketAccordionItem({ market }: MarketAccordionItemProps) {
+const MarketAccordionItem = memo(function MarketAccordionItem({
+  market,
+  onTradeClick,
+}: MarketAccordionItemProps) {
   // Get the primary outcome (highest probability) for header display
   const primaryOutcome = market.outcomes.length > 0
     ? market.outcomes.reduce<MarketOutcome>(
@@ -645,7 +780,12 @@ const MarketAccordionItem = memo(function MarketAccordionItem({ market }: Market
       className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
     >
       <Accordion.Header className="flex">
-        <MarketAccordionHeader market={market} primaryOutcome={primaryOutcome} />
+        <MarketAccordionHeader
+          market={market}
+          primaryOutcome={primaryOutcome}
+          allOutcomes={market.outcomes}
+          onTradeClick={onTradeClick}
+        />
       </Accordion.Header>
 
       <Accordion.Content className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
