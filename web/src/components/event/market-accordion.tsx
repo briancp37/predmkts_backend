@@ -25,7 +25,7 @@
 'use client';
 
 import * as React from 'react';
-import { useCallback, useEffect, useState, useMemo, memo } from 'react';
+import { useCallback, useEffect, useState, useMemo, memo, useRef } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Tabs from '@radix-ui/react-tabs';
 import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, BookOpen, LineChart, FileText, AlertCircle, RefreshCw, Search, ArrowUpDown } from 'lucide-react';
@@ -39,6 +39,7 @@ import { OrderBook } from './order-book';
 import { PriceChart } from './price-chart';
 import { TimeRangeSelector, TIME_RANGE_TO_INTERVAL, DEFAULT_TIME_RANGE, type TimeRange } from './time-range-selector';
 import { ResolutionRules } from './resolution-rules';
+import { useRealtimePrices } from '@/hooks';
 
 /**
  * Outcome data for a market
@@ -118,6 +119,18 @@ export interface TradeSelection {
   direction: 'buy';
 }
 
+/**
+ * Real-time price update configuration
+ */
+export interface RealtimePriceConfig {
+  /** Enable real-time price updates */
+  enabled?: boolean;
+  /** Polling interval in milliseconds (default: 10000) */
+  refetchInterval?: number;
+  /** Pause polling when all markets are collapsed (default: true) */
+  pauseWhenCollapsed?: boolean;
+}
+
 export interface MarketAccordionProps {
   /** List of markets to display */
   markets: AccordionMarket[];
@@ -131,6 +144,8 @@ export interface MarketAccordionProps {
   onTradeClick?: (selection: TradeSelection) => void;
   /** Whether to sync expanded state with URL hash */
   persistToUrl?: boolean;
+  /** Real-time price update configuration */
+  realtimePrices?: RealtimePriceConfig;
   /** Additional CSS classes */
   className?: string;
 }
@@ -178,6 +193,7 @@ export function MarketAccordion({
   onExpandChange,
   onTradeClick,
   persistToUrl = true,
+  realtimePrices,
   className,
 }: MarketAccordionProps) {
   // Initialize expanded state from URL hash or defaultExpanded
@@ -197,6 +213,51 @@ export function MarketAccordion({
 
     return [];
   });
+
+  // Real-time price updates
+  const marketIds = useMemo(() => markets.map((m) => m.id), [markets]);
+  const { prices: realtimePriceData, lastUpdated: pricesLastUpdated } = useRealtimePrices(
+    marketIds,
+    {
+      enabled: realtimePrices?.enabled ?? false,
+      refetchInterval: realtimePrices?.refetchInterval ?? 10000,
+      pauseWhenCollapsed: realtimePrices?.pauseWhenCollapsed ?? true,
+      expandedMarketIds: expandedIds,
+    }
+  );
+
+  // Merge real-time prices into markets
+  const marketsWithRealtimePrices = useMemo(() => {
+    if (!realtimePrices?.enabled || Object.keys(realtimePriceData).length === 0) {
+      return markets;
+    }
+
+    return markets.map((market) => {
+      const priceUpdate = realtimePriceData[market.id];
+      if (!priceUpdate) return market;
+
+      // Update outcomes with real-time prices
+      const updatedOutcomes = market.outcomes.map((outcome) => {
+        const tokenPrice = priceUpdate.tokens.find(
+          (t) => t.tokenId === outcome.tokenId || t.outcome.toLowerCase() === outcome.outcomeName.toLowerCase()
+        );
+        if (tokenPrice) {
+          return {
+            ...outcome,
+            currentPrice: tokenPrice.price,
+          };
+        }
+        return outcome;
+      });
+
+      return {
+        ...market,
+        outcomes: updatedOutcomes,
+        volume24h: priceUpdate.volume24h ?? market.volume24h,
+        liquidity: priceUpdate.liquidity ?? market.liquidity,
+      };
+    });
+  }, [markets, realtimePriceData, realtimePrices?.enabled]);
 
   // Sync URL hash with expanded state
   useEffect(() => {
@@ -256,11 +317,12 @@ export function MarketAccordion({
         collapsible
         className={cn('space-y-2', className)}
       >
-        {markets.map((market) => (
+        {marketsWithRealtimePrices.map((market) => (
           <MarketAccordionItem
             key={market.id}
             market={market}
             onTradeClick={onTradeClick}
+            pricesLastUpdated={realtimePrices?.enabled ? pricesLastUpdated : undefined}
           />
         ))}
       </Accordion.Root>
@@ -275,11 +337,12 @@ export function MarketAccordion({
       onValueChange={(value) => handleValueChange(value)}
       className={cn('space-y-2', className)}
     >
-      {markets.map((market) => (
+      {marketsWithRealtimePrices.map((market) => (
         <MarketAccordionItem
           key={market.id}
           market={market}
           onTradeClick={onTradeClick}
+          pricesLastUpdated={realtimePrices?.enabled ? pricesLastUpdated : undefined}
         />
       ))}
     </Accordion.Root>
@@ -289,6 +352,8 @@ export function MarketAccordion({
 interface MarketAccordionItemProps {
   market: AccordionMarket;
   onTradeClick?: (selection: TradeSelection) => void;
+  /** Last price update timestamp for real-time updates */
+  pricesLastUpdated?: number | null;
 }
 
 /**
@@ -312,6 +377,8 @@ interface MarketAccordionHeaderProps {
   allOutcomes: MarketOutcome[];
   /** Callback when buy button is clicked */
   onTradeClick?: (selection: TradeSelection) => void;
+  /** Last price update timestamp for real-time display */
+  pricesLastUpdated?: number | null;
 }
 
 const MarketAccordionHeader = memo(function MarketAccordionHeader({
@@ -319,8 +386,10 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
   primaryOutcome,
   allOutcomes,
   onTradeClick,
+  pricesLastUpdated,
 }: MarketAccordionHeaderProps) {
-  const colors = primaryOutcome ? getProbabilityColor(primaryOutcome.currentPrice) : null;
+  // Track previous price for flash animation
+  const prevPrice = usePreviousValue(primaryOutcome?.currentPrice);
 
   // Format bid/ask spread for display
   const bidAskSpread =
@@ -426,17 +495,13 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
 
         {/* Mobile: Probability + chevron in top row */}
         <div className="flex items-center gap-2 sm:hidden flex-shrink-0">
-          {primaryOutcome && colors && (
-            <div
-              className={cn(
-                'flex items-baseline gap-0.5 px-2 py-1 rounded-lg',
-                colors.bg
-              )}
-            >
-              <span className={cn('text-lg font-bold tabular-nums', colors.text)}>
-                {formatProbability(primaryOutcome.currentPrice)}
-              </span>
-            </div>
+          {primaryOutcome && (
+            <AnimatedPriceDisplay
+              price={primaryOutcome.currentPrice}
+              previousPrice={prevPrice}
+              lastUpdated={pricesLastUpdated}
+              size="sm"
+            />
           )}
           <ChevronDown
             className={cn(
@@ -508,22 +573,12 @@ const MarketAccordionHeader = memo(function MarketAccordionHeader({
               <PriceChangeIndicator change={primaryOutcome.priceChange24h} />
             )}
 
-            {/* Large probability display with color coding */}
-            {colors && (
-              <div
-                className={cn(
-                  'flex items-baseline gap-1 px-3 py-1.5 rounded-lg',
-                  colors.bg
-                )}
-              >
-                <span className={cn('text-2xl font-bold tabular-nums', colors.text)}>
-                  {formatProbability(primaryOutcome.currentPrice)}
-                </span>
-                <span className={cn('text-xs font-medium', colors.text, 'opacity-70')}>
-                  {formatProbabilityAsCents(primaryOutcome.currentPrice)}
-                </span>
-              </div>
-            )}
+            {/* Large probability display with color coding and flash animation */}
+            <AnimatedPriceDisplay
+              price={primaryOutcome.currentPrice}
+              previousPrice={prevPrice}
+              lastUpdated={pricesLastUpdated}
+            />
           </>
         )}
 
@@ -639,6 +694,98 @@ const PriceChangeIndicator = memo(function PriceChangeIndicator({
     </div>
   );
 });
+
+/**
+ * AnimatedPriceDisplay - Shows probability with flash animation on price changes
+ *
+ * PRD: realtime_price_updates
+ *
+ * Features:
+ * - Displays probability as large percentage with color coding
+ * - Flashes green/red briefly when price increases/decreases
+ * - Shows last update timestamp on hover
+ */
+interface AnimatedPriceDisplayProps {
+  /** Current price (0.0 to 1.0) */
+  price: number;
+  /** Previous price for detecting changes (0.0 to 1.0) */
+  previousPrice?: number;
+  /** Last update timestamp */
+  lastUpdated?: number | null;
+  /** Size variant */
+  size?: 'sm' | 'default';
+}
+
+const AnimatedPriceDisplay = memo(function AnimatedPriceDisplay({
+  price,
+  previousPrice,
+  lastUpdated,
+  size = 'default',
+}: AnimatedPriceDisplayProps) {
+  const colors = getProbabilityColor(price);
+  const [flashDirection, setFlashDirection] = useState<'up' | 'down' | null>(null);
+  const prevPriceRef = useRef<number | undefined>(previousPrice);
+
+  // Detect price changes and trigger flash animation
+  useEffect(() => {
+    const prev = prevPriceRef.current;
+    if (prev !== undefined && prev !== price) {
+      // Only flash if change is significant (> 0.1%)
+      const change = price - prev;
+      if (Math.abs(change) >= 0.001) {
+        setFlashDirection(change > 0 ? 'up' : 'down');
+        // Clear flash after animation completes
+        const timer = setTimeout(() => setFlashDirection(null), 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+    prevPriceRef.current = price;
+  }, [price]);
+
+  // Format last updated timestamp
+  const formattedLastUpdated = useMemo(() => {
+    if (!lastUpdated) return null;
+    const date = new Date(lastUpdated);
+    return `Last updated: ${date.toLocaleTimeString()}`;
+  }, [lastUpdated]);
+
+  return (
+    <div
+      className={cn(
+        'flex items-baseline gap-1 rounded-lg transition-colors',
+        size === 'sm' ? 'px-2 py-1' : 'px-3 py-1.5',
+        colors.bg,
+        flashDirection === 'up' && 'animate-[price-flash-up_1s_ease-out]',
+        flashDirection === 'down' && 'animate-[price-flash-down_1s_ease-out]'
+      )}
+      title={formattedLastUpdated || undefined}
+    >
+      <span className={cn(
+        'font-bold tabular-nums',
+        size === 'sm' ? 'text-lg' : 'text-2xl',
+        colors.text
+      )}>
+        {formatProbability(price)}
+      </span>
+      {size !== 'sm' && (
+        <span className={cn('text-xs font-medium opacity-70', colors.text)}>
+          {formatProbabilityAsCents(price)}
+        </span>
+      )}
+    </div>
+  );
+});
+
+/**
+ * Hook to track previous values for price change detection
+ */
+function usePreviousValue<T>(value: T): T | undefined {
+  const ref = useRef<T | undefined>(undefined);
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+}
 
 /**
  * MarketAccordionContent - Expandable content panel with tabs
@@ -873,6 +1020,7 @@ const ResolutionTabContent = memo(function ResolutionTabContent({
 const MarketAccordionItem = memo(function MarketAccordionItem({
   market,
   onTradeClick,
+  pricesLastUpdated,
 }: MarketAccordionItemProps) {
   // Get the primary outcome (highest probability) for header display
   const primaryOutcome = market.outcomes.length > 0
@@ -893,6 +1041,7 @@ const MarketAccordionItem = memo(function MarketAccordionItem({
           primaryOutcome={primaryOutcome}
           allOutcomes={market.outcomes}
           onTradeClick={onTradeClick}
+          pricesLastUpdated={pricesLastUpdated}
         />
       </Accordion.Header>
 
@@ -1367,6 +1516,8 @@ export interface MultiMarketAccordionProps {
   onTradeClick?: (selection: TradeSelection) => void;
   /** Whether to sync expanded state with URL hash */
   persistToUrl?: boolean;
+  /** Real-time price update configuration */
+  realtimePrices?: RealtimePriceConfig;
   /** Additional CSS classes */
   className?: string;
 }
@@ -1471,6 +1622,7 @@ export function MultiMarketAccordion({
   onExpandChange,
   onTradeClick,
   persistToUrl = true,
+  realtimePrices,
   className,
 }: MultiMarketAccordionProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -1612,6 +1764,7 @@ export function MultiMarketAccordion({
         onExpandChange={onExpandChange}
         onTradeClick={onTradeClick}
         persistToUrl={persistToUrl}
+        realtimePrices={realtimePrices}
       />
 
       {/* Show More/Less Button */}

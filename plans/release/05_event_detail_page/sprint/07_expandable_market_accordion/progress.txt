@@ -400,4 +400,55 @@ Remaining items:
 - orderbook_tab_integration: needs refresh button
 - graph_tab_integration: needs sync time range option
 - resolution_tab_integration: needs end date display
-- realtime_price_updates: not started
+
+### 2026-02-09: realtime_price_updates
+Implemented real-time price updates for the market accordion headers:
+
+New hook added to web/src/hooks/use-polymarket-proxy.ts:
+- useRealtimePrices: Fetches real-time prices for multiple markets in parallel
+- Uses React Query's useQueries for efficient parallel fetching
+- Supports configurable polling interval (default 10s)
+- Supports pauseWhenCollapsed optimization to reduce API calls
+- Returns a map of conditionId -> MarketPriceUpdate with tokens, volume24h, liquidity, lastUpdated
+
+New types exported from hooks:
+- MarketPriceUpdate: Interface for price update data
+- UseRealtimePricesParams: Configuration for the hook
+
+CSS animations added to web/src/index.css:
+- price-flash-up: Green flash animation for price increases
+- price-flash-down: Red flash animation for price decreases
+- Animations use @theme directive for Tailwind v4 integration
+
+New component added to web/src/components/event/market-accordion.tsx:
+- AnimatedPriceDisplay: Shows probability with flash animation on price changes
+- Tracks previous price via usePreviousValue hook to detect changes
+- Flashes green/red when price changes by >= 0.1%
+- Shows last update timestamp on hover via title attribute
+- Supports 'sm' and 'default' size variants
+
+Updates to MarketAccordion component:
+- Added RealtimePriceConfig interface for configuration
+- Added realtimePrices prop to MarketAccordionProps and MultiMarketAccordionProps
+- Integrated useRealtimePrices hook when enabled
+- Merges real-time prices into markets data
+- Passes expandedIds to hook for pauseWhenCollapsed optimization
+- Updated MarketAccordionHeader to use AnimatedPriceDisplay
+
+Updates to event page (web/src/app/(dashboard)/event/[slug]/page.tsx):
+- Enabled real-time prices with 10s interval and pauseWhenCollapsed=true
+
+Features implemented per PRD:
+1. Uses useRealtimePrices (built on useMarketPrice) to poll for price updates (10s interval) ✓
+2. Animate price changes with brief highlight (flash green/red) ✓
+3. Update probability display without full re-render (via memo and specific updates) ✓
+4. Pause polling when accordion is collapsed (optimization) ✓
+5. Resume polling when accordion expands ✓
+6. Show last update timestamp on hover ✓
+
+Typecheck and all 550 tests pass.
+
+Remaining items:
+- orderbook_tab_integration: needs refresh button
+- graph_tab_integration: needs sync time range option
+- resolution_tab_integration: needs end date display

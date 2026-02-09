@@ -204,4 +204,5 @@ export {
   type AccordionTabValue,
   type TradeSelection,
   type MarketSortOption,
+  type RealtimePriceConfig,
 } from './market-accordion';

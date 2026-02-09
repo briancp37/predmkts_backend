@@ -126,6 +126,7 @@ export {
   useMarketPrice,
   useTopHolders,
   useMarketTokens,
+  useRealtimePrices,
   type PricePoint,
   type PriceHistoryResponse,
   type TimeseriesInterval,
@@ -146,6 +147,8 @@ export {
   type UseMarketPriceParams,
   type UseTopHoldersParams,
   type UseMarketTokensParams,
+  type MarketPriceUpdate,
+  type UseRealtimePricesParams,
 } from './use-polymarket-proxy';
 
 // Event hooks (Sprint 01 - Event Page Foundation)

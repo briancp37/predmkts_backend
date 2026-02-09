@@ -159,6 +159,6 @@
       "Resume polling when accordion expands",
       "Show last update timestamp on hover"
     ],
-    "passes": false
+    "passes": true
   }
 ]

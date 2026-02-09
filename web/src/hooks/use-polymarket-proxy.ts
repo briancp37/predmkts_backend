@@ -21,7 +21,8 @@
 
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQuery, useQueries } from '@tanstack/react-query';
 
 const API_BASE = '/api/v1/proxy';
 
@@ -764,4 +765,122 @@ export function useMarketTokens(
     enabled: enabled && !!marketId,
     staleTime: MARKET_TOKENS_STALE_TIME,
   });
+}
+
+// ============================================================================
+// Real-time Price Updates for Multiple Markets
+// PRD: realtime_price_updates
+// ============================================================================
+
+/**
+ * Price update data for a single market
+ */
+export interface MarketPriceUpdate {
+  conditionId: string;
+  tokens: TokenPrice[];
+  volume24h: number | null;
+  liquidity: number | null;
+  lastUpdated: number;
+}
+
+/**
+ * Query parameters for useRealtimePrices hook
+ */
+export interface UseRealtimePricesParams {
+  /** Refetch interval in milliseconds. Default: 10000 (10s) */
+  refetchInterval?: number;
+  /** Enable/disable the query (default: true) */
+  enabled?: boolean;
+  /** Whether to pause when all markets are collapsed */
+  pauseWhenCollapsed?: boolean;
+  /** Currently expanded market IDs (for pause optimization) */
+  expandedMarketIds?: string[];
+}
+
+/**
+ * Hook to fetch real-time prices for multiple markets
+ *
+ * Automatically refetches every 10 seconds by default for semi-real-time updates.
+ * Can be paused when all markets are collapsed to save API calls.
+ *
+ * @example
+ * ```tsx
+ * const { prices, isLoading, lastUpdated } = useRealtimePrices(
+ *   ['condition1', 'condition2'],
+ *   { refetchInterval: 10000, expandedMarketIds: ['condition1'] }
+ * );
+ *
+ * // Access price for a specific market/outcome
+ * const yesPrice = prices['condition1']?.tokens.find(t => t.outcome === 'Yes')?.price;
+ * ```
+ */
+export function useRealtimePrices(
+  conditionIds: string[],
+  params: UseRealtimePricesParams = {}
+) {
+  const {
+    enabled = true,
+    refetchInterval = 10000,
+    pauseWhenCollapsed = true,
+    expandedMarketIds = [],
+  } = params;
+
+  // Determine if we should be polling
+  // If pauseWhenCollapsed is true, only poll when at least one market is expanded
+  const shouldPoll = pauseWhenCollapsed
+    ? expandedMarketIds.length > 0
+    : true;
+
+  // Use React Query's useQueries for parallel fetching
+  const queries = useQueries({
+    queries: conditionIds.map((conditionId) => ({
+      queryKey: ['proxy', 'market-info', conditionId],
+      queryFn: () => fetchMarketInfo(conditionId),
+      enabled: enabled && !!conditionId,
+      staleTime: MARKET_INFO_STALE_TIME,
+      refetchInterval: shouldPoll ? refetchInterval : false,
+    })),
+  });
+
+  // Combine results into a map
+  const prices = useMemo(() => {
+    const priceMap: Record<string, MarketPriceUpdate> = {};
+
+    queries.forEach((query, index) => {
+      if (query.data) {
+        const conditionId = conditionIds[index];
+        if (conditionId) {
+          priceMap[conditionId] = {
+            conditionId: query.data.conditionId,
+            tokens: query.data.tokens,
+            volume24h: query.data.volume24h,
+            liquidity: query.data.liquidity,
+            lastUpdated: query.dataUpdatedAt || Date.now(),
+          };
+        }
+      }
+    });
+
+    return priceMap;
+  }, [queries, conditionIds]);
+
+  // Calculate overall loading state
+  const isLoading = queries.some((q) => q.isLoading);
+  const isFetching = queries.some((q) => q.isFetching);
+
+  // Get the most recent update timestamp
+  const lastUpdated = useMemo(() => {
+    const timestamps = queries
+      .map((q) => q.dataUpdatedAt)
+      .filter((t): t is number => t !== undefined && t > 0);
+    return timestamps.length > 0 ? Math.max(...timestamps) : null;
+  }, [queries]);
+
+  return {
+    prices,
+    isLoading,
+    isFetching,
+    lastUpdated,
+    queries, // Expose raw queries for advanced use cases
+  };
 }

@@ -254,6 +254,11 @@ export default function EventDetailPage({ params }: EventPageProps) {
         persistToUrl
         initialDisplayCount={5}
         defaultSort="probability"
+        realtimePrices={{
+          enabled: true,
+          refetchInterval: 10000,
+          pauseWhenCollapsed: true,
+        }}
       />
 
       {/* Price Chart Placeholder */}
