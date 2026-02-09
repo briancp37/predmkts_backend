@@ -119,7 +119,7 @@
       "Add retry button for failed market data fetches",
       "Maintain accordion structure during loading to prevent layout shift"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "accordion_mobile_responsive",

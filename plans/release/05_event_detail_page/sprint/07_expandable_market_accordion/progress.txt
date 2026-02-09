@@ -100,8 +100,20 @@ Implementation notes:
 - Hidden on mobile (< sm) to keep header clean
 
 ### accordion_loading_states
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/components/event/market-accordion.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Created MarketAccordionSkeleton component for initial page load
+- SkeletonBlock with shimmer animation matching existing loading skeleton pattern
+- MarketAccordionRowSkeleton with staggered animation delays
+- MarketAccordionError for full error state with retry button
+- MarketAccordionItemError for single market failure within a list
+- MarketAccordionLoading for partial loading states (mixed loaded/loading/failed)
+- All components use data-testid for testing
+- Maintains accordion structure during loading to prevent layout shift
+- Icons: AlertCircle, RefreshCw from lucide-react
 
 ### accordion_mobile_responsive
 Status: NOT STARTED
@@ -244,3 +256,35 @@ Typecheck and all 550 tests pass.
 
 Next priority should be `accordion_loading_states` for better loading UX, or
 `accordion_mobile_responsive` to ensure buttons work well on all screen sizes.
+
+### 2026-02-08: accordion_loading_states
+Implemented comprehensive loading and error states for the market accordion:
+
+New components added to web/src/components/event/market-accordion.tsx:
+- SkeletonBlock: Base shimmer animation block reusing existing pattern
+- MarketAccordionRowSkeleton: Single row skeleton matching accordion header structure
+- MarketAccordionSkeleton: Multiple skeleton rows for initial loading state
+- MarketAccordionError: Full error state with icon, message, and retry button
+- MarketAccordionItemError: Single market error state for partial failures
+- MarketAccordionLoading: Orchestrates mixed states (loaded, loading, failed markets)
+
+Features:
+- Skeleton rows match accordion header structure exactly (avatar, question, stats, buttons, probability)
+- Staggered animation delays for visual interest
+- Red-themed error states with AlertCircle icon
+- Retry buttons using RefreshCw icon
+- MarketAccordionLoading handles three scenarios:
+  1. All loading -> shows full skeleton
+  2. All failed -> shows error state with retry
+  3. Mixed -> shows loaded markets + skeleton rows + error items
+- All components use data-testid for testing
+- Maintains layout dimensions to prevent CLS (Cumulative Layout Shift)
+
+Updated exports in web/src/components/event/index.ts:
+- MarketAccordionSkeleton, MarketAccordionError, MarketAccordionItemError, MarketAccordionLoading
+- Corresponding Props types for all new components
+
+Typecheck and all 550 tests pass.
+
+Next priority should be `accordion_mobile_responsive` to optimize the accordion
+for mobile viewports, or `multi_market_layout` to handle events with many markets.

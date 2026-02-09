@@ -2,7 +2,8 @@
  * Market Accordion Component
  *
  * Sprint 07 - Expandable Market Accordion
- * PRD: market_accordion_container, market_accordion_header, market_accordion_content
+ * PRD: market_accordion_container, market_accordion_header, market_accordion_content,
+ *      accordion_loading_states
  *
  * Features:
  * - Expandable market rows using Radix Accordion
@@ -17,6 +18,8 @@
  * - Tabbed interface with Order Book, Graph, and Resolution tabs
  * - Lazy loading of tab content to avoid fetching data for collapsed markets
  * - Smooth fade-in animation when content appears
+ * - Loading states with skeleton placeholders
+ * - Error states with retry buttons
  */
 
 'use client';
@@ -25,7 +28,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useState, memo } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
 import * as Tabs from '@radix-ui/react-tabs';
-import { ChevronDown, TrendingUp, TrendingDown, BookOpen, LineChart, FileText } from 'lucide-react';
+import { ChevronDown, TrendingUp, TrendingDown, BookOpen, LineChart, FileText, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   formatProbability,
@@ -808,6 +811,392 @@ function formatVolume(value: number): string {
     return `${(value / 1_000).toFixed(1)}K`;
   }
   return value.toFixed(2);
+}
+
+// ============================================================================
+// Loading States Components
+// PRD: accordion_loading_states
+// ============================================================================
+
+/**
+ * Props for MarketAccordionSkeleton
+ */
+export interface MarketAccordionSkeletonProps {
+  /** Number of skeleton rows to display */
+  rows?: number;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * Skeleton block with shimmer animation
+ */
+function SkeletonBlock({ className }: { className?: string }) {
+  return (
+    <div
+      className={cn(
+        'bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer bg-[length:200%_100%] rounded',
+        className
+      )}
+    />
+  );
+}
+
+/**
+ * MarketAccordionSkeleton - Loading skeleton for market accordion
+ *
+ * PRD: accordion_loading_states
+ *
+ * Displays skeleton rows with animated placeholders matching the accordion structure.
+ * Maintains layout dimensions to prevent layout shift during loading.
+ *
+ * @example
+ * ```tsx
+ * if (isLoading) {
+ *   return <MarketAccordionSkeleton rows={3} />;
+ * }
+ * ```
+ */
+export function MarketAccordionSkeleton({
+  rows = 3,
+  className,
+}: MarketAccordionSkeletonProps) {
+  return (
+    <div className={cn('space-y-2', className)} data-testid="market-accordion-skeleton">
+      {Array.from({ length: rows }).map((_, index) => (
+        <MarketAccordionRowSkeleton key={index} index={index} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Single row skeleton for the market accordion
+ */
+interface MarketAccordionRowSkeletonProps {
+  index?: number;
+}
+
+const MarketAccordionRowSkeleton = memo(function MarketAccordionRowSkeleton({
+  index = 0,
+}: MarketAccordionRowSkeletonProps) {
+  return (
+    <div
+      className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm"
+      style={{ animationDelay: `${index * 100}ms` }}
+      data-testid="market-accordion-row-skeleton"
+    >
+      <div className="flex w-full items-center justify-between p-4">
+        {/* Left side: avatar + content */}
+        <div className="flex flex-1 items-center gap-3 min-w-0 pr-4">
+          {/* Avatar placeholder */}
+          <SkeletonBlock className="h-10 w-10 rounded-full flex-shrink-0" />
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0 space-y-2">
+            {/* Market question */}
+            <SkeletonBlock className="h-5 w-3/4" />
+
+            {/* Secondary info row */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <SkeletonBlock className="h-3 w-16" />
+              <SkeletonBlock className="h-3 w-20" />
+              <SkeletonBlock className="h-3 w-14" />
+            </div>
+          </div>
+        </div>
+
+        {/* Right side: buy buttons, probability, chevron */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Buy buttons (hidden on mobile) */}
+          <div className="hidden sm:flex items-center gap-1.5">
+            <SkeletonBlock className="h-7 w-16 rounded-full" />
+            <SkeletonBlock className="h-7 w-14 rounded-full" />
+          </div>
+
+          {/* Price change indicator */}
+          <SkeletonBlock className="h-6 w-14 rounded-md" />
+
+          {/* Probability badge */}
+          <SkeletonBlock className="h-10 w-20 rounded-lg" />
+
+          {/* Chevron */}
+          <SkeletonBlock className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+/**
+ * Props for MarketAccordionError
+ */
+export interface MarketAccordionErrorProps {
+  /** Error message to display */
+  error: string;
+  /** Callback when retry button is clicked */
+  onRetry?: () => void;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * MarketAccordionError - Error state with retry option
+ *
+ * PRD: accordion_loading_states
+ *
+ * Displays an error message and optional retry button when market data fails to load.
+ * Maintains the accordion structure to prevent layout shift.
+ *
+ * @example
+ * ```tsx
+ * if (error) {
+ *   return (
+ *     <MarketAccordionError
+ *       error={error.message}
+ *       onRetry={() => refetch()}
+ *     />
+ *   );
+ * }
+ * ```
+ */
+export function MarketAccordionError({
+  error,
+  onRetry,
+  className,
+}: MarketAccordionErrorProps) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border border-red-200 bg-red-50 p-6',
+        className
+      )}
+      data-testid="market-accordion-error"
+    >
+      <div className="flex flex-col items-center justify-center gap-3 text-center">
+        <div className="flex items-center justify-center h-10 w-10 rounded-full bg-red-100">
+          <AlertCircle className="h-5 w-5 text-red-600" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium text-red-800">
+            Failed to load markets
+          </h3>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium',
+              'text-red-700 bg-white border border-red-300 rounded-lg',
+              'hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2',
+              'transition-colors'
+            )}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Props for MarketAccordionItemError
+ */
+export interface MarketAccordionItemErrorProps {
+  /** Market ID that failed to load */
+  marketId: string;
+  /** Error message */
+  error: string;
+  /** Callback when retry button is clicked */
+  onRetry?: (marketId: string) => void;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * MarketAccordionItemError - Error state for a single market item
+ *
+ * PRD: accordion_loading_states
+ *
+ * Displays an error state for a single market that failed to load,
+ * while other markets may still be visible. Useful for partial loading failures.
+ *
+ * @example
+ * ```tsx
+ * {markets.map((market) => (
+ *   market.error ? (
+ *     <MarketAccordionItemError
+ *       key={market.id}
+ *       marketId={market.id}
+ *       error={market.error.message}
+ *       onRetry={(id) => refetchMarket(id)}
+ *     />
+ *   ) : (
+ *     <MarketAccordionItem key={market.id} market={market} />
+ *   )
+ * ))}
+ * ```
+ */
+export function MarketAccordionItemError({
+  marketId,
+  error,
+  onRetry,
+  className,
+}: MarketAccordionItemErrorProps) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border border-red-200 bg-white overflow-hidden shadow-sm',
+        className
+      )}
+      data-testid="market-accordion-item-error"
+    >
+      <div className="flex items-center justify-between p-4 bg-red-50/50">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-red-100 flex-shrink-0">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-red-800 truncate">
+              Failed to load market
+            </p>
+            <p className="text-xs text-red-600 truncate">{error}</p>
+          </div>
+        </div>
+        {onRetry && (
+          <button
+            onClick={() => onRetry(marketId)}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium',
+              'text-red-700 bg-white border border-red-300 rounded-md',
+              'hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1',
+              'transition-colors flex-shrink-0'
+            )}
+          >
+            <RefreshCw className="h-3 w-3" />
+            Retry
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Props for MarketAccordionLoading
+ */
+export interface MarketAccordionLoadingProps {
+  /** Markets that have loaded successfully */
+  markets: AccordionMarket[];
+  /** Market IDs that are still loading */
+  loadingMarketIds?: string[];
+  /** Market IDs that failed with their error messages */
+  failedMarkets?: Array<{ id: string; error: string }>;
+  /** Callback when retry is clicked for a failed market */
+  onRetryMarket?: (marketId: string) => void;
+  /** Expansion mode: 'single' allows one open, 'multiple' allows many */
+  mode?: AccordionMode;
+  /** Default expanded market ID(s) */
+  defaultExpanded?: string | string[];
+  /** Callback when expansion changes */
+  onExpandChange?: (expandedIds: string[]) => void;
+  /** Callback when a buy button is clicked */
+  onTradeClick?: (selection: TradeSelection) => void;
+  /** Whether to sync expanded state with URL hash */
+  persistToUrl?: boolean;
+  /** Additional CSS classes */
+  className?: string;
+}
+
+/**
+ * MarketAccordionLoading - Handles partial loading states
+ *
+ * PRD: accordion_loading_states
+ *
+ * Renders loaded markets alongside skeleton placeholders for markets still loading,
+ * and error states for markets that failed. This allows displaying partial data
+ * while additional markets are being fetched.
+ *
+ * @example
+ * ```tsx
+ * <MarketAccordionLoading
+ *   markets={loadedMarkets}
+ *   loadingMarketIds={['market-4', 'market-5']}
+ *   failedMarkets={[{ id: 'market-6', error: 'Network error' }]}
+ *   onRetryMarket={(id) => refetchMarket(id)}
+ * />
+ * ```
+ */
+export function MarketAccordionLoading({
+  markets,
+  loadingMarketIds = [],
+  failedMarkets = [],
+  onRetryMarket,
+  mode = 'single',
+  defaultExpanded,
+  onExpandChange,
+  onTradeClick,
+  persistToUrl = true,
+  className,
+}: MarketAccordionLoadingProps) {
+  // If there are no loaded markets and we have loading/failed states, show appropriate UI
+  if (markets.length === 0 && loadingMarketIds.length === 0 && failedMarkets.length === 0) {
+    return (
+      <div className={cn('rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500', className)}>
+        No markets found for this event.
+      </div>
+    );
+  }
+
+  // If everything is still loading, show full skeleton
+  if (markets.length === 0 && loadingMarketIds.length > 0 && failedMarkets.length === 0) {
+    return <MarketAccordionSkeleton rows={loadingMarketIds.length} className={className} />;
+  }
+
+  // If everything failed, show error state
+  if (markets.length === 0 && loadingMarketIds.length === 0 && failedMarkets.length > 0) {
+    return (
+      <MarketAccordionError
+        error={failedMarkets[0]?.error || 'Failed to load markets'}
+        onRetry={onRetryMarket ? () => onRetryMarket(failedMarkets[0]?.id || '') : undefined}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <div className={cn('space-y-2', className)}>
+      {/* Render loaded markets */}
+      {markets.length > 0 && (
+        <MarketAccordion
+          markets={markets}
+          mode={mode}
+          defaultExpanded={defaultExpanded}
+          onExpandChange={onExpandChange}
+          onTradeClick={onTradeClick}
+          persistToUrl={persistToUrl}
+        />
+      )}
+
+      {/* Render loading skeletons for pending markets */}
+      {loadingMarketIds.length > 0 && (
+        <MarketAccordionSkeleton rows={loadingMarketIds.length} />
+      )}
+
+      {/* Render error states for failed markets */}
+      {failedMarkets.map((failed) => (
+        <MarketAccordionItemError
+          key={failed.id}
+          marketId={failed.id}
+          error={failed.error}
+          onRetry={onRetryMarket}
+        />
+      ))}
+    </div>
+  );
 }
 
 export default MarketAccordion;
