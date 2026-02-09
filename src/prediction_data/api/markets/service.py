@@ -646,16 +646,21 @@ async def get_markets_advanced(
         params["exclude_categories"] = exclude_categories
 
     # Tag filtering using ClickHouse array functions on dim_event.tags
+    # Use case-insensitive matching by lowercasing both sides
     if include_tags:
         # Market must belong to an event that has at least one of the include tags
-        conditions.append("hasAny(e.tags, {include_tags:Array(String)})")
-        params["include_tags"] = include_tags
+        conditions.append(
+            "hasAny(arrayMap(x -> lower(x), e.tags), {include_tags:Array(String)})"
+        )
+        params["include_tags"] = [t.lower() for t in include_tags]
 
     if exclude_tags:
         # Market must NOT belong to an event that has any of the exclude tags
         # Using NOT hasAny() to exclude events with any matching tags
-        conditions.append("NOT hasAny(e.tags, {exclude_tags:Array(String)})")
-        params["exclude_tags"] = exclude_tags
+        conditions.append(
+            "NOT hasAny(arrayMap(x -> lower(x), e.tags), {exclude_tags:Array(String)})"
+        )
+        params["exclude_tags"] = [t.lower() for t in exclude_tags]
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
