@@ -1,0 +1,164 @@
+[
+  {
+    "category": "market_accordion_container",
+    "description": "Build the expandable market accordion container component",
+    "steps": [
+      "Create MarketAccordion component in web/src/components/event/market-accordion.tsx",
+      "Accept markets array with outcomes, tokenIds, and metadata",
+      "Manage expanded state (which market is currently open)",
+      "Support 'single' mode (only one market open) and 'multiple' mode",
+      "Add smooth height animation on expand/collapse using Radix Accordion",
+      "Handle keyboard navigation (arrow keys, enter, space)",
+      "Persist expanded market ID in URL hash for deep linking"
+    ],
+    "passes": true
+  },
+  {
+    "category": "market_accordion_header",
+    "description": "Build the market row header with summary info",
+    "steps": [
+      "Create MarketAccordionHeader component for collapsed row display",
+      "Display market name/candidate name prominently (e.g., 'Kevin Warsh')",
+      "Show current probability as large percentage with color coding",
+      "Display bid/ask spread inline (e.g., '95.4c / 4.7c')",
+      "Show 24h volume and price change indicators",
+      "Add chevron icon that rotates on expand (ChevronDown from lucide)",
+      "Include small profile image/avatar for candidate markets",
+      "Highlight selected/hovered state with subtle background change"
+    ],
+    "passes": false
+  },
+  {
+    "category": "market_accordion_content",
+    "description": "Build the expandable content panel with tabs",
+    "steps": [
+      "Create MarketAccordionContent component for expanded view",
+      "Implement tabbed interface with three tabs: Order Book, Graph, Resolution",
+      "Use URL hash or local state for active tab persistence within accordion",
+      "Add smooth fade-in animation when content appears",
+      "Lazy load tab content to avoid fetching data for collapsed markets",
+      "Show loading skeleton while tab content is fetching"
+    ],
+    "passes": false
+  },
+  {
+    "category": "orderbook_tab_integration",
+    "description": "Integrate existing OrderBook component into accordion tab",
+    "steps": [
+      "Create OrderBookTab wrapper component",
+      "Pass tokenId from expanded market to useOrderbook hook",
+      "Display OrderBook component with proper sizing for accordion context",
+      "Show OrderBookSkeleton while data is loading",
+      "Handle orderbook unavailable gracefully (show message, not error)",
+      "Add refresh button for manual orderbook update"
+    ],
+    "passes": false
+  },
+  {
+    "category": "graph_tab_integration",
+    "description": "Integrate existing PriceChart component into accordion tab",
+    "steps": [
+      "Create GraphTab wrapper component",
+      "Pass tokenId from expanded market to useTimeseries hook",
+      "Include TimeRangeSelector for 1H/6H/1D/1W/1M/ALL options",
+      "Display PriceChart component with responsive height for accordion",
+      "Show ChartLoadingSkeleton while data is loading",
+      "Default to 1D range for initial view",
+      "Sync time range across all markets or keep independent (configurable)"
+    ],
+    "passes": false
+  },
+  {
+    "category": "resolution_tab_integration",
+    "description": "Integrate existing ResolutionRules component into accordion tab",
+    "steps": [
+      "Create ResolutionTab wrapper component",
+      "Display market-specific resolution criteria",
+      "Show resolution source and resolver information",
+      "Parse and render markdown description with proper formatting",
+      "Add collapsible section for long resolution rules",
+      "Include end date and resolution deadline prominently"
+    ],
+    "passes": false
+  },
+  {
+    "category": "multi_market_layout",
+    "description": "Handle multi-market events like 'Who will win?' with many outcomes",
+    "steps": [
+      "Support events with 10+ markets (like Fed Chair nominees)",
+      "Add 'Show all X markets' expandable section for long lists",
+      "Display top N markets by volume/probability, collapse rest",
+      "Add search/filter input for finding specific markets",
+      "Sort markets by: probability (default), volume, alphabetical",
+      "Show 'X more markets' indicator when collapsed"
+    ],
+    "passes": false
+  },
+  {
+    "category": "buy_buttons_inline",
+    "description": "Add inline Buy Yes/No buttons to accordion header",
+    "steps": [
+      "Add 'Buy Yes' and 'Buy No' buttons to right side of accordion header",
+      "Style as compact pill buttons (green for Yes, red for No)",
+      "Show current price on each button (e.g., 'Yes 95c')",
+      "Clicking opens trading panel with that outcome pre-selected",
+      "Stop event propagation so clicking buy doesn't toggle accordion",
+      "Add hover tooltip showing 'Buy 100 shares for $X'",
+      "Disable buttons if market is resolved or trading is paused"
+    ],
+    "passes": false
+  },
+  {
+    "category": "accordion_loading_states",
+    "description": "Handle loading and error states for accordion",
+    "steps": [
+      "Create MarketAccordionSkeleton for initial page load",
+      "Show skeleton rows with animated placeholders",
+      "Handle partial loading (some markets loaded, others pending)",
+      "Show error state for markets that fail to load",
+      "Add retry button for failed market data fetches",
+      "Maintain accordion structure during loading to prevent layout shift"
+    ],
+    "passes": false
+  },
+  {
+    "category": "accordion_mobile_responsive",
+    "description": "Optimize accordion for mobile viewport",
+    "steps": [
+      "Stack header content vertically on mobile (< 640px)",
+      "Reduce padding and font sizes for compact mobile view",
+      "Make tabs scrollable horizontally if needed on small screens",
+      "Ensure touch targets are at least 44px for accessibility",
+      "Test accordion interaction on touch devices",
+      "Consider bottom sheet pattern for tab content on mobile"
+    ],
+    "passes": false
+  },
+  {
+    "category": "event_page_integration",
+    "description": "Replace OutcomesList with MarketAccordion on event page",
+    "steps": [
+      "Update web/src/app/(dashboard)/event/[slug]/page.tsx",
+      "Replace OutcomesList component with MarketAccordion",
+      "Pass full markets array with token IDs and outcomes",
+      "Wire up trading panel selection from accordion buy buttons",
+      "Ensure breadcrumbs and layout work with new component",
+      "Test with binary (Yes/No) and multi-outcome events",
+      "Verify mobile and desktop layouts work correctly"
+    ],
+    "passes": false
+  },
+  {
+    "category": "realtime_price_updates",
+    "description": "Add real-time price updates to accordion headers",
+    "steps": [
+      "Use useMarketPrice hook to poll for price updates (10s interval)",
+      "Animate price changes with brief highlight (flash green/red)",
+      "Update probability display without full re-render",
+      "Pause polling when accordion is collapsed (optimization)",
+      "Resume polling when accordion expands",
+      "Show last update timestamp on hover"
+    ],
+    "passes": false
+  }
+]

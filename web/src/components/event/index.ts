@@ -184,3 +184,11 @@ export {
   type CategoryTagListProps,
   type CategoryColors,
 } from './category-tag';
+
+export {
+  MarketAccordion,
+  type MarketAccordionProps,
+  type AccordionMarket,
+  type MarketOutcome,
+  type AccordionMode,
+} from './market-accordion';

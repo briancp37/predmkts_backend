@@ -1,0 +1,96 @@
+# Sprint 07: Expandable Market Accordion
+
+## Overview
+Implement Polymarket-style expandable market rows where each market in an event
+can be clicked to expand inline, showing Order Book, Graph, and Resolution tabs.
+This replaces the simple OutcomesList with an interactive accordion pattern.
+
+## Reference
+- Polymarket event page: https://polymarket.com/event/who-will-trump-nominate-as-fed-chair
+- Key UX: Click on candidate row -> expands with Order Book | Graph | Resolution tabs
+
+## Dependencies
+- Sprint 00: Proxy layer (useOrderbook, useTimeseries, useMarketPrice hooks)
+- Sprint 04: PriceChart, OrderBook, TimeRangeSelector components
+- Sprint 02: ResolutionRules, OutcomeCard components
+
+## Progress
+
+### market_accordion_container
+Status: COMPLETE
+Files: web/src/components/event/market-accordion.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Created MarketAccordion component using @radix-ui/react-accordion
+- Supports 'single' (one at a time) and 'multiple' expansion modes
+- URL hash persistence for deep linking (#market-{id} or #markets-{id1},{id2})
+- Smooth height animation via CSS keyframes in index.css
+- Keyboard navigation handled by Radix Accordion (arrows, enter, space, home, end)
+- Exported types: MarketAccordionProps, AccordionMarket, MarketOutcome, AccordionMode
+- Basic placeholder content in expanded state (tabs TBD in market_accordion_content)
+
+### market_accordion_header
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### market_accordion_content
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### orderbook_tab_integration
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### graph_tab_integration
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### resolution_tab_integration
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### multi_market_layout
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### buy_buttons_inline
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### accordion_loading_states
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### accordion_mobile_responsive
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+### event_page_integration
+Status: NOT STARTED
+Files: web/src/app/(dashboard)/event/[slug]/page.tsx
+
+### realtime_price_updates
+Status: NOT STARTED
+Files: web/src/components/event/market-accordion.tsx
+
+## Notes
+- Uses Radix Accordion for accessible expand/collapse with keyboard support
+- Lazy loads tab content to minimize API calls for collapsed markets
+- Supports both binary (Yes/No) and multi-outcome events
+- Integrates with existing trading panel for seamless trade execution
+
+## Session Log
+
+### 2026-02-08: market_accordion_container
+Implemented the core MarketAccordion component with:
+- Radix Accordion integration for accessible expand/collapse
+- Single and multiple expansion modes via `mode` prop
+- URL hash synchronization for deep linking
+- CSS animations added to index.css using Tailwind v4 @theme directive
+- Component exported from components/event/index.ts
+
+Next priority should be `market_accordion_header` to add proper header styling with
+probability display, bid/ask spread, and volume indicators. After that,
+`market_accordion_content` to implement the tabbed interface for Order Book, Graph,
+and Resolution views.
