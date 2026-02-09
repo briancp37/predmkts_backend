@@ -79,7 +79,7 @@
       "Add collapsible section for long resolution rules",
       "Include end date and resolution deadline prominently"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "multi_market_layout",

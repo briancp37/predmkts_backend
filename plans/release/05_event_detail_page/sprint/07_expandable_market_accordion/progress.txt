@@ -85,9 +85,16 @@ Files: web/src/components/event/market-accordion.tsx
 Notes: Basic integration complete in MarketAccordionContent. Remaining: sync time range option across markets.
 
 ### resolution_tab_integration
-Status: NOT STARTED
-Files: web/src/components/event/market-accordion.tsx
-Notes: Basic integration complete in MarketAccordionContent. Remaining: end date display.
+Status: COMPLETE
+Files: web/src/components/event/market-accordion.tsx, web/src/components/event/resolution-rules.tsx
+Completed: 2026-02-09
+
+Implementation notes:
+- Added EndDateDisplay component to ResolutionRules with Calendar/Clock icons
+- Shows formatted date + relative time ("in 3 days", "2 hours ago")
+- Color-coded: indigo (upcoming), amber (overdue), gray (resolved)
+- Added endDate field to AccordionMarket and ResolutionRulesProps
+- Passes endDate through accordion -> ResolutionTabContent -> ResolutionRules
 
 ### multi_market_layout
 Status: COMPLETE
@@ -502,4 +509,55 @@ Typecheck and all 550 tests pass.
 
 Remaining items:
 - graph_tab_integration: needs sync time range option
-- resolution_tab_integration: needs end date display
+
+### 2026-02-09: resolution_tab_integration
+Completed the resolution tab integration with prominent end date display:
+
+Changes to web/src/components/event/resolution-rules.tsx:
+
+New EndDateDisplay component:
+- Shows resolution deadline prominently with Calendar icon (upcoming) or Clock icon (past)
+- Displays both formatted date ("Jan 15, 2025 at 11:59 PM") and relative time ("in 3 days")
+- Color-coded based on status:
+  - Indigo theme for upcoming deadlines (active markets)
+  - Amber theme for overdue deadlines (past but not resolved)
+  - Gray theme for ended markets (already resolved)
+- Shows "Resolution Deadline" for active, "Resolution Overdue" for past, "Ended" for resolved
+
+Added formatEndDate helper function:
+- Parses ISO 8601 date strings
+- Calculates relative time in minutes/hours/days/months
+- Returns formatted string, relative time description, and isPast boolean
+
+Updated ResolutionRulesProps interface:
+- Added endDate?: string | null for market resolution deadline
+
+Updated ResolutionRules component:
+- Added endDate prop to function parameters
+- Renders EndDateDisplay below resolved status banner when endDate is present
+
+Changes to web/src/components/event/market-accordion.tsx:
+
+Updated AccordionMarket interface:
+- Added endDate?: string for market resolution deadline
+
+Updated ResolutionTabContent:
+- Passes market.endDate to ResolutionRules component
+
+Changes to web/src/app/(dashboard)/event/[slug]/page.tsx:
+
+Updated mapToAccordionMarkets function:
+- Maps market.endDate to AccordionMarket.endDate
+
+Features implemented per PRD:
+1. Create ResolutionTab wrapper component ✓ (already existed)
+2. Display market-specific resolution criteria ✓ (already existed)
+3. Show resolution source and resolver information ✓ (already existed)
+4. Parse and render markdown description with proper formatting ✓ (already existed)
+5. Add collapsible section for long resolution rules ✓ (already existed)
+6. Include end date and resolution deadline prominently ✓ (NEW)
+
+Typecheck and all 550 tests pass.
+
+Remaining items:
+- graph_tab_integration: needs sync time range option

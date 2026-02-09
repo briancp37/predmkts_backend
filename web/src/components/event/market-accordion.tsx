@@ -89,6 +89,8 @@ export interface AccordionMarket {
   isResolved?: boolean;
   /** Resolution outcome if resolved */
   resolutionOutcome?: string;
+  /** Market resolution deadline (ISO 8601) */
+  endDate?: string;
 }
 
 /**
@@ -1157,6 +1159,7 @@ const ResolutionTabContent = memo(function ResolutionTabContent({
         resolutionSource={market.resolutionSource}
         isResolved={market.isResolved}
         resolutionOutcome={market.resolutionOutcome}
+        endDate={market.endDate}
         className="border-0 shadow-none"
       />
     </div>

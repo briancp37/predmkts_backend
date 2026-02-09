@@ -14,7 +14,7 @@
 'use client';
 
 import { memo, useState, useCallback, useMemo } from 'react';
-import { ChevronDown, ChevronUp, FileText, Scale, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Scale, ExternalLink, Calendar, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // ============================================================================
@@ -40,6 +40,8 @@ export interface ResolutionRulesProps {
   isResolved?: boolean;
   /** Resolution outcome (if resolved) */
   resolutionOutcome?: string | null;
+  /** Market resolution deadline (ISO 8601) */
+  endDate?: string | null;
   /** Additional CSS classes */
   className?: string;
 }
@@ -95,6 +97,144 @@ function parseResolutionCriteria(description: string): {
 function shouldCollapse(text: string): boolean {
   return text.length > COLLAPSE_THRESHOLD;
 }
+
+/**
+ * Format end date for display
+ * Shows date with time and relative indicator (e.g., "in 3 days", "2 hours ago")
+ */
+function formatEndDate(dateString: string): { formatted: string; relative: string; isPast: boolean } {
+  const date = new Date(dateString);
+  const now = new Date();
+  const isPast = date < now;
+
+  // Format the date: "Jan 15, 2025 at 11:59 PM"
+  const formatted = date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }) + ' at ' + date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  // Calculate relative time
+  const diffMs = Math.abs(date.getTime() - now.getTime());
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  let relative: string;
+  if (diffMinutes < 60) {
+    relative = diffMinutes === 1 ? '1 minute' : `${diffMinutes} minutes`;
+  } else if (diffHours < 24) {
+    relative = diffHours === 1 ? '1 hour' : `${diffHours} hours`;
+  } else if (diffDays < 30) {
+    relative = diffDays === 1 ? '1 day' : `${diffDays} days`;
+  } else {
+    const diffMonths = Math.floor(diffDays / 30);
+    relative = diffMonths === 1 ? '1 month' : `${diffMonths} months`;
+  }
+
+  relative = isPast ? `${relative} ago` : `in ${relative}`;
+
+  return { formatted, relative, isPast };
+}
+
+// ============================================================================
+// EndDateDisplay Component
+// ============================================================================
+
+interface EndDateDisplayProps {
+  endDate: string;
+  isResolved?: boolean;
+}
+
+const EndDateDisplay = memo(function EndDateDisplay({
+  endDate,
+  isResolved = false,
+}: EndDateDisplayProps) {
+  const { formatted, relative, isPast } = useMemo(() => formatEndDate(endDate), [endDate]);
+
+  // Determine styling based on status
+  const isOverdue = isPast && !isResolved;
+  const isUpcoming = !isPast && !isResolved;
+
+  return (
+    <div
+      className={`mb-4 p-3 rounded-lg border flex items-start gap-3 ${
+        isResolved
+          ? 'bg-gray-50 border-gray-200'
+          : isOverdue
+            ? 'bg-amber-50 border-amber-200'
+            : isUpcoming
+              ? 'bg-indigo-50 border-indigo-200'
+              : 'bg-gray-50 border-gray-200'
+      }`}
+    >
+      <div
+        className={`flex items-center justify-center h-9 w-9 rounded-full flex-shrink-0 ${
+          isResolved
+            ? 'bg-gray-100'
+            : isOverdue
+              ? 'bg-amber-100'
+              : 'bg-indigo-100'
+        }`}
+      >
+        {isPast ? (
+          <Clock
+            className={`h-4 w-4 ${
+              isResolved ? 'text-gray-500' : 'text-amber-600'
+            }`}
+          />
+        ) : (
+          <Calendar
+            className={`h-4 w-4 ${
+              isResolved ? 'text-gray-500' : 'text-indigo-600'
+            }`}
+          />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span
+            className={`text-sm font-semibold ${
+              isResolved
+                ? 'text-gray-700'
+                : isOverdue
+                  ? 'text-amber-800'
+                  : 'text-indigo-800'
+            }`}
+          >
+            {isResolved ? 'Ended' : isPast ? 'Resolution Overdue' : 'Resolution Deadline'}
+          </span>
+          <span
+            className={`text-xs font-medium ${
+              isResolved
+                ? 'text-gray-500'
+                : isOverdue
+                  ? 'text-amber-600'
+                  : 'text-indigo-600'
+            }`}
+          >
+            ({relative})
+          </span>
+        </div>
+        <p
+          className={`text-sm mt-0.5 ${
+            isResolved
+              ? 'text-gray-600'
+              : isOverdue
+                ? 'text-amber-700'
+                : 'text-indigo-700'
+          }`}
+        >
+          {formatted}
+        </p>
+      </div>
+    </div>
+  );
+});
 
 // ============================================================================
 // ResolutionCriteriaList Component
@@ -232,6 +372,7 @@ export const ResolutionRules = memo(function ResolutionRules({
   resolutionSource,
   isResolved = false,
   resolutionOutcome,
+  endDate,
   className,
 }: ResolutionRulesProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -274,6 +415,11 @@ export const ResolutionRules = memo(function ResolutionRules({
               )}
             </div>
           </div>
+        )}
+
+        {/* End Date / Resolution Deadline */}
+        {endDate && (
+          <EndDateDisplay endDate={endDate} isResolved={isResolved} />
         )}
 
         {/* Description */}

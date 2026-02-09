@@ -51,6 +51,7 @@ function mapToAccordionMarkets(markets: EventMarketResponse[] | undefined): Acco
     imageUrl: market.imageUrl ?? undefined,
     description: market.description ?? undefined,
     isResolved: market.resolved,
+    endDate: market.endDate ?? undefined,
   }));
 }
 
