@@ -151,6 +151,9 @@ async def load_markets_reference(
     latest snapshot plus any subsequent deltas, reads the data, and
     populates a :class:`MarketsReferenceLookup`.
 
+    Memory-efficient: processes one manifest at a time and frees memory
+    between manifests to avoid OOM with large backlogs.
+
     Args:
         s3_client: S3 client bound to the Bronze bucket.
         end_date: Optional upper-bound date (YYYY-MM-DD). If ``None``,
@@ -159,11 +162,13 @@ async def load_markets_reference(
     Returns:
         Populated :class:`MarketsReferenceLookup`.
     """
+    import gc
+
     from prediction_data.silver.discovery import (
         discover_manifests,
         select_snapshot_and_deltas,
     )
-    from prediction_data.silver.reader import read_manifest_data
+    from prediction_data.silver.reader import read_single_file
 
     all_manifests = await discover_manifests(
         s3_client,
@@ -187,8 +192,12 @@ async def load_markets_reference(
             run_id=manifest.run_id,
             snapshot_type=manifest.snapshot_type,
         )
-        result = await read_manifest_data(s3_client, manifest)
-        lookup.load_from_records(result.records)
+        # Process file-by-file to bound memory usage
+        for file_ref in manifest.manifest.files:
+            records = read_single_file(s3_client, file_ref)
+            lookup.load_from_records(records)
+            del records
+        gc.collect()
 
     logger.info(
         "Markets reference loaded",
