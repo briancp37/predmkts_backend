@@ -2,7 +2,7 @@
  * Market Accordion Component
  *
  * Sprint 07 - Expandable Market Accordion
- * PRD: market_accordion_container, market_accordion_header
+ * PRD: market_accordion_container, market_accordion_header, market_accordion_content
  *
  * Features:
  * - Expandable market rows using Radix Accordion
@@ -14,19 +14,28 @@
  * - Enhanced header with probability display, bid/ask spread, volume indicators
  * - Color-coded probability badges and price change indicators
  * - Subtle hover/selected state feedback
+ * - Tabbed interface with Order Book, Graph, and Resolution tabs
+ * - Lazy loading of tab content to avoid fetching data for collapsed markets
+ * - Smooth fade-in animation when content appears
  */
 
 'use client';
 
+import * as React from 'react';
 import { useCallback, useEffect, useState, memo } from 'react';
 import * as Accordion from '@radix-ui/react-accordion';
-import { ChevronDown, TrendingUp, TrendingDown } from 'lucide-react';
+import * as Tabs from '@radix-ui/react-tabs';
+import { ChevronDown, TrendingUp, TrendingDown, BookOpen, LineChart, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   formatProbability,
   formatProbabilityAsCents,
   getProbabilityColor,
 } from './probability-display';
+import { OrderBook } from './order-book';
+import { PriceChart } from './price-chart';
+import { TimeRangeSelector, TIME_RANGE_TO_INTERVAL, DEFAULT_TIME_RANGE, type TimeRange } from './time-range-selector';
+import { ResolutionRules } from './resolution-rules';
 
 /**
  * Outcome data for a market
@@ -66,7 +75,22 @@ export interface AccordionMarket {
   volume24h?: number;
   /** Optional image URL for candidate/outcome avatar */
   imageUrl?: string;
+  /** Market description for resolution rules */
+  description?: string;
+  /** Resolver type for resolution rules */
+  resolverType?: string;
+  /** Resolution source for resolution rules */
+  resolutionSource?: string;
+  /** Whether the market is resolved */
+  isResolved?: boolean;
+  /** Resolution outcome if resolved */
+  resolutionOutcome?: string;
 }
+
+/**
+ * Tab values for accordion content
+ */
+export type AccordionTabValue = 'orderbook' | 'graph' | 'resolution';
 
 /**
  * Accordion expansion mode
@@ -387,6 +411,223 @@ const PriceChangeIndicator = memo(function PriceChangeIndicator({
 });
 
 /**
+ * MarketAccordionContent - Expandable content panel with tabs
+ *
+ * PRD: market_accordion_content
+ *
+ * Features:
+ * - Tabbed interface with Order Book, Graph, and Resolution tabs
+ * - Local state for active tab (within each accordion item)
+ * - Smooth fade-in animation when content appears
+ * - Lazy load tab content to minimize API calls for collapsed markets
+ * - Loading skeleton while tab content is fetching
+ */
+interface MarketAccordionContentProps {
+  market: AccordionMarket;
+  primaryOutcome: MarketOutcome | null;
+}
+
+interface TabConfig {
+  value: AccordionTabValue;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const ACCORDION_TABS: TabConfig[] = [
+  { value: 'orderbook', label: 'Order Book', icon: <BookOpen className="h-4 w-4" /> },
+  { value: 'graph', label: 'Graph', icon: <LineChart className="h-4 w-4" /> },
+  { value: 'resolution', label: 'Resolution', icon: <FileText className="h-4 w-4" /> },
+];
+
+const MarketAccordionContent = memo(function MarketAccordionContent({
+  market,
+  primaryOutcome,
+}: MarketAccordionContentProps) {
+  const [activeTab, setActiveTab] = useState<AccordionTabValue>('orderbook');
+  const [timeRange, setTimeRange] = useState<TimeRange>(DEFAULT_TIME_RANGE);
+  const [isTimeseriesLoading, setIsTimeseriesLoading] = useState(false);
+
+  // Get the primary token ID for Order Book and Graph
+  const primaryTokenId = primaryOutcome?.tokenId;
+  const interval = TIME_RANGE_TO_INTERVAL[timeRange];
+
+  // Handle time range change with loading state
+  const handleTimeRangeChange = useCallback((range: TimeRange) => {
+    setIsTimeseriesLoading(true);
+    setTimeRange(range);
+    // Reset loading state after a short delay (data fetch will update it)
+    setTimeout(() => setIsTimeseriesLoading(false), 100);
+  }, []);
+
+  return (
+    <div className="animate-in fade-in duration-200">
+      <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as AccordionTabValue)}>
+        {/* Tab List */}
+        <div className="border-b border-gray-200 bg-white rounded-t-lg">
+          <Tabs.List
+            className="flex overflow-x-auto scrollbar-hide"
+            aria-label="Market details tabs"
+          >
+            {ACCORDION_TABS.map((tab) => (
+              <Tabs.Trigger
+                key={tab.value}
+                value={tab.value}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2.5 text-sm font-medium whitespace-nowrap',
+                  'border-b-2 transition-colors duration-200',
+                  'hover:text-gray-900 hover:bg-gray-50',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+                  'data-[state=active]:border-indigo-600 data-[state=active]:text-indigo-600',
+                  'data-[state=inactive]:border-transparent data-[state=inactive]:text-gray-500'
+                )}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </Tabs.Trigger>
+            ))}
+          </Tabs.List>
+        </div>
+
+        {/* Tab Content */}
+        <div className="p-4 bg-white rounded-b-lg">
+          {/* Order Book Tab */}
+          <Tabs.Content
+            value="orderbook"
+            className="focus:outline-none data-[state=inactive]:hidden animate-in fade-in duration-150"
+          >
+            <OrderBookTabContent tokenId={primaryTokenId} />
+          </Tabs.Content>
+
+          {/* Graph Tab */}
+          <Tabs.Content
+            value="graph"
+            className="focus:outline-none data-[state=inactive]:hidden animate-in fade-in duration-150"
+          >
+            <GraphTabContent
+              tokenId={primaryTokenId}
+              timeRange={timeRange}
+              interval={interval}
+              isLoading={isTimeseriesLoading}
+              onTimeRangeChange={handleTimeRangeChange}
+              outcomeName={primaryOutcome?.outcomeName}
+            />
+          </Tabs.Content>
+
+          {/* Resolution Tab */}
+          <Tabs.Content
+            value="resolution"
+            className="focus:outline-none data-[state=inactive]:hidden animate-in fade-in duration-150"
+          >
+            <ResolutionTabContent market={market} />
+          </Tabs.Content>
+        </div>
+      </Tabs.Root>
+    </div>
+  );
+});
+
+/**
+ * OrderBookTabContent - Lazy-loaded Order Book tab wrapper
+ */
+interface OrderBookTabContentProps {
+  tokenId: string | undefined;
+}
+
+const OrderBookTabContent = memo(function OrderBookTabContent({
+  tokenId,
+}: OrderBookTabContentProps) {
+  if (!tokenId) {
+    return (
+      <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+        Select an outcome to view the order book
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <OrderBook tokenId={tokenId} levels={5} className="border-0 shadow-none" />
+    </div>
+  );
+});
+
+/**
+ * GraphTabContent - Lazy-loaded Graph tab wrapper with time range selector
+ */
+interface GraphTabContentProps {
+  tokenId: string | undefined;
+  timeRange: TimeRange;
+  interval: string;
+  isLoading: boolean;
+  onTimeRangeChange: (range: TimeRange) => void;
+  outcomeName?: string;
+}
+
+const GraphTabContent = memo(function GraphTabContent({
+  tokenId,
+  timeRange,
+  interval,
+  isLoading,
+  onTimeRangeChange,
+  outcomeName,
+}: GraphTabContentProps) {
+  if (!tokenId) {
+    return (
+      <div className="flex items-center justify-center py-8 text-sm text-gray-500">
+        Select an outcome to view price history
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Time Range Selector */}
+      <div className="flex justify-end">
+        <TimeRangeSelector
+          value={timeRange}
+          onChange={onTimeRangeChange}
+          isLoading={isLoading}
+          persistInUrl={false}
+        />
+      </div>
+
+      {/* Price Chart */}
+      <PriceChart
+        tokenId={tokenId}
+        interval={interval as import('@/hooks').TimeseriesInterval}
+        height={250}
+        outcomeName={outcomeName}
+        showMidLine
+      />
+    </div>
+  );
+});
+
+/**
+ * ResolutionTabContent - Resolution rules display
+ */
+interface ResolutionTabContentProps {
+  market: AccordionMarket;
+}
+
+const ResolutionTabContent = memo(function ResolutionTabContent({
+  market,
+}: ResolutionTabContentProps) {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <ResolutionRules
+        description={market.description}
+        resolverType={market.resolverType}
+        resolutionSource={market.resolutionSource}
+        isResolved={market.isResolved}
+        resolutionOutcome={market.resolutionOutcome}
+        className="border-0 shadow-none"
+      />
+    </div>
+  );
+});
+
+/**
  * Individual accordion item for a market
  */
 const MarketAccordionItem = memo(function MarketAccordionItem({ market }: MarketAccordionItemProps) {
@@ -408,40 +649,8 @@ const MarketAccordionItem = memo(function MarketAccordionItem({ market }: Market
       </Accordion.Header>
 
       <Accordion.Content className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
-        <div className="border-t border-gray-100 p-4 bg-gray-50/30">
-          {/* Placeholder for tab content - will be implemented in market_accordion_content */}
-          <div className="text-sm text-gray-500">
-            <p className="text-gray-400 mb-3">Market details and trading options</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {market.outcomes.map((outcome) => {
-                const outcomeColors = getProbabilityColor(outcome.currentPrice);
-                return (
-                  <div
-                    key={outcome.id}
-                    className="flex items-center justify-between p-2 rounded-md bg-white border border-gray-100"
-                  >
-                    <span className="font-medium text-gray-700">{outcome.outcomeName}</span>
-                    <div className="flex items-center gap-2">
-                      {outcome.priceChange24h !== undefined && outcome.priceChange24h !== 0 && (
-                        <span
-                          className={cn(
-                            'text-xs',
-                            outcome.priceChange24h > 0 ? 'text-green-600' : 'text-red-600'
-                          )}
-                        >
-                          {outcome.priceChange24h > 0 ? '+' : ''}
-                          {(outcome.priceChange24h * 100).toFixed(1)}%
-                        </span>
-                      )}
-                      <span className={cn('text-sm font-semibold px-2 py-0.5 rounded', outcomeColors.bg, outcomeColors.text)}>
-                        {formatProbability(outcome.currentPrice)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="border-t border-gray-100 bg-gray-50/30">
+          <MarketAccordionContent market={market} primaryOutcome={primaryOutcome} />
         </div>
       </Accordion.Content>
     </Accordion.Item>

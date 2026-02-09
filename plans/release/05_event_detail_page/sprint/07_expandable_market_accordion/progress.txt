@@ -49,20 +49,37 @@ Implementation notes:
 - Memoized components (memo) for performance
 
 ### market_accordion_content
-Status: NOT STARTED
+Status: COMPLETE
 Files: web/src/components/event/market-accordion.tsx
+Completed: 2026-02-08
+
+Implementation notes:
+- Created MarketAccordionContent component with Radix Tabs integration
+- Three tabs: Order Book (BookOpen icon), Graph (LineChart icon), Resolution (FileText icon)
+- Local state for active tab within each accordion item (not URL persisted per accordion)
+- Smooth fade-in animation using Tailwind animate-in utilities
+- Tab content is lazy-loaded (only rendered when accordion is expanded)
+- OrderBookTabContent wrapper integrates OrderBook component with proper sizing
+- GraphTabContent wrapper includes TimeRangeSelector with local state
+- ResolutionTabContent wrapper integrates ResolutionRules component
+- Added resolution-related fields to AccordionMarket interface
+- Exported AccordionTabValue type for external use
+- All tab content components memoized for performance
 
 ### orderbook_tab_integration
 Status: NOT STARTED
 Files: web/src/components/event/market-accordion.tsx
+Notes: Basic integration complete in MarketAccordionContent. Remaining: refresh button, additional error handling.
 
 ### graph_tab_integration
 Status: NOT STARTED
 Files: web/src/components/event/market-accordion.tsx
+Notes: Basic integration complete in MarketAccordionContent. Remaining: sync time range option across markets.
 
 ### resolution_tab_integration
 Status: NOT STARTED
 Files: web/src/components/event/market-accordion.tsx
+Notes: Basic integration complete in MarketAccordionContent. Remaining: end date display.
 
 ### multi_market_layout
 Status: NOT STARTED
@@ -127,3 +144,24 @@ Updated types:
 Next priority should be `market_accordion_content` to implement the tabbed interface
 with Order Book, Graph, and Resolution tabs. After that, `buy_buttons_inline` for
 quick trading from the header.
+
+### 2026-02-08: market_accordion_content
+Implemented the tabbed interface for expanded accordion content with:
+- MarketAccordionContent component using @radix-ui/react-tabs
+- Three tabs with icons: Order Book (BookOpen), Graph (LineChart), Resolution (FileText)
+- Local state for active tab (doesn't pollute URL with per-market tab state)
+- Smooth fade-in animation with Tailwind animate-in utilities
+- Lazy loading via conditional rendering in Accordion.Content
+
+Tab wrapper components:
+- OrderBookTabContent: wraps OrderBook component, handles empty tokenId gracefully
+- GraphTabContent: includes TimeRangeSelector with local state, defaults to 1D
+- ResolutionTabContent: wraps ResolutionRules component
+
+Updated types:
+- AccordionMarket: added description, resolverType, resolutionSource, isResolved, resolutionOutcome
+- AccordionTabValue: new exported type for tab values
+
+Next priority should be `buy_buttons_inline` to add quick Buy Yes/No buttons to the
+accordion header for faster trading. After that, `event_page_integration` to wire
+up the accordion on the actual event page.

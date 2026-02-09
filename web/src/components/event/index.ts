@@ -191,4 +191,5 @@ export {
   type AccordionMarket,
   type MarketOutcome,
   type AccordionMode,
+  type AccordionTabValue,
 } from './market-accordion';

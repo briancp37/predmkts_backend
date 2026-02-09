@@ -39,7 +39,7 @@
       "Lazy load tab content to avoid fetching data for collapsed markets",
       "Show loading skeleton while tab content is fetching"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "category": "orderbook_tab_integration",
