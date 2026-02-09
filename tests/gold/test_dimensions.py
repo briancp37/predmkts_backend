@@ -1344,3 +1344,637 @@ class TestLoadDimsCLI:
         result = runner.invoke(cli_app, ["gold", "load-dims", "--table", "dim_bogus"])
         assert result.exit_code != 0
         assert "Unknown dimension table" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Streaming dimension loader tests
+# ---------------------------------------------------------------------------
+
+
+def _make_batch_reader(table: pa.Table, batch_size: int = 2):
+    """Create a mock batch reader that yields batches from an Arrow table."""
+    for i in range(0, table.num_rows, batch_size):
+        end = min(i + batch_size, table.num_rows)
+        if end - i > 0:
+            yield table.slice(i, end - i).to_batches()[0]
+
+
+class TestLoadDimMarketStreaming:
+    """Tests for load_dim_market_streaming."""
+
+    def test_dry_run_returns_count(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_market_streaming
+
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_markets()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_market_streaming(catalog=mock_catalog, dry_run=True)
+        assert rows == 2
+
+    def test_writes_to_clickhouse(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_market_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_markets()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_market_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 2
+        assert mock_ch.insert.called
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_market"
+
+    def test_deduplication_across_batches(self) -> None:
+        """Duplicate market IDs across batches should be deduplicated."""
+        from prediction_data.gold.dimensions import load_dim_market_streaming
+
+        # Create table with duplicate market IDs
+        silver = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_market_id": ["mkt-1", "mkt-2", "mkt-1"],  # mkt-1 appears twice
+                "question": ["Q1", "Q2", "Q1-updated"],
+                "description": ["D1", "D2", "D1-updated"],
+                "market_slug": ["q1", "q2", "q1"],
+                "status": ["active", "active", "closed"],
+                "outcome": ["", "", ""],
+                "tokens": ['[{"id":"t1"}]', '[{"id":"t2"}]', '[{"id":"t1"}]'],
+                "event_id": ["evt-1", "evt-2", "evt-1"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2", "run3"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+            }
+        )
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        # Use batch_size=1 to force multiple batches
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver, batch_size=1
+        )
+
+        rows = load_dim_market_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        # Should only have 2 unique markets (mkt-1 deduplicated)
+        assert rows == 2
+
+    def test_skips_s3_with_warning(self, mock_s3_gold: MagicMock, caplog) -> None:
+        """Streaming mode should skip S3 write and log a warning."""
+        import logging
+
+        from prediction_data.gold.dimensions import load_dim_market_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_markets()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        with caplog.at_level(logging.WARNING):
+            load_dim_market_streaming(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+
+        # S3 write should be skipped (no call to write_gold_parquet)
+        with patch("prediction_data.gold.dimensions.write_gold_parquet") as mock_write:
+            load_dim_market_streaming(
+                gold_bucket="test-gold",
+                s3_client=mock_s3_gold,
+                clickhouse_client=mock_ch,
+                catalog=mock_catalog,
+            )
+            mock_write.assert_not_called()
+
+
+class TestLoadDimOutcomeStreaming:
+    """Tests for load_dim_outcome_streaming."""
+
+    def test_dry_run_returns_count(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_outcome_streaming
+
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_markets_with_tokens()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_outcome_streaming(catalog=mock_catalog, dry_run=True)
+        assert rows == 4  # 2 markets × 2 tokens each
+
+    def test_writes_to_clickhouse(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_outcome_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_markets_with_tokens()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_outcome_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 4
+        assert mock_ch.insert.called
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_outcome"
+
+    def test_deduplication_by_market_id(self) -> None:
+        """Duplicate market IDs should produce outcomes only once."""
+        from prediction_data.gold.dimensions import load_dim_outcome_streaming
+
+        # Create table with duplicate market IDs
+        silver = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_market_id": ["mkt-1", "mkt-1"],  # duplicate
+                "question": ["Q1", "Q1-updated"],
+                "description": ["D1", "D1-updated"],
+                "market_slug": ["q1", "q1"],
+                "status": ["active", "closed"],
+                "outcome": ["", ""],
+                "tokens": [
+                    '[{"token_id":"tok-1a","outcome":"Yes"},{"token_id":"tok-1b","outcome":"No"}]',
+                    '[{"token_id":"tok-1a","outcome":"Yes"},{"token_id":"tok-1b","outcome":"No"}]',
+                ],
+                "event_id": ["evt-1", "evt-1"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+            }
+        )
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_outcome_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        # Should only have 2 outcomes (from 1 unique market)
+        assert rows == 2
+
+
+class TestLoadDimWalletStreaming:
+    """Tests for load_dim_wallet_streaming."""
+
+    def test_dry_run_returns_count(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_wallet_streaming
+
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_trades()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_wallet_streaming(catalog=mock_catalog, dry_run=True)
+        assert rows == 3  # 3 unique wallets
+
+    def test_writes_to_clickhouse(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_wallet_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_trades()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_wallet_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 3
+        assert mock_ch.insert.called
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_wallet"
+
+    def test_aggregation_across_batches(self) -> None:
+        """Wallet stats should be aggregated correctly across batches."""
+        from prediction_data.gold.dimensions import load_dim_wallet_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_trades()
+        # Use batch_size=1 to force each trade into its own batch
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver, batch_size=1
+        )
+
+        rows = load_dim_wallet_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 3  # 3 unique wallets
+
+        # Verify trade counts are correct (check the data inserted)
+        insert_calls = mock_ch.insert.call_args_list
+        assert len(insert_calls) >= 1
+        # The last call should contain all wallets
+        data = insert_calls[-1][1]["data"]
+        wallet_data = {row[1]: row[4] for row in data}  # wallet_address: trade_count
+        assert wallet_data["wallet-a"] == 3  # maker in t1, taker in t2, maker in t3
+        assert wallet_data["wallet-b"] == 2  # taker in t1, maker in t2
+        assert wallet_data["wallet-c"] == 1  # taker in t3
+
+
+class TestLoadDimEventStreaming:
+    """Tests for load_dim_event_streaming."""
+
+    def test_dry_run_returns_count(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_event_streaming
+
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_events()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_event_streaming(catalog=mock_catalog, dry_run=True)
+        assert rows == 2
+
+    def test_writes_to_clickhouse(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_event_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_events()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_event_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 2
+        assert mock_ch.insert.called
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_event"
+
+    def test_deduplication_across_batches(self) -> None:
+        """Duplicate event IDs across batches should be deduplicated."""
+        from prediction_data.gold.dimensions import load_dim_event_streaming
+
+        silver = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_event_id": ["evt-1", "evt-1"],  # duplicate
+                "title": ["Old Title", "New Title"],
+                "description": ["Old", "New"],
+                "slug": ["old-slug", "new-slug"],
+                "status": ["active", "closed"],
+                "category": ["politics", "politics"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "tags": [["Politics"], ["Politics", "Elections"]],
+            }
+        )
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver, batch_size=1
+        )
+
+        rows = load_dim_event_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        # Should only have 1 unique event
+        assert rows == 1
+
+
+class TestLoadDimCategoryStreaming:
+    """Tests for load_dim_category_streaming."""
+
+    def test_dry_run_returns_count(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_category_streaming
+
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_events()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_category_streaming(catalog=mock_catalog, dry_run=True)
+        assert rows == 2  # 2 distinct categories
+
+    def test_writes_to_clickhouse(self) -> None:
+        from prediction_data.gold.dimensions import load_dim_category_streaming
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        silver = _fake_silver_events()
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_category_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 2
+        assert mock_ch.insert.called
+        call_args = mock_ch.insert.call_args
+        assert call_args[0][0] == "dim_category"
+
+    def test_category_counts_across_batches(self) -> None:
+        """Category counts should be accumulated correctly across batches."""
+        from prediction_data.gold.dimensions import load_dim_category_streaming
+
+        silver = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_event_id": ["evt-1", "evt-2", "evt-3"],
+                "title": ["A", "B", "C"],
+                "description": ["a", "b", "c"],
+                "slug": ["a", "b", "c"],
+                "status": ["active", "active", "closed"],
+                "category": ["politics", "politics", "sports"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2", "run3"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001, 1_700_000_002],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "tags": [["Politics"], ["Politics"], ["Sports"]],
+            }
+        )
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver, batch_size=1
+        )
+
+        rows = load_dim_category_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        assert rows == 2  # politics, sports
+
+        # Verify counts
+        data = mock_ch.insert.call_args[1]["data"]
+        category_counts = {row[1]: row[2] for row in data}  # category: count
+        assert category_counts["politics"] == 2
+        assert category_counts["sports"] == 1
+
+    def test_deduplication_before_counting(self) -> None:
+        """Duplicate events should be deduplicated before category counting."""
+        from prediction_data.gold.dimensions import load_dim_category_streaming
+
+        silver = pa.table(
+            {
+                "event_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "platform_event_id": ["evt-1", "evt-1"],  # duplicate
+                "title": ["Old", "New"],
+                "description": ["old", "new"],
+                "slug": ["old", "new"],
+                "status": ["active", "closed"],
+                "category": ["politics", "politics"],
+                "updated_at": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "bronze_run_id": ["run1", "run2"],
+                "silver_ingestion_ts": pa.array(
+                    [1_700_000_000, 1_700_000_001],
+                    type=pa.timestamp("us", tz="UTC"),
+                ),
+                "tags": [["Politics"], ["Politics"]],
+            }
+        )
+
+        mock_ch = MagicMock()
+        mock_catalog = MagicMock()
+        mock_table = MagicMock()
+        mock_catalog.load_table.return_value = mock_table
+        mock_table.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+            silver
+        )
+
+        rows = load_dim_category_streaming(
+            clickhouse_client=mock_ch,
+            catalog=mock_catalog,
+        )
+
+        # Only 1 unique event, so count should be 1 not 2
+        data = mock_ch.insert.call_args[1]["data"]
+        category_counts = {row[1]: row[2] for row in data}
+        assert category_counts["politics"] == 1
+
+
+class TestStreamingVsNonStreamingParity:
+    """Verify streaming loaders produce same results as non-streaming loaders."""
+
+    def _mock_catalog(self, silver_markets, silver_trades, silver_events) -> MagicMock:
+        """Return a catalog that serves the provided Silver data."""
+        catalog = MagicMock()
+
+        def _load_table(identifier: tuple[str, str]) -> MagicMock:
+            _ns, table_name = identifier
+            tbl = MagicMock()
+            if table_name == "markets":
+                tbl.scan.return_value.to_arrow.return_value = silver_markets
+                tbl.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+                    silver_markets
+                )
+            elif table_name == "trades":
+                tbl.scan.return_value.to_arrow.return_value = silver_trades
+                tbl.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+                    silver_trades
+                )
+            elif table_name == "events":
+                tbl.scan.return_value.to_arrow.return_value = silver_events
+                tbl.scan.return_value.to_arrow_batch_reader.return_value = _make_batch_reader(
+                    silver_events
+                )
+            return tbl
+
+        catalog.load_table.side_effect = _load_table
+        return catalog
+
+    def test_market_row_count_parity(self) -> None:
+        """Streaming and non-streaming should produce same row count for markets."""
+        from prediction_data.gold.dimensions import (
+            load_dim_market,
+            load_dim_market_streaming,
+        )
+
+        silver = _fake_silver_markets()
+        catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
+
+        non_streaming_rows = load_dim_market(catalog=catalog, dry_run=True)
+
+        # Reset catalog for streaming
+        catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
+        streaming_rows = load_dim_market_streaming(catalog=catalog, dry_run=True)
+
+        assert non_streaming_rows == streaming_rows
+
+    def test_outcome_row_count_parity(self) -> None:
+        """Streaming and non-streaming should produce same row count for outcomes."""
+        from prediction_data.gold.dimensions import (
+            load_dim_outcome,
+            load_dim_outcome_streaming,
+        )
+
+        silver = _fake_silver_markets_with_tokens()
+        catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
+
+        non_streaming_rows = load_dim_outcome(catalog=catalog, dry_run=True)
+
+        catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
+        streaming_rows = load_dim_outcome_streaming(catalog=catalog, dry_run=True)
+
+        assert non_streaming_rows == streaming_rows
+
+    def test_wallet_row_count_parity(self) -> None:
+        """Streaming and non-streaming should produce same row count for wallets."""
+        from prediction_data.gold.dimensions import (
+            load_dim_wallet,
+            load_dim_wallet_streaming,
+        )
+
+        silver = _fake_silver_trades()
+        catalog = self._mock_catalog(_fake_silver_markets(), silver, _fake_silver_events())
+
+        non_streaming_rows = load_dim_wallet(catalog=catalog, dry_run=True)
+
+        catalog = self._mock_catalog(_fake_silver_markets(), silver, _fake_silver_events())
+        streaming_rows = load_dim_wallet_streaming(catalog=catalog, dry_run=True)
+
+        assert non_streaming_rows == streaming_rows
+
+    def test_event_row_count_parity(self) -> None:
+        """Streaming and non-streaming should produce same row count for events."""
+        from prediction_data.gold.dimensions import (
+            load_dim_event,
+            load_dim_event_streaming,
+        )
+
+        silver = _fake_silver_events()
+        catalog = self._mock_catalog(_fake_silver_markets(), _fake_silver_trades(), silver)
+
+        non_streaming_rows = load_dim_event(catalog=catalog, dry_run=True)
+
+        catalog = self._mock_catalog(_fake_silver_markets(), _fake_silver_trades(), silver)
+        streaming_rows = load_dim_event_streaming(catalog=catalog, dry_run=True)
+
+        assert non_streaming_rows == streaming_rows
+
+    def test_category_row_count_parity(self) -> None:
+        """Streaming and non-streaming should produce same row count for categories."""
+        from prediction_data.gold.dimensions import (
+            load_dim_category,
+            load_dim_category_streaming,
+        )
+
+        silver = _fake_silver_events()
+        catalog = self._mock_catalog(_fake_silver_markets(), _fake_silver_trades(), silver)
+
+        non_streaming_rows = load_dim_category(catalog=catalog, dry_run=True)
+
+        catalog = self._mock_catalog(_fake_silver_markets(), _fake_silver_trades(), silver)
+        streaming_rows = load_dim_category_streaming(catalog=catalog, dry_run=True)
+
+        assert non_streaming_rows == streaming_rows

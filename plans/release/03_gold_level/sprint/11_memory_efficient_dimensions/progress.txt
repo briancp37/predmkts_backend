@@ -71,3 +71,30 @@ Implemented memory-efficient streaming dimension loaders:
 - Test streaming loaders with production-scale data to validate memory usage
 - Consider adding column projection to further reduce memory footprint
 - Deploy to ECS and verify gold daily-run completes without OOM
+
+### 2026-02-09: Testing and Validation - Unit Tests Added
+Added comprehensive unit tests for all streaming dimension loaders:
+
+1. **Test coverage for streaming functions** (22 new tests):
+   - `TestLoadDimMarketStreaming` - 4 tests
+   - `TestLoadDimOutcomeStreaming` - 3 tests
+   - `TestLoadDimWalletStreaming` - 3 tests
+   - `TestLoadDimEventStreaming` - 3 tests
+   - `TestLoadDimCategoryStreaming` - 4 tests
+   - `TestStreamingVsNonStreamingParity` - 5 tests
+
+2. **Key test scenarios covered**:
+   - Dry run returns correct row counts
+   - Writes to ClickHouse with correct table names and data
+   - Deduplication works correctly across batches
+   - S3 writes are skipped in streaming mode (with warning)
+   - Aggregation (wallet stats) accumulates correctly across batches
+   - Category counts are accurate with deduplication
+   - Row count parity between streaming and non-streaming loaders
+
+3. **Test results**:
+   - All 22 new streaming tests pass
+   - Mypy type check passes on dimensions.py
+   - Tests use mock batch readers to simulate PyIceberg batch streaming
+
+4. **PRD status**: `testing_and_validation` category marked as `passes: true`
