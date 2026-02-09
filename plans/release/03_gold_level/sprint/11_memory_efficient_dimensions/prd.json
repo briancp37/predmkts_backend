@@ -25,13 +25,13 @@
         "category": "column_projection",
         "description": "Only load columns needed for each dimension table",
         "steps": [
-            "Add selected= parameter to all _read_silver_* functions to project only needed columns",
+            "Add selected_fields= parameter to all _iter_silver_*_batches functions to project only needed columns",
             "dim_market: select only platform_market_id, question, description, market_slug, status, event_id, tokens, updated_at",
             "dim_outcome: select only platform_market_id, tokens, outcome (skip description, etc.)",
             "dim_wallet: select only maker, taker, event_ts from trades (skip price, amount, etc.)",
             "dim_event: select only platform_event_id, title, description, slug, status, category, image_url, tags, updated_at"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "clickhouse_deduplication",

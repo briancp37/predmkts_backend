@@ -98,3 +98,37 @@ Added comprehensive unit tests for all streaming dimension loaders:
    - Tests use mock batch readers to simulate PyIceberg batch streaming
 
 4. **PRD status**: `testing_and_validation` category marked as `passes: true`
+
+### 2026-02-09: Column Projection Implementation
+Added column projection to streaming dimension loaders to reduce memory further:
+
+1. **Column projection constants** added to `dimensions.py`:
+   - `DIM_MARKET_SILVER_COLUMNS` - 8 columns (skips event_ts, outcome, bronze_run_id, silver_ingestion_ts)
+   - `DIM_OUTCOME_SILVER_COLUMNS` - 3 columns (platform_market_id, tokens, outcome only)
+   - `DIM_WALLET_SILVER_COLUMNS` - 3 columns (maker, taker, event_ts only - skips 11 columns)
+   - `DIM_EVENT_SILVER_COLUMNS` - 9 columns (skips event_ts, bronze_run_id, silver_ingestion_ts)
+   - `DIM_CATEGORY_SILVER_COLUMNS` - 2 columns (platform_event_id, category only)
+
+2. **Updated streaming batch iterators** with `selected_fields` parameter:
+   - `_iter_silver_market_batches(selected_fields=...)` - uses PyIceberg `scan(selected_fields=...)`
+   - `_iter_silver_trade_batches(selected_fields=...)` - projects only needed trade columns
+   - `_iter_silver_event_batches(selected_fields=...)` - projects only needed event columns
+
+3. **Memory impact**:
+   - dim_wallet: reduces from 14 columns to 3 (~78% reduction in column data)
+   - dim_market: reduces from 12 columns to 8 (~33% reduction)
+   - dim_outcome: reduces from 12 columns to 3 (~75% reduction)
+   - dim_event: reduces from 13 columns to 9 (~31% reduction)
+   - dim_category: reduces from 13 columns to 2 (~85% reduction)
+
+4. **Verification**:
+   - Mypy type check passes on dimensions.py
+   - All 22 streaming tests pass
+   - Row count parity with non-streaming loaders maintained
+
+5. **PRD status**: `column_projection` category marked as `passes: true`
+
+### Next Steps
+- Deploy to ECS and verify gold daily-run completes without OOM with reduced memory (try 4GB)
+- Consider implementing clickhouse_deduplication to remove Python dedup overhead
+- Add incremental loading support for large tables

@@ -33,6 +33,48 @@ logger = structlog.stdlib.get_logger(__name__)
 # more memory. 50K rows is a good balance for dimension tables.
 DEFAULT_BATCH_SIZE = 50_000
 
+# Column projections for memory-efficient dimension loading.
+# Only load the columns needed for each dimension table to reduce memory.
+DIM_MARKET_SILVER_COLUMNS = (
+    "platform_market_id",
+    "question",
+    "description",
+    "market_slug",
+    "status",
+    "event_id",
+    "tokens",
+    "updated_at",
+)
+
+DIM_OUTCOME_SILVER_COLUMNS = (
+    "platform_market_id",
+    "tokens",
+    "outcome",
+)
+
+DIM_WALLET_SILVER_COLUMNS = (
+    "maker",
+    "taker",
+    "event_ts",
+)
+
+DIM_EVENT_SILVER_COLUMNS = (
+    "platform_event_id",
+    "title",
+    "description",
+    "slug",
+    "status",
+    "category",
+    "image_url",
+    "tags",
+    "updated_at",
+)
+
+DIM_CATEGORY_SILVER_COLUMNS = (
+    "platform_event_id",
+    "category",
+)
+
 # Static platform data.
 PLATFORMS = [
     {
@@ -143,11 +185,20 @@ def _iter_silver_market_batches(
     platform: str,
     catalog: Catalog | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    selected_fields: tuple[str, ...] | None = None,
 ) -> Iterator[pa.RecordBatch]:
     """Yield record batches from the Silver markets table.
 
     This is the low-level streaming reader. Use _read_silver_markets_streaming
     for deduplicated iteration that produces dim_market rows.
+
+    Args:
+        platform: Platform identifier (e.g., "polymarket").
+        catalog: Optional PyIceberg catalog.
+        batch_size: Number of rows per batch for fallback mode.
+        selected_fields: Optional tuple of column names to project. If None, all
+            columns are loaded. Use this to reduce memory by only loading needed
+            columns.
     """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
@@ -156,7 +207,7 @@ def _iter_silver_market_batches(
 
     namespace = f"silver_{platform}"
     table = catalog.load_table((namespace, "markets"))
-    scan = table.scan()
+    scan = table.scan(selected_fields=selected_fields) if selected_fields else table.scan()
 
     # Use batch reader for memory-efficient streaming
     try:
@@ -332,7 +383,12 @@ def load_dim_market_streaming(
     # Only stores IDs (strings), not full records - much lighter memory footprint
     seen_ids: set[str] = set()
 
-    for batch in _iter_silver_market_batches("polymarket", catalog=catalog, batch_size=batch_size):
+    for batch in _iter_silver_market_batches(
+        "polymarket",
+        catalog=catalog,
+        batch_size=batch_size,
+        selected_fields=DIM_MARKET_SILVER_COLUMNS,
+    ):
         if batch is None or batch.num_rows == 0:
             continue
 
@@ -562,7 +618,12 @@ def load_dim_outcome_streaming(
     # Track seen market IDs to avoid duplicate outcomes
     seen_market_ids: set[str] = set()
 
-    for batch in _iter_silver_market_batches("polymarket", catalog=catalog, batch_size=batch_size):
+    for batch in _iter_silver_market_batches(
+        "polymarket",
+        catalog=catalog,
+        batch_size=batch_size,
+        selected_fields=DIM_OUTCOME_SILVER_COLUMNS,
+    ):
         if batch is None or batch.num_rows == 0:
             continue
 
@@ -640,11 +701,20 @@ def _iter_silver_trade_batches(
     platform: str,
     catalog: Catalog | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    selected_fields: tuple[str, ...] | None = None,
 ) -> Iterator[pa.RecordBatch]:
     """Yield record batches from the Silver trades table.
 
     This is the low-level streaming reader for trades. Use load_dim_wallet_streaming
     for memory-efficient wallet dimension loading.
+
+    Args:
+        platform: Platform identifier (e.g., "polymarket").
+        catalog: Optional PyIceberg catalog.
+        batch_size: Number of rows per batch for fallback mode.
+        selected_fields: Optional tuple of column names to project. If None, all
+            columns are loaded. Use this to reduce memory by only loading needed
+            columns.
     """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
@@ -653,7 +723,7 @@ def _iter_silver_trade_batches(
 
     namespace = f"silver_{platform}"
     table = catalog.load_table((namespace, "trades"))
-    scan = table.scan()
+    scan = table.scan(selected_fields=selected_fields) if selected_fields else table.scan()
 
     # Use batch reader for memory-efficient streaming
     try:
@@ -823,7 +893,12 @@ def load_dim_wallet_streaming(
     wallets: dict[str, dict[str, Any]] = {}
     trades_processed = 0
 
-    for batch in _iter_silver_trade_batches("polymarket", catalog=catalog, batch_size=batch_size):
+    for batch in _iter_silver_trade_batches(
+        "polymarket",
+        catalog=catalog,
+        batch_size=batch_size,
+        selected_fields=DIM_WALLET_SILVER_COLUMNS,
+    ):
         if batch is None or batch.num_rows == 0:
             continue
 
@@ -914,8 +989,18 @@ def _iter_silver_event_batches(
     platform: str,
     catalog: Catalog | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    selected_fields: tuple[str, ...] | None = None,
 ) -> Iterator[pa.RecordBatch]:
-    """Yield record batches from the Silver events table."""
+    """Yield record batches from the Silver events table.
+
+    Args:
+        platform: Platform identifier (e.g., "polymarket").
+        catalog: Optional PyIceberg catalog.
+        batch_size: Number of rows per batch for fallback mode.
+        selected_fields: Optional tuple of column names to project. If None, all
+            columns are loaded. Use this to reduce memory by only loading needed
+            columns.
+    """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
 
@@ -923,7 +1008,7 @@ def _iter_silver_event_batches(
 
     namespace = f"silver_{platform}"
     table = catalog.load_table((namespace, "events"))
-    scan = table.scan()
+    scan = table.scan(selected_fields=selected_fields) if selected_fields else table.scan()
 
     try:
         batch_reader = scan.to_arrow_batch_reader()
@@ -1094,7 +1179,12 @@ def load_dim_event_streaming(
     # Track seen event IDs to avoid duplicates
     seen_event_ids: set[str] = set()
 
-    for batch in _iter_silver_event_batches("polymarket", catalog=catalog, batch_size=batch_size):
+    for batch in _iter_silver_event_batches(
+        "polymarket",
+        catalog=catalog,
+        batch_size=batch_size,
+        selected_fields=DIM_EVENT_SILVER_COLUMNS,
+    ):
         if batch is None or batch.num_rows == 0:
             continue
 
@@ -1279,7 +1369,12 @@ def load_dim_category_streaming(
     seen_event_ids: set[str] = set()
     category_counts: dict[str, int] = {}
 
-    for batch in _iter_silver_event_batches("polymarket", catalog=catalog, batch_size=batch_size):
+    for batch in _iter_silver_event_batches(
+        "polymarket",
+        catalog=catalog,
+        batch_size=batch_size,
+        selected_fields=DIM_CATEGORY_SILVER_COLUMNS,
+    ):
         if batch is None or batch.num_rows == 0:
             continue
 
