@@ -278,7 +278,12 @@ class TestLoadDimMarket:
 
 
 def _fake_silver_markets_with_tokens() -> pa.Table:
-    """Silver markets with realistic token_id/outcome token data."""
+    """Silver markets with realistic token_id/outcome token data.
+
+    Matches actual Polymarket API format where:
+    - tokens (from clobTokenIds): JSON array of token ID strings
+    - outcome (from outcomes): JSON array of outcome label strings
+    """
     return pa.table(
         {
             "event_ts": pa.array(
@@ -289,11 +294,8 @@ def _fake_silver_markets_with_tokens() -> pa.Table:
             "description": ["Rain market", "Snow market"],
             "market_slug": ["will-it-rain", "will-it-snow"],
             "status": ["active", "closed"],
-            "outcome": ["", ""],
-            "tokens": [
-                '[{"token_id":"tok-1a","outcome":"Yes"},{"token_id":"tok-1b","outcome":"No"}]',
-                '[{"token_id":"tok-2a","outcome":"Yes"},{"token_id":"tok-2b","outcome":"No"}]',
-            ],
+            "outcome": ['["Yes", "No"]', '["Yes", "No"]'],
+            "tokens": ['["tok-1a", "tok-1b"]', '["tok-2a", "tok-2b"]'],
             "event_id": ["evt-1", "evt-2"],
             "updated_at": pa.array(
                 [1_700_000_000, 1_700_000_001], type=pa.timestamp("us", tz="UTC")
@@ -1233,43 +1235,61 @@ class TestFullPipelineAllDims:
         assert len(platform_data) == 2
         assert platform_data[0] == ["polymarket", "Polymarket", "https://polymarket.com"]
 
-        # dim_market: list of dicts with all expected keys
-        market_data = calls[1][1]["data"]
+        # dim_market: list of lists with column_names parameter
+        market_call = calls[1][1]
+        market_data = market_call["data"]
         assert len(market_data) == 2
+        assert market_call["column_names"] == DIM_MARKET_COLUMNS
         for row in market_data:
-            assert set(row.keys()) == set(DIM_MARKET_COLUMNS)
-            assert isinstance(row["platform"], str)
-            assert isinstance(row["platform_market_id"], str)
+            assert isinstance(row, list)
+            assert len(row) == len(DIM_MARKET_COLUMNS)
+            # platform is first column
+            assert isinstance(row[0], str)
 
-        # dim_outcome: list of dicts with all expected keys
-        outcome_data = calls[2][1]["data"]
+        # dim_outcome: list of lists with column_names parameter
+        outcome_call = calls[2][1]
+        outcome_data = outcome_call["data"]
         assert len(outcome_data) == 4
+        assert outcome_call["column_names"] == DIM_OUTCOME_COLUMNS
         for row in outcome_data:
-            assert set(row.keys()) == set(DIM_OUTCOME_COLUMNS)
-            assert row["side"] in ("token1", "token2")
+            assert isinstance(row, list)
+            assert len(row) == len(DIM_OUTCOME_COLUMNS)
+            # side is 5th column (index 4)
+            assert row[4] in ("token1", "token2")
 
-        # dim_wallet: list of dicts with all expected keys
-        wallet_data = calls[3][1]["data"]
+        # dim_wallet: list of lists with column_names parameter
+        wallet_call = calls[3][1]
+        wallet_data = wallet_call["data"]
         assert len(wallet_data) == 3
+        assert wallet_call["column_names"] == DIM_WALLET_COLUMNS
         for row in wallet_data:
-            assert set(row.keys()) == set(DIM_WALLET_COLUMNS)
-            assert isinstance(row["trade_count"], int)
+            assert isinstance(row, list)
+            assert len(row) == len(DIM_WALLET_COLUMNS)
+            # trade_count is 5th column (index 4): platform, wallet_address, first_trade_ts, last_trade_ts, trade_count
+            assert isinstance(row[4], int)
 
-        # dim_event: list of dicts with all expected keys
-        event_data = calls[4][1]["data"]
+        # dim_event: list of lists with column_names parameter
+        event_call = calls[4][1]
+        event_data = event_call["data"]
         assert len(event_data) == 2
+        assert event_call["column_names"] == DIM_EVENT_COLUMNS
         for row in event_data:
-            assert set(row.keys()) == set(DIM_EVENT_COLUMNS)
-            assert isinstance(row["platform"], str)
-            assert isinstance(row["category"], str)
+            assert isinstance(row, list)
+            assert len(row) == len(DIM_EVENT_COLUMNS)
+            # platform is first column
+            assert isinstance(row[0], str)
 
-        # dim_category: list of dicts with all expected keys
-        category_data = calls[5][1]["data"]
+        # dim_category: list of lists with column_names parameter
+        category_call = calls[5][1]
+        category_data = category_call["data"]
         assert len(category_data) == 2
+        assert category_call["column_names"] == DIM_CATEGORY_COLUMNS
         for row in category_data:
-            assert set(row.keys()) == set(DIM_CATEGORY_COLUMNS)
-            assert isinstance(row["category"], str)
-            assert isinstance(row["event_count"], int)
+            assert isinstance(row, list)
+            assert len(row) == len(DIM_CATEGORY_COLUMNS)
+            # category is 2nd column (index 1), event_count is 3rd (index 2)
+            assert isinstance(row[1], str)
+            assert isinstance(row[2], int)
 
 
 # ---------------------------------------------------------------------------

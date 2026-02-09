@@ -193,3 +193,23 @@ Updated Gold layer EventBridge schedules with configurable CPU/memory overrides:
 - Verify gold daily-run completes without OOM in 4GB task
 - Add incremental loading support for large tables (future sprint)
 - Consider S3 direct loading for additional optimization (future sprint)
+
+### 2026-02-09: Test Fixture Bug Fixes
+
+Fixed pre-existing bugs in test fixtures that caused 3 test failures:
+
+1. **Fixed `_fake_silver_markets_with_tokens()` fixture**:
+   - Changed `tokens` field from token objects (`[{"token_id":"tok-1a","outcome":"Yes"}]`)
+     to match actual Polymarket API format: simple JSON array of token IDs (`["tok-1a", "tok-1b"]`)
+   - Changed `outcome` field from empty strings to JSON arrays of outcome labels (`["Yes", "No"]`)
+   - This matches how Silver normalizer stores data from `clobTokenIds` and `outcomes` API fields
+
+2. **Fixed `test_clickhouse_data_is_queryable` assertions**:
+   - Updated test to expect list-of-lists format (matching actual `ch.insert()` calls)
+   - Code sends `data=[[row[col] for col in COLUMNS]]` with `column_names=COLUMNS`
+   - Adjusted column index assertions (e.g., trade_count at index 4, not 3)
+
+3. **Test results**:
+   - All 94 dimension tests now pass
+   - Mypy type check passes
+   - Fixed tests: `test_token_ids`, `test_outcome_labels`, `test_clickhouse_data_is_queryable`
