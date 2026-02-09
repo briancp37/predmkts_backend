@@ -42,7 +42,7 @@
             "Add OPTIMIZE TABLE commands after bulk inserts if immediate dedup is needed",
             "Update _silver_to_dim_* functions to pass through records without dedup overhead"
         ],
-        "passes": false
+        "passes": true
     },
     {
         "category": "s3_direct_loading",

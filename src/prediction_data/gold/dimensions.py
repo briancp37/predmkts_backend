@@ -359,8 +359,9 @@ def load_dim_market_streaming(
     batches instead of loading everything into memory at once.
 
     Deduplication is pushed to ClickHouse's ReplacingMergeTree, which handles
-    dedup on read with FINAL. This allows us to stream all records directly
-    without Python-side deduplication.
+    dedup on read with FINAL. All records are streamed directly without
+    Python-side deduplication, eliminating the memory overhead of tracking
+    seen IDs.
 
     Args:
         gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
@@ -379,10 +380,6 @@ def load_dim_market_streaming(
     ch = clickhouse_client or get_client()
     total_rows = 0
 
-    # Track seen market IDs to avoid duplicates within this run
-    # Only stores IDs (strings), not full records - much lighter memory footprint
-    seen_ids: set[str] = set()
-
     for batch in _iter_silver_market_batches(
         "polymarket",
         catalog=catalog,
@@ -392,21 +389,12 @@ def load_dim_market_streaming(
         if batch is None or batch.num_rows == 0:
             continue
 
-        # Convert batch to records and filter duplicates
+        # Convert batch to records - no Python dedup needed, ClickHouse handles it
         records = batch.to_pylist()
-        unique_records = []
-        for rec in records:
-            market_id = rec.get("platform_market_id", "")
-            if market_id not in seen_ids:
-                seen_ids.add(market_id)
-                unique_records.append(rec)
-
-        if not unique_records:
-            continue
 
         # Transform to dim_market format
         rows: dict[str, list[Any]] = {col: [] for col in DIM_MARKET_COLUMNS}
-        for rec in unique_records:
+        for rec in records:
             pid = str(rec.get("platform_market_id", "") or "")
             rows["platform"].append("polymarket")
             rows["platform_market_id"].append(pid)
@@ -426,7 +414,7 @@ def load_dim_market_streaming(
             logger.debug("dry_run_batch_dim_market", batch_rows=batch_rows)
             continue
 
-        # Insert batch to ClickHouse
+        # Insert batch to ClickHouse - ReplacingMergeTree handles dedup on read
         data = [[row[col] for col in DIM_MARKET_COLUMNS] for row in batch_table.to_pylist()]
         ch.insert("dim_market", data=data, column_names=DIM_MARKET_COLUMNS)
         logger.debug("inserted_batch_dim_market", batch_rows=batch_rows)
@@ -600,6 +588,10 @@ def load_dim_outcome_streaming(
     Memory-efficient alternative to load_dim_outcome that processes markets
     in batches instead of loading everything into memory at once.
 
+    Deduplication is pushed to ClickHouse's ReplacingMergeTree, which handles
+    dedup on read with FINAL. All records are streamed directly without
+    Python-side deduplication.
+
     Args:
         gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
         s3_client: Optional boto3 S3 client.
@@ -615,9 +607,6 @@ def load_dim_outcome_streaming(
     ch = clickhouse_client or get_client()
     total_rows = 0
 
-    # Track seen market IDs to avoid duplicate outcomes
-    seen_market_ids: set[str] = set()
-
     for batch in _iter_silver_market_batches(
         "polymarket",
         catalog=catalog,
@@ -630,12 +619,9 @@ def load_dim_outcome_streaming(
         records = batch.to_pylist()
         rows: dict[str, list[Any]] = {col: [] for col in DIM_OUTCOME_COLUMNS}
 
+        # No Python dedup needed - ClickHouse ReplacingMergeTree handles it
         for rec in records:
             market_id = str(rec.get("platform_market_id", "") or "")
-            if market_id in seen_market_ids:
-                continue
-            seen_market_ids.add(market_id)
-
             token_ids = _parse_json_array(rec.get("tokens"))
             outcome_labels = _parse_json_array(rec.get("outcome"))
 
@@ -662,7 +648,7 @@ def load_dim_outcome_streaming(
             logger.debug("dry_run_batch_dim_outcome", batch_rows=batch_rows)
             continue
 
-        # Insert batch to ClickHouse
+        # Insert batch to ClickHouse - ReplacingMergeTree handles dedup on read
         data = [[row[col] for col in DIM_OUTCOME_COLUMNS] for row in batch_table.to_pylist()]
         ch.insert("dim_outcome", data=data, column_names=DIM_OUTCOME_COLUMNS)
         logger.debug("inserted_batch_dim_outcome", batch_rows=batch_rows)
@@ -1161,6 +1147,10 @@ def load_dim_event_streaming(
     Memory-efficient alternative to load_dim_event that processes events
     in batches instead of loading everything into memory at once.
 
+    Deduplication is pushed to ClickHouse's ReplacingMergeTree, which handles
+    dedup on read with FINAL. All records are streamed directly without
+    Python-side deduplication.
+
     Args:
         gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
         s3_client: Optional boto3 S3 client.
@@ -1176,9 +1166,6 @@ def load_dim_event_streaming(
     ch = clickhouse_client or get_client()
     total_rows = 0
 
-    # Track seen event IDs to avoid duplicates
-    seen_event_ids: set[str] = set()
-
     for batch in _iter_silver_event_batches(
         "polymarket",
         catalog=catalog,
@@ -1191,12 +1178,9 @@ def load_dim_event_streaming(
         records = batch.to_pylist()
         rows: dict[str, list[Any]] = {col: [] for col in DIM_EVENT_COLUMNS}
 
+        # No Python dedup needed - ClickHouse ReplacingMergeTree handles it
         for rec in records:
             event_id = str(rec.get("platform_event_id", "") or "")
-            if event_id in seen_event_ids:
-                continue
-            seen_event_ids.add(event_id)
-
             rows["platform"].append("polymarket")
             rows["platform_event_id"].append(event_id)
             rows["title"].append(str(rec.get("title", "") or ""))
@@ -1220,7 +1204,7 @@ def load_dim_event_streaming(
             logger.debug("dry_run_batch_dim_event", batch_rows=batch_rows)
             continue
 
-        # Insert batch to ClickHouse
+        # Insert batch to ClickHouse - ReplacingMergeTree handles dedup on read
         data = [[row[col] for col in DIM_EVENT_COLUMNS] for row in batch_table.to_pylist()]
         ch.insert("dim_event", data=data, column_names=DIM_EVENT_COLUMNS)
         logger.debug("inserted_batch_dim_event", batch_rows=batch_rows)

@@ -1398,8 +1398,8 @@ class TestLoadDimMarketStreaming:
         call_args = mock_ch.insert.call_args
         assert call_args[0][0] == "dim_market"
 
-    def test_deduplication_across_batches(self) -> None:
-        """Duplicate market IDs across batches should be deduplicated."""
+    def test_no_python_deduplication(self) -> None:
+        """Duplicate market IDs are passed through - ClickHouse handles dedup."""
         from prediction_data.gold.dimensions import load_dim_market_streaming
 
         # Create table with duplicate market IDs
@@ -1443,8 +1443,8 @@ class TestLoadDimMarketStreaming:
             catalog=mock_catalog,
         )
 
-        # Should only have 2 unique markets (mkt-1 deduplicated)
-        assert rows == 2
+        # All 3 rows passed through - ClickHouse ReplacingMergeTree handles dedup
+        assert rows == 3
 
     def test_skips_s3_with_warning(self, mock_s3_gold: MagicMock, caplog) -> None:
         """Streaming mode should skip S3 write and log a warning."""
@@ -1519,8 +1519,8 @@ class TestLoadDimOutcomeStreaming:
         call_args = mock_ch.insert.call_args
         assert call_args[0][0] == "dim_outcome"
 
-    def test_deduplication_by_market_id(self) -> None:
-        """Duplicate market IDs should produce outcomes only once."""
+    def test_no_python_deduplication(self) -> None:
+        """Duplicate market IDs are passed through - ClickHouse handles dedup."""
         from prediction_data.gold.dimensions import load_dim_outcome_streaming
 
         # Create table with duplicate market IDs
@@ -1566,8 +1566,9 @@ class TestLoadDimOutcomeStreaming:
             catalog=mock_catalog,
         )
 
-        # Should only have 2 outcomes (from 1 unique market)
-        assert rows == 2
+        # All 4 outcomes passed through (2 markets × 2 tokens each)
+        # ClickHouse ReplacingMergeTree handles dedup on read
+        assert rows == 4
 
 
 class TestLoadDimWalletStreaming:
@@ -1680,8 +1681,8 @@ class TestLoadDimEventStreaming:
         call_args = mock_ch.insert.call_args
         assert call_args[0][0] == "dim_event"
 
-    def test_deduplication_across_batches(self) -> None:
-        """Duplicate event IDs across batches should be deduplicated."""
+    def test_no_python_deduplication(self) -> None:
+        """Duplicate event IDs are passed through - ClickHouse handles dedup."""
         from prediction_data.gold.dimensions import load_dim_event_streaming
 
         silver = pa.table(
@@ -1722,8 +1723,8 @@ class TestLoadDimEventStreaming:
             catalog=mock_catalog,
         )
 
-        # Should only have 1 unique event
-        assert rows == 1
+        # All 2 rows passed through - ClickHouse ReplacingMergeTree handles dedup
+        assert rows == 2
 
 
 class TestLoadDimCategoryStreaming:
@@ -1863,8 +1864,13 @@ class TestLoadDimCategoryStreaming:
         assert category_counts["politics"] == 1
 
 
-class TestStreamingVsNonStreamingParity:
-    """Verify streaming loaders produce same results as non-streaming loaders."""
+class TestStreamingVsNonStreamingBehavior:
+    """Verify streaming and non-streaming loaders work correctly.
+
+    Note: Streaming loaders push deduplication to ClickHouse's ReplacingMergeTree,
+    so they may return more rows than non-streaming loaders when source data has
+    duplicates. With unique source data, row counts should match.
+    """
 
     def _mock_catalog(self, silver_markets, silver_trades, silver_events) -> MagicMock:
         """Return a catalog that serves the provided Silver data."""
@@ -1893,14 +1899,14 @@ class TestStreamingVsNonStreamingParity:
         catalog.load_table.side_effect = _load_table
         return catalog
 
-    def test_market_row_count_parity(self) -> None:
-        """Streaming and non-streaming should produce same row count for markets."""
+    def test_market_row_count_with_unique_data(self) -> None:
+        """With unique source data, streaming and non-streaming should match."""
         from prediction_data.gold.dimensions import (
             load_dim_market,
             load_dim_market_streaming,
         )
 
-        silver = _fake_silver_markets()
+        silver = _fake_silver_markets()  # Has unique market IDs
         catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
 
         non_streaming_rows = load_dim_market(catalog=catalog, dry_run=True)
@@ -1911,14 +1917,14 @@ class TestStreamingVsNonStreamingParity:
 
         assert non_streaming_rows == streaming_rows
 
-    def test_outcome_row_count_parity(self) -> None:
-        """Streaming and non-streaming should produce same row count for outcomes."""
+    def test_outcome_row_count_with_unique_data(self) -> None:
+        """With unique source data, streaming and non-streaming should match."""
         from prediction_data.gold.dimensions import (
             load_dim_outcome,
             load_dim_outcome_streaming,
         )
 
-        silver = _fake_silver_markets_with_tokens()
+        silver = _fake_silver_markets_with_tokens()  # Has unique market IDs
         catalog = self._mock_catalog(silver, _fake_silver_trades(), _fake_silver_events())
 
         non_streaming_rows = load_dim_outcome(catalog=catalog, dry_run=True)
@@ -1929,7 +1935,7 @@ class TestStreamingVsNonStreamingParity:
         assert non_streaming_rows == streaming_rows
 
     def test_wallet_row_count_parity(self) -> None:
-        """Streaming and non-streaming should produce same row count for wallets."""
+        """Wallet streaming uses aggregation, so parity should be maintained."""
         from prediction_data.gold.dimensions import (
             load_dim_wallet,
             load_dim_wallet_streaming,
@@ -1945,14 +1951,14 @@ class TestStreamingVsNonStreamingParity:
 
         assert non_streaming_rows == streaming_rows
 
-    def test_event_row_count_parity(self) -> None:
-        """Streaming and non-streaming should produce same row count for events."""
+    def test_event_row_count_with_unique_data(self) -> None:
+        """With unique source data, streaming and non-streaming should match."""
         from prediction_data.gold.dimensions import (
             load_dim_event,
             load_dim_event_streaming,
         )
 
-        silver = _fake_silver_events()
+        silver = _fake_silver_events()  # Has unique event IDs
         catalog = self._mock_catalog(_fake_silver_markets(), _fake_silver_trades(), silver)
 
         non_streaming_rows = load_dim_event(catalog=catalog, dry_run=True)
@@ -1963,7 +1969,7 @@ class TestStreamingVsNonStreamingParity:
         assert non_streaming_rows == streaming_rows
 
     def test_category_row_count_parity(self) -> None:
-        """Streaming and non-streaming should produce same row count for categories."""
+        """Category streaming still deduplicates for correct aggregation counts."""
         from prediction_data.gold.dimensions import (
             load_dim_category,
             load_dim_category_streaming,

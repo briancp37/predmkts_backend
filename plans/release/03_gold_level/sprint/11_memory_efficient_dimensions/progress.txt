@@ -128,7 +128,41 @@ Added column projection to streaming dimension loaders to reduce memory further:
 
 5. **PRD status**: `column_projection` category marked as `passes: true`
 
+### 2026-02-09: ClickHouse Deduplication Implementation
+Pushed deduplication logic to ClickHouse instead of Python for streaming loaders:
+
+1. **Removed Python-side deduplication** from streaming loaders:
+   - `load_dim_market_streaming()` - removed `seen_ids` set, passes all records through
+   - `load_dim_outcome_streaming()` - removed `seen_market_ids` set, passes all records through
+   - `load_dim_event_streaming()` - removed `seen_event_ids` set, passes all records through
+
+2. **ClickHouse handles deduplication**:
+   - All dimension tables use `ReplacingMergeTree` engine
+   - `dim_market`: ORDER BY (platform, platform_market_id), version column: updated_at
+   - `dim_outcome`: ORDER BY (platform, market_id, outcome_id), version column: version
+   - `dim_event`: ORDER BY (platform, platform_event_id), version column: updated_at
+   - Deduplication happens on read with FINAL or via background merges
+
+3. **Memory savings**:
+   - Eliminates need to track seen IDs in memory (~50 bytes per ID × millions of rows)
+   - For dim_market with 426K rows: saves ~21MB of set overhead
+   - For dim_event: similar savings
+   - Most significant for dim_outcome which has 2× the records of dim_market
+
+4. **Special cases preserved**:
+   - `load_dim_wallet_streaming()` - still uses wallet aggregation dict (required for stats)
+   - `load_dim_category_streaming()` - still uses event ID dedup for correct count aggregation
+   - Non-streaming loaders unchanged (they still dedup in Python)
+
+5. **Updated tests**:
+   - Changed deduplication tests to verify all records pass through
+   - Updated parity tests to verify behavior with unique source data
+   - All 22 streaming tests pass
+   - Mypy type check passes
+
+6. **PRD status**: `clickhouse_deduplication` category marked as `passes: true`
+
 ### Next Steps
 - Deploy to ECS and verify gold daily-run completes without OOM with reduced memory (try 4GB)
-- Consider implementing clickhouse_deduplication to remove Python dedup overhead
 - Add incremental loading support for large tables
+- Consider S3 direct loading for additional optimization
