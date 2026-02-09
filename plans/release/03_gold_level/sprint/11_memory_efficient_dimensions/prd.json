@@ -1,0 +1,92 @@
+[
+    {
+        "category": "analysis",
+        "description": "Profile current memory usage and identify bottlenecks",
+        "steps": [
+            "Document current memory consumption per dimension loader (dim_market, dim_outcome, dim_wallet, dim_event, dim_category)",
+            "Identify the three memory-intensive patterns: full table scan, to_pylist() conversion, in-memory deduplication",
+            "Measure Silver table sizes (row counts) to establish baseline: markets ~426K, outcomes ~853K, trades ~millions",
+            "Define target memory budget: dimension loading should work within 4GB Fargate task"
+        ],
+        "passes": false
+    },
+    {
+        "category": "streaming_architecture",
+        "description": "Refactor to stream data in batches instead of loading all at once",
+        "steps": [
+            "Replace table.scan().to_arrow() with record batch iterator using table.scan().to_arrow_batch_reader()",
+            "Process batches of 10K-50K rows at a time instead of entire table",
+            "Accumulate only aggregation state (dedup keys, counts) in memory, not full records",
+            "Implement batch-wise ClickHouse inserts using clickhouse_connect batch insert API"
+        ],
+        "passes": true
+    },
+    {
+        "category": "column_projection",
+        "description": "Only load columns needed for each dimension table",
+        "steps": [
+            "Add selected= parameter to all _read_silver_* functions to project only needed columns",
+            "dim_market: select only platform_market_id, question, description, market_slug, status, event_id, tokens, updated_at",
+            "dim_outcome: select only platform_market_id, tokens, outcome (skip description, etc.)",
+            "dim_wallet: select only maker, taker, event_ts from trades (skip price, amount, etc.)",
+            "dim_event: select only platform_event_id, title, description, slug, status, category, image_url, tags, updated_at"
+        ],
+        "passes": false
+    },
+    {
+        "category": "clickhouse_deduplication",
+        "description": "Push deduplication logic to ClickHouse instead of Python",
+        "steps": [
+            "Remove Python dict-based deduplication from _read_silver_markets() and _read_silver_events()",
+            "Insert all records directly to ClickHouse ReplacingMergeTree tables (they handle dedup on read with FINAL)",
+            "Add OPTIMIZE TABLE commands after bulk inserts if immediate dedup is needed",
+            "Update _silver_to_dim_* functions to pass through records without dedup overhead"
+        ],
+        "passes": false
+    },
+    {
+        "category": "s3_direct_loading",
+        "description": "Use ClickHouse S3 table function for direct loading where applicable",
+        "steps": [
+            "Investigate using ClickHouse s3() table function to read Parquet directly from S3 Gold",
+            "For dimension tables that write to S3 Gold first, add optional ch-load-from-s3 path",
+            "Implement INSERT INTO dim_table SELECT ... FROM s3('s3://bucket/path/*.parquet') pattern",
+            "Keep Python streaming as fallback for cases where S3 direct load is not suitable"
+        ],
+        "passes": false
+    },
+    {
+        "category": "incremental_loading",
+        "description": "Support incremental dimension updates instead of full reloads",
+        "steps": [
+            "Add --since parameter to load-dims CLI to only process records updated after a timestamp",
+            "Use Iceberg time-travel or partition filtering to read only recent data",
+            "For dim_wallet, track last processed trade timestamp and resume from there",
+            "Implement upsert semantics leveraging ReplacingMergeTree version ordering"
+        ],
+        "passes": false
+    },
+    {
+        "category": "eventbridge_schedule_update",
+        "description": "Update Gold layer EventBridge schedules with appropriate resource limits",
+        "steps": [
+            "Create gold-daily-run-prod schedule with memory override (start with 8GB, reduce after optimization)",
+            "Create gold-ch-load-prod schedule at 00:30 UTC",
+            "Add memory/cpu overrides to schedule target configurations",
+            "Document expected memory usage per Gold command in CLAUDE.md"
+        ],
+        "passes": false
+    },
+    {
+        "category": "testing_and_validation",
+        "description": "Verify memory-efficient loading works correctly",
+        "steps": [
+            "Write integration test that loads dimensions with memory profiling enabled",
+            "Verify row counts match between old and new implementations",
+            "Test with production-scale data to confirm 4GB memory budget is sufficient",
+            "Add memory usage logging to dimension loaders for observability",
+            "Run gold daily-run in ECS and verify successful completion without OOM"
+        ],
+        "passes": false
+    }
+]

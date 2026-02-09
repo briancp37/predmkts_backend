@@ -1,0 +1,73 @@
+# Sprint Progress: Memory-Efficient Dimensions
+# Release: 03_gold_level
+# Created: 2026-02-09
+
+## Status: In Progress
+
+## Problem Statement
+The current `load_dim_*` functions in `src/prediction_data/gold/dimensions.py` consume
+excessive memory (16GB+ is insufficient) due to:
+1. Loading entire Silver Iceberg tables into memory with `table.scan().to_arrow()`
+2. Converting Arrow tables to Python lists with `to_pylist()` (doubles memory)
+3. In-memory deduplication using Python dicts
+4. No streaming or batching - all data loaded at once
+
+This causes OOM errors in ECS Fargate tasks, blocking the `gold daily-run` schedule.
+
+## Root Cause Analysis
+- dim_market: ~426,597 rows from Silver markets
+- dim_outcome: ~853,151 rows (2 outcomes per market)
+- dim_wallet: Unknown but likely millions (from all trades)
+- Current implementation: OOM at 8GB during dim_outcome, OOM at 16GB during dim_wallet
+
+## Target State
+- Dimension loading should complete successfully in a 4GB Fargate task
+- Use streaming/batching to limit memory usage
+- Push deduplication to ClickHouse (ReplacingMergeTree)
+- Consider ClickHouse S3 direct loading where applicable
+
+## Completed Tasks
+
+### 2026-02-09: Streaming Architecture Implementation
+Implemented memory-efficient streaming dimension loaders:
+
+1. **Streaming batch iterators** added for markets, trades, and events:
+   - `_iter_silver_market_batches()` - yields RecordBatch from markets table
+   - `_iter_silver_trade_batches()` - yields RecordBatch from trades table
+   - `_iter_silver_event_batches()` - yields RecordBatch from events table
+   - Uses `table.scan().to_arrow_batch_reader()` with fallback for older PyIceberg
+
+2. **Streaming dimension loaders** for all major dimensions:
+   - `load_dim_market_streaming()` - processes markets in batches, dedup via seen_ids set
+   - `load_dim_outcome_streaming()` - processes outcomes in batches
+   - `load_dim_wallet_streaming()` - aggregates wallet stats across batches (only keeps stats dict in memory)
+   - `load_dim_event_streaming()` - processes events in batches
+   - `load_dim_category_streaming()` - accumulates category counts only
+
+3. **CLI integration**:
+   - Added `--streaming` flag to `prediction-data gold load-dims`
+   - Added `--streaming/--no-streaming` flag to `prediction-data gold daily-run` (default: enabled)
+   - Streaming mode is now the default for daily-run to ensure ECS tasks stay within memory budget
+
+4. **Key memory optimizations**:
+   - Only stores dedup keys (strings) in memory, not full records
+   - dim_wallet only stores aggregation state (~200 bytes per wallet)
+   - Batch-wise ClickHouse inserts prevent holding all transformed rows
+   - S3 writes skipped in streaming mode (dimension data goes directly to ClickHouse)
+
+## In Progress
+
+
+## Blockers/Issues
+- EventBridge schedules created but gold-daily-run fails with OOM
+- Manual workaround: run compute-marks separately (lighter memory footprint)
+
+## Notes
+- Schedules created: gold-daily-run-prod (00:00 UTC), gold-ch-load-prod (00:30 UTC)
+- Schedule group: prediction-data-gold-prod
+- compute-marks completed successfully with 8GB (0 rows - no trades for 2026-02-09)
+
+### Next Steps
+- Test streaming loaders with production-scale data to validate memory usage
+- Consider adding column projection to further reduce memory footprint
+- Deploy to ECS and verify gold daily-run completes without OOM

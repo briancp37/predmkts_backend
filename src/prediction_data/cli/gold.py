@@ -114,15 +114,30 @@ def load_dims(
         help=f"Specific dimension table to load. Options: {', '.join(LOADABLE_DIMS)}.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
+    streaming: bool = typer.Option(
+        False,
+        "--streaming",
+        help="Use memory-efficient streaming mode. Skips S3 writes, inserts directly to ClickHouse.",
+    ),
 ) -> None:
-    """Load Gold dimension tables into S3 and ClickHouse."""
+    """Load Gold dimension tables into S3 and ClickHouse.
+
+    Use --streaming for memory-constrained environments (e.g., 4GB Fargate tasks).
+    Streaming mode processes data in batches and inserts directly to ClickHouse,
+    skipping S3 Gold writes.
+    """
     from prediction_data.gold.dimensions import (
         load_dim_category,
+        load_dim_category_streaming,
         load_dim_event,
+        load_dim_event_streaming,
         load_dim_market,
+        load_dim_market_streaming,
         load_dim_outcome,
+        load_dim_outcome_streaming,
         load_dim_platform,
         load_dim_wallet,
+        load_dim_wallet_streaming,
     )
 
     settings = get_settings()
@@ -133,43 +148,61 @@ def load_dims(
             typer.echo(f"Unknown dimension table: {tbl}", err=True)
             raise typer.Exit(code=1)
 
+    mode_suffix = " [streaming]" if streaming else ""
+
     for tbl in tables_to_load:
         if tbl == "dim_platform":
+            # dim_platform is static data, no streaming needed
             rows = load_dim_platform(
                 gold_bucket=settings.gold_bucket or None,
                 dry_run=dry_run,
             )
             typer.echo(f"dim_platform: {rows} rows loaded.")
         elif tbl == "dim_market":
-            rows = load_dim_market(
-                gold_bucket=settings.gold_bucket or None,
-                dry_run=dry_run,
-            )
-            typer.echo(f"dim_market: {rows} rows loaded.")
+            if streaming:
+                rows = load_dim_market_streaming(dry_run=dry_run)
+            else:
+                rows = load_dim_market(
+                    gold_bucket=settings.gold_bucket or None,
+                    dry_run=dry_run,
+                )
+            typer.echo(f"dim_market: {rows} rows loaded.{mode_suffix}")
         elif tbl == "dim_outcome":
-            rows = load_dim_outcome(
-                gold_bucket=settings.gold_bucket or None,
-                dry_run=dry_run,
-            )
-            typer.echo(f"dim_outcome: {rows} rows loaded.")
+            if streaming:
+                rows = load_dim_outcome_streaming(dry_run=dry_run)
+            else:
+                rows = load_dim_outcome(
+                    gold_bucket=settings.gold_bucket or None,
+                    dry_run=dry_run,
+                )
+            typer.echo(f"dim_outcome: {rows} rows loaded.{mode_suffix}")
         elif tbl == "dim_wallet":
-            rows = load_dim_wallet(
-                gold_bucket=settings.gold_bucket or None,
-                dry_run=dry_run,
-            )
-            typer.echo(f"dim_wallet: {rows} rows loaded.")
+            if streaming:
+                rows = load_dim_wallet_streaming(dry_run=dry_run)
+            else:
+                rows = load_dim_wallet(
+                    gold_bucket=settings.gold_bucket or None,
+                    dry_run=dry_run,
+                )
+            typer.echo(f"dim_wallet: {rows} rows loaded.{mode_suffix}")
         elif tbl == "dim_event":
-            rows = load_dim_event(
-                gold_bucket=settings.gold_bucket or None,
-                dry_run=dry_run,
-            )
-            typer.echo(f"dim_event: {rows} rows loaded.")
+            if streaming:
+                rows = load_dim_event_streaming(dry_run=dry_run)
+            else:
+                rows = load_dim_event(
+                    gold_bucket=settings.gold_bucket or None,
+                    dry_run=dry_run,
+                )
+            typer.echo(f"dim_event: {rows} rows loaded.{mode_suffix}")
         elif tbl == "dim_category":
-            rows = load_dim_category(
-                gold_bucket=settings.gold_bucket or None,
-                dry_run=dry_run,
-            )
-            typer.echo(f"dim_category: {rows} rows loaded.")
+            if streaming:
+                rows = load_dim_category_streaming(dry_run=dry_run)
+            else:
+                rows = load_dim_category(
+                    gold_bucket=settings.gold_bucket or None,
+                    dry_run=dry_run,
+                )
+            typer.echo(f"dim_category: {rows} rows loaded.{mode_suffix}")
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +800,11 @@ def daily_run(
     stop_on_error: bool = typer.Option(
         False, "--stop-on-error", help="Halt on first step failure instead of continuing."
     ),
+    streaming: bool = typer.Option(
+        True,
+        "--streaming/--no-streaming",
+        help="Use memory-efficient streaming for dimension loading (default: enabled).",
+    ),
 ) -> None:
     """Run all daily Gold processing steps in order.
 
@@ -774,6 +812,9 @@ def daily_run(
 
     By default, failures are logged and execution continues to the next step
     (fail-forward). Use --stop-on-error to halt on first failure.
+
+    Dimension loading uses streaming mode by default for memory efficiency.
+    Use --no-streaming to use the standard in-memory loader with S3 writes.
     """
     from datetime import UTC, date as date_cls, datetime, timedelta
 
@@ -789,7 +830,13 @@ def daily_run(
         date_cls.fromisoformat(dt) if dt else datetime.now(UTC).date() - timedelta(days=1)
     )
 
-    typer.echo(f"Gold daily-run for {target_date}{'  [dry-run]' if dry_run else ''}")
+    mode_info = []
+    if dry_run:
+        mode_info.append("dry-run")
+    if streaming:
+        mode_info.append("streaming")
+    mode_str = f"  [{', '.join(mode_info)}]" if mode_info else ""
+    typer.echo(f"Gold daily-run for {target_date}{mode_str}")
 
     # Define steps in execution order.
     steps: list[tuple[str, str]] = [
@@ -809,7 +856,8 @@ def daily_run(
 
         try:
             rows = _run_daily_step(
-                step_name, target_date, gold_bucket=gold_bucket, dry_run=dry_run
+                step_name, target_date, gold_bucket=gold_bucket, dry_run=dry_run,
+                streaming=streaming,
             )
             total_rows += rows
             results.append({"step": step_name, "status": "success", "rows": rows})
@@ -881,25 +929,50 @@ def _run_daily_step(
     *,
     gold_bucket: str | None = None,
     dry_run: bool = False,
+    streaming: bool = True,
 ) -> int:
-    """Execute a single daily-run step and return the number of rows produced."""
+    """Execute a single daily-run step and return the number of rows produced.
+
+    Args:
+        step_name: Name of the step to run.
+        dt: Date to process.
+        gold_bucket: S3 bucket for Gold output.
+        dry_run: Preview without writing.
+        streaming: Use streaming mode for dimension loading (default True for ECS).
+    """
     if step_name == "load-dims":
         from prediction_data.gold.dimensions import (
             load_dim_category,
+            load_dim_category_streaming,
             load_dim_event,
+            load_dim_event_streaming,
             load_dim_market,
+            load_dim_market_streaming,
             load_dim_outcome,
+            load_dim_outcome_streaming,
             load_dim_platform,
             load_dim_wallet,
+            load_dim_wallet_streaming,
         )
 
         total = 0
+        # dim_platform is static, no streaming needed
         total += load_dim_platform(gold_bucket=gold_bucket, dry_run=dry_run)
-        total += load_dim_market(gold_bucket=gold_bucket, dry_run=dry_run)
-        total += load_dim_outcome(gold_bucket=gold_bucket, dry_run=dry_run)
-        total += load_dim_wallet(gold_bucket=gold_bucket, dry_run=dry_run)
-        total += load_dim_event(gold_bucket=gold_bucket, dry_run=dry_run)
-        total += load_dim_category(gold_bucket=gold_bucket, dry_run=dry_run)
+
+        if streaming:
+            # Streaming mode: memory-efficient, skips S3 writes
+            total += load_dim_market_streaming(dry_run=dry_run)
+            total += load_dim_outcome_streaming(dry_run=dry_run)
+            total += load_dim_wallet_streaming(dry_run=dry_run)
+            total += load_dim_event_streaming(dry_run=dry_run)
+            total += load_dim_category_streaming(dry_run=dry_run)
+        else:
+            # Standard mode: writes to S3 and ClickHouse
+            total += load_dim_market(gold_bucket=gold_bucket, dry_run=dry_run)
+            total += load_dim_outcome(gold_bucket=gold_bucket, dry_run=dry_run)
+            total += load_dim_wallet(gold_bucket=gold_bucket, dry_run=dry_run)
+            total += load_dim_event(gold_bucket=gold_bucket, dry_run=dry_run)
+            total += load_dim_category(gold_bucket=gold_bucket, dry_run=dry_run)
         return total
 
     elif step_name == "process-trades":

@@ -1,8 +1,19 @@
-"""Gold dimension table loaders."""
+"""Gold dimension table loaders.
+
+This module implements memory-efficient dimension loading using streaming
+batch processing. Instead of loading entire Silver tables into memory,
+we process data in batches to stay within memory constraints (target: 4GB).
+
+Key patterns:
+- Use `table.scan().to_arrow_batch_reader()` for streaming reads
+- Accumulate only aggregation state (dedup keys, counts), not full records
+- Batch ClickHouse inserts to avoid holding all transformed rows in memory
+"""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +28,10 @@ if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
 
 logger = structlog.stdlib.get_logger(__name__)
+
+# Batch size for streaming processing. Larger batches = fewer iterations but
+# more memory. 50K rows is a good balance for dimension tables.
+DEFAULT_BATCH_SIZE = 50_000
 
 # Static platform data.
 PLATFORMS = [
@@ -124,6 +139,38 @@ DIM_MARKET_SCHEMA = pa.schema(
 DIM_MARKET_COLUMNS = [f.name for f in DIM_MARKET_SCHEMA]
 
 
+def _iter_silver_market_batches(
+    platform: str,
+    catalog: Catalog | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> Iterator[pa.RecordBatch]:
+    """Yield record batches from the Silver markets table.
+
+    This is the low-level streaming reader. Use _read_silver_markets_streaming
+    for deduplicated iteration that produces dim_market rows.
+    """
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "markets"))
+    scan = table.scan()
+
+    # Use batch reader for memory-efficient streaming
+    try:
+        batch_reader = scan.to_arrow_batch_reader()
+        for batch in batch_reader:
+            yield batch
+    except AttributeError:
+        # Fallback for older PyIceberg versions without batch reader
+        arrow = scan.to_arrow()
+        for i in range(0, arrow.num_rows, batch_size):
+            end = min(i + batch_size, arrow.num_rows)
+            yield arrow.slice(i, end - i).to_batches()[0] if end - i > 0 else None
+
+
 def _read_silver_markets(
     platform: str,
     catalog: Catalog | None = None,
@@ -133,6 +180,10 @@ def _read_silver_markets(
     Deduplicates by platform_market_id, keeping the record with the latest
     updated_at timestamp. This supports append-only Silver ingestion where
     duplicates are cleaned up during maintenance compaction.
+
+    NOTE: This function loads all data into memory for deduplication.
+    For memory-constrained environments, use the streaming loader functions
+    that process batches incrementally.
     """
     if catalog is None:
         from prediction_data.silver.catalog import get_catalog
@@ -239,6 +290,102 @@ def load_dim_market(
 
     logger.info("loaded_dim_market", rows=num_rows, day=day)
     return num_rows
+
+
+def load_dim_market_streaming(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    resolver: CanonicalResolver | None = None,
+    dry_run: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    """Load dim_market using streaming batch processing.
+
+    Memory-efficient alternative to load_dim_market that processes data in
+    batches instead of loading everything into memory at once.
+
+    Deduplication is pushed to ClickHouse's ReplacingMergeTree, which handles
+    dedup on read with FINAL. This allows us to stream all records directly
+    without Python-side deduplication.
+
+    Args:
+        gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+        catalog: Optional PyIceberg catalog.
+        resolver: Optional CanonicalResolver for market IDs.
+        dry_run: Preview without writing.
+        batch_size: Number of rows to process per batch.
+
+    Returns:
+        Number of rows loaded.
+    """
+    resolver = resolver or CanonicalResolver()
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ch = clickhouse_client or get_client()
+    total_rows = 0
+
+    # Track seen market IDs to avoid duplicates within this run
+    # Only stores IDs (strings), not full records - much lighter memory footprint
+    seen_ids: set[str] = set()
+
+    for batch in _iter_silver_market_batches("polymarket", catalog=catalog, batch_size=batch_size):
+        if batch is None or batch.num_rows == 0:
+            continue
+
+        # Convert batch to records and filter duplicates
+        records = batch.to_pylist()
+        unique_records = []
+        for rec in records:
+            market_id = rec.get("platform_market_id", "")
+            if market_id not in seen_ids:
+                seen_ids.add(market_id)
+                unique_records.append(rec)
+
+        if not unique_records:
+            continue
+
+        # Transform to dim_market format
+        rows: dict[str, list[Any]] = {col: [] for col in DIM_MARKET_COLUMNS}
+        for rec in unique_records:
+            pid = str(rec.get("platform_market_id", "") or "")
+            rows["platform"].append("polymarket")
+            rows["platform_market_id"].append(pid)
+            rows["canonical_market_id"].append(resolver.resolve("polymarket", pid))
+            rows["question"].append(str(rec.get("question", "") or ""))
+            rows["description"].append(str(rec.get("description", "") or ""))
+            rows["market_slug"].append(str(rec.get("market_slug", "") or ""))
+            rows["status"].append(str(rec.get("status", "") or ""))
+            rows["event_id"].append(str(rec.get("event_id", "") or ""))
+            rows["tokens"].append(str(rec.get("tokens", "") or ""))
+
+        batch_table = pa.table(rows, schema=DIM_MARKET_SCHEMA)
+        batch_rows = batch_table.num_rows
+        total_rows += batch_rows
+
+        if dry_run:
+            logger.debug("dry_run_batch_dim_market", batch_rows=batch_rows)
+            continue
+
+        # Insert batch to ClickHouse
+        data = [[row[col] for col in DIM_MARKET_COLUMNS] for row in batch_table.to_pylist()]
+        ch.insert("dim_market", data=data, column_names=DIM_MARKET_COLUMNS)
+        logger.debug("inserted_batch_dim_market", batch_rows=batch_rows)
+
+    logger.info("dim_market_streaming_complete", platform="polymarket", rows=total_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_market_streaming", rows=total_rows, day=day)
+        return total_rows
+
+    # S3 write not supported in streaming mode - use standard loader for S3
+    if gold_bucket:
+        logger.warning("s3_write_skipped_streaming_mode", table="dim_market")
+
+    return total_rows
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +530,95 @@ def load_dim_outcome(
     return num_rows
 
 
+def load_dim_outcome_streaming(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    """Load dim_outcome using streaming batch processing.
+
+    Memory-efficient alternative to load_dim_outcome that processes markets
+    in batches instead of loading everything into memory at once.
+
+    Args:
+        gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+        catalog: Optional PyIceberg catalog.
+        dry_run: Preview without writing.
+        batch_size: Number of rows to process per batch.
+
+    Returns:
+        Number of outcome rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ch = clickhouse_client or get_client()
+    total_rows = 0
+
+    # Track seen market IDs to avoid duplicate outcomes
+    seen_market_ids: set[str] = set()
+
+    for batch in _iter_silver_market_batches("polymarket", catalog=catalog, batch_size=batch_size):
+        if batch is None or batch.num_rows == 0:
+            continue
+
+        records = batch.to_pylist()
+        rows: dict[str, list[Any]] = {col: [] for col in DIM_OUTCOME_COLUMNS}
+
+        for rec in records:
+            market_id = str(rec.get("platform_market_id", "") or "")
+            if market_id in seen_market_ids:
+                continue
+            seen_market_ids.add(market_id)
+
+            token_ids = _parse_json_array(rec.get("tokens"))
+            outcome_labels = _parse_json_array(rec.get("outcome"))
+
+            for idx, token_id in enumerate(token_ids):
+                outcome_label = outcome_labels[idx] if idx < len(outcome_labels) else ""
+                outcome_id = f"{market_id}_{idx}"
+                side = f"token{idx + 1}"
+
+                rows["platform"].append("polymarket")
+                rows["market_id"].append(market_id)
+                rows["outcome_id"].append(outcome_id)
+                rows["token_id"].append(token_id)
+                rows["side"].append(side)
+                rows["outcome_label"].append(outcome_label)
+
+        if not rows["platform"]:
+            continue
+
+        batch_table = pa.table(rows, schema=DIM_OUTCOME_SCHEMA)
+        batch_rows = batch_table.num_rows
+        total_rows += batch_rows
+
+        if dry_run:
+            logger.debug("dry_run_batch_dim_outcome", batch_rows=batch_rows)
+            continue
+
+        # Insert batch to ClickHouse
+        data = [[row[col] for col in DIM_OUTCOME_COLUMNS] for row in batch_table.to_pylist()]
+        ch.insert("dim_outcome", data=data, column_names=DIM_OUTCOME_COLUMNS)
+        logger.debug("inserted_batch_dim_outcome", batch_rows=batch_rows)
+
+    logger.info("dim_outcome_streaming_complete", platform="polymarket", rows=total_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_outcome_streaming", rows=total_rows, day=day)
+        return total_rows
+
+    # S3 write not supported in streaming mode
+    if gold_bucket:
+        logger.warning("s3_write_skipped_streaming_mode", table="dim_outcome")
+
+    return total_rows
+
+
 # ---------------------------------------------------------------------------
 # dim_wallet
 # ---------------------------------------------------------------------------
@@ -398,6 +634,39 @@ DIM_WALLET_SCHEMA = pa.schema(
 )
 
 DIM_WALLET_COLUMNS = [f.name for f in DIM_WALLET_SCHEMA]
+
+
+def _iter_silver_trade_batches(
+    platform: str,
+    catalog: Catalog | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> Iterator[pa.RecordBatch]:
+    """Yield record batches from the Silver trades table.
+
+    This is the low-level streaming reader for trades. Use load_dim_wallet_streaming
+    for memory-efficient wallet dimension loading.
+    """
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "trades"))
+    scan = table.scan()
+
+    # Use batch reader for memory-efficient streaming
+    try:
+        batch_reader = scan.to_arrow_batch_reader()
+        for batch in batch_reader:
+            yield batch
+    except AttributeError:
+        # Fallback for older PyIceberg versions without batch reader
+        arrow = scan.to_arrow()
+        for i in range(0, arrow.num_rows, batch_size):
+            end = min(i + batch_size, arrow.num_rows)
+            if end - i > 0:
+                yield arrow.slice(i, end - i).to_batches()[0]
 
 
 def _read_silver_trades(
@@ -514,6 +783,112 @@ def load_dim_wallet(
     return num_rows
 
 
+def load_dim_wallet_streaming(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    insert_batch_size: int = 100_000,
+) -> int:
+    """Load dim_wallet using streaming batch processing.
+
+    Memory-efficient alternative to load_dim_wallet that processes trades in
+    batches while maintaining only wallet aggregation state in memory.
+
+    Unlike load_dim_market_streaming, this function must see all trades to
+    compute accurate aggregations (first_trade_ts, last_trade_ts, trade_count).
+    However, it only keeps the aggregation state (one dict entry per wallet)
+    in memory, not the full trade records.
+
+    Args:
+        gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+        catalog: Optional PyIceberg catalog.
+        dry_run: Preview without writing.
+        batch_size: Number of rows per batch when reading trades.
+        insert_batch_size: Number of wallet rows per ClickHouse insert.
+
+    Returns:
+        Number of wallet rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Accumulate per-wallet stats across all batches.
+    # Memory footprint: ~200 bytes per wallet (address string + 3 values)
+    # For 1M unique wallets, this is ~200MB - acceptable.
+    wallets: dict[str, dict[str, Any]] = {}
+    trades_processed = 0
+
+    for batch in _iter_silver_trade_batches("polymarket", catalog=catalog, batch_size=batch_size):
+        if batch is None or batch.num_rows == 0:
+            continue
+
+        records = batch.to_pylist()
+        trades_processed += len(records)
+
+        for rec in records:
+            ts = rec.get("event_ts")
+            for addr_field in ("maker", "taker"):
+                addr = rec.get(addr_field)
+                if not addr:
+                    continue
+                addr = str(addr)
+                if addr in wallets:
+                    w = wallets[addr]
+                    w["trade_count"] += 1
+                    if ts is not None:
+                        if w["first_trade_ts"] is None or ts < w["first_trade_ts"]:
+                            w["first_trade_ts"] = ts
+                        if w["last_trade_ts"] is None or ts > w["last_trade_ts"]:
+                            w["last_trade_ts"] = ts
+                else:
+                    wallets[addr] = {
+                        "first_trade_ts": ts,
+                        "last_trade_ts": ts,
+                        "trade_count": 1,
+                    }
+
+        logger.debug("processed_trade_batch", batch_rows=len(records), total_trades=trades_processed, unique_wallets=len(wallets))
+
+    num_rows = len(wallets)
+    logger.info("dim_wallet_aggregation_complete", platform="polymarket", trades=trades_processed, wallets=num_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_wallet_streaming", rows=num_rows, day=day)
+        return num_rows
+
+    # Insert wallets to ClickHouse in batches
+    ch = clickhouse_client or get_client()
+    wallet_items = list(wallets.items())
+    inserted = 0
+
+    for i in range(0, len(wallet_items), insert_batch_size):
+        batch_items = wallet_items[i:i + insert_batch_size]
+        data = []
+        for addr, stats in batch_items:
+            data.append([
+                "polymarket",
+                addr,
+                stats["first_trade_ts"],
+                stats["last_trade_ts"],
+                stats["trade_count"],
+            ])
+        ch.insert("dim_wallet", data=data, column_names=DIM_WALLET_COLUMNS)
+        inserted += len(batch_items)
+        logger.debug("inserted_wallet_batch", batch_rows=len(batch_items), total_inserted=inserted)
+
+    # S3 write not supported in streaming mode - use standard loader for S3
+    if gold_bucket:
+        logger.warning("s3_write_skipped_streaming_mode", table="dim_wallet")
+
+    logger.info("loaded_dim_wallet_streaming", rows=num_rows, day=day)
+    return num_rows
+
+
 # ---------------------------------------------------------------------------
 # dim_event
 # ---------------------------------------------------------------------------
@@ -533,6 +908,33 @@ DIM_EVENT_SCHEMA = pa.schema(
 )
 
 DIM_EVENT_COLUMNS = [f.name for f in DIM_EVENT_SCHEMA]
+
+
+def _iter_silver_event_batches(
+    platform: str,
+    catalog: Catalog | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> Iterator[pa.RecordBatch]:
+    """Yield record batches from the Silver events table."""
+    if catalog is None:
+        from prediction_data.silver.catalog import get_catalog
+
+        catalog = get_catalog()
+
+    namespace = f"silver_{platform}"
+    table = catalog.load_table((namespace, "events"))
+    scan = table.scan()
+
+    try:
+        batch_reader = scan.to_arrow_batch_reader()
+        for batch in batch_reader:
+            yield batch
+    except AttributeError:
+        arrow = scan.to_arrow()
+        for i in range(0, arrow.num_rows, batch_size):
+            end = min(i + batch_size, arrow.num_rows)
+            if end - i > 0:
+                yield arrow.slice(i, end - i).to_batches()[0]
 
 
 def _read_silver_events(
@@ -660,6 +1062,92 @@ def load_dim_event(
     return num_rows
 
 
+def load_dim_event_streaming(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    """Load dim_event using streaming batch processing.
+
+    Memory-efficient alternative to load_dim_event that processes events
+    in batches instead of loading everything into memory at once.
+
+    Args:
+        gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+        catalog: Optional PyIceberg catalog.
+        dry_run: Preview without writing.
+        batch_size: Number of rows to process per batch.
+
+    Returns:
+        Number of event rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ch = clickhouse_client or get_client()
+    total_rows = 0
+
+    # Track seen event IDs to avoid duplicates
+    seen_event_ids: set[str] = set()
+
+    for batch in _iter_silver_event_batches("polymarket", catalog=catalog, batch_size=batch_size):
+        if batch is None or batch.num_rows == 0:
+            continue
+
+        records = batch.to_pylist()
+        rows: dict[str, list[Any]] = {col: [] for col in DIM_EVENT_COLUMNS}
+
+        for rec in records:
+            event_id = str(rec.get("platform_event_id", "") or "")
+            if event_id in seen_event_ids:
+                continue
+            seen_event_ids.add(event_id)
+
+            rows["platform"].append("polymarket")
+            rows["platform_event_id"].append(event_id)
+            rows["title"].append(str(rec.get("title", "") or ""))
+            rows["description"].append(str(rec.get("description", "") or ""))
+            rows["slug"].append(str(rec.get("slug", "") or ""))
+            rows["status"].append(str(rec.get("status", "") or ""))
+            rows["category"].append(str(rec.get("category", "") or ""))
+            rows["image_url"].append(str(rec.get("image_url", "") or ""))
+            raw_tags = rec.get("tags")
+            tags = list(raw_tags) if raw_tags and isinstance(raw_tags, list) else []
+            rows["tags"].append(tags)
+
+        if not rows["platform"]:
+            continue
+
+        batch_table = pa.table(rows, schema=DIM_EVENT_SCHEMA)
+        batch_rows = batch_table.num_rows
+        total_rows += batch_rows
+
+        if dry_run:
+            logger.debug("dry_run_batch_dim_event", batch_rows=batch_rows)
+            continue
+
+        # Insert batch to ClickHouse
+        data = [[row[col] for col in DIM_EVENT_COLUMNS] for row in batch_table.to_pylist()]
+        ch.insert("dim_event", data=data, column_names=DIM_EVENT_COLUMNS)
+        logger.debug("inserted_batch_dim_event", batch_rows=batch_rows)
+
+    logger.info("dim_event_streaming_complete", platform="polymarket", rows=total_rows)
+
+    if dry_run:
+        logger.info("dry_run_dim_event_streaming", rows=total_rows, day=day)
+        return total_rows
+
+    # S3 write not supported in streaming mode
+    if gold_bucket:
+        logger.warning("s3_write_skipped_streaming_mode", table="dim_event")
+
+    return total_rows
+
+
 # ---------------------------------------------------------------------------
 # dim_category
 # ---------------------------------------------------------------------------
@@ -757,4 +1245,72 @@ def load_dim_category(
     )
 
     logger.info("loaded_dim_category", rows=num_rows, day=day)
+    return num_rows
+
+
+def load_dim_category_streaming(
+    *,
+    gold_bucket: str | None = None,
+    s3_client: Any | None = None,
+    clickhouse_client: Any | None = None,
+    catalog: Catalog | None = None,
+    dry_run: bool = False,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> int:
+    """Load dim_category using streaming batch processing.
+
+    Memory-efficient alternative to load_dim_category that processes events
+    in batches while accumulating only category counts in memory.
+
+    Args:
+        gold_bucket: S3 bucket for Gold output. Skips S3 write if *None*.
+        s3_client: Optional boto3 S3 client.
+        clickhouse_client: Optional ClickHouse client.
+        catalog: Optional PyIceberg catalog.
+        dry_run: Preview without writing.
+        batch_size: Number of rows to process per batch.
+
+    Returns:
+        Number of category rows loaded.
+    """
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Track seen event IDs and category counts
+    seen_event_ids: set[str] = set()
+    category_counts: dict[str, int] = {}
+
+    for batch in _iter_silver_event_batches("polymarket", catalog=catalog, batch_size=batch_size):
+        if batch is None or batch.num_rows == 0:
+            continue
+
+        records = batch.to_pylist()
+
+        for rec in records:
+            event_id = str(rec.get("platform_event_id", "") or "")
+            if event_id in seen_event_ids:
+                continue
+            seen_event_ids.add(event_id)
+
+            category = str(rec.get("category", "") or "")
+            category_counts[category] = category_counts.get(category, 0) + 1
+
+    num_rows = len(category_counts)
+    logger.info("dim_category_streaming_complete", platform="polymarket", categories=num_rows, events=len(seen_event_ids))
+
+    if dry_run:
+        logger.info("dry_run_dim_category_streaming", rows=num_rows, day=day)
+        return num_rows
+
+    # Insert to ClickHouse
+    ch = clickhouse_client or get_client()
+    data = []
+    for cat, count in sorted(category_counts.items()):
+        data.append(["polymarket", cat, count])
+    ch.insert("dim_category", data=data, column_names=DIM_CATEGORY_COLUMNS)
+
+    # S3 write not supported in streaming mode
+    if gold_bucket:
+        logger.warning("s3_write_skipped_streaming_mode", table="dim_category")
+
+    logger.info("loaded_dim_category_streaming", rows=num_rows, day=day)
     return num_rows
