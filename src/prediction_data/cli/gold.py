@@ -115,16 +115,16 @@ def load_dims(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing."),
     streaming: bool = typer.Option(
-        False,
-        "--streaming",
-        help="Use memory-efficient streaming mode. Skips S3 writes, inserts directly to ClickHouse.",
+        True,
+        "--streaming/--no-streaming",
+        help="Use memory-efficient streaming mode (default: enabled). Skips S3 writes, inserts directly to ClickHouse.",
     ),
 ) -> None:
-    """Load Gold dimension tables into S3 and ClickHouse.
+    """Load Gold dimension tables into ClickHouse (and optionally S3).
 
-    Use --streaming for memory-constrained environments (e.g., 4GB Fargate tasks).
-    Streaming mode processes data in batches and inserts directly to ClickHouse,
-    skipping S3 Gold writes.
+    Streaming mode (default) processes data in batches and inserts directly to
+    ClickHouse, using ~4GB RAM. Use --no-streaming for S3 Gold writes, but note
+    this requires 16GB+ RAM.
     """
     from prediction_data.gold.dimensions import (
         load_dim_category,
@@ -148,7 +148,7 @@ def load_dims(
             typer.echo(f"Unknown dimension table: {tbl}", err=True)
             raise typer.Exit(code=1)
 
-    mode_suffix = " [streaming]" if streaming else ""
+    mode_suffix = "" if streaming else " [no-streaming]"
 
     for tbl in tables_to_load:
         if tbl == "dim_platform":
