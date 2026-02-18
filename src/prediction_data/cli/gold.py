@@ -238,6 +238,7 @@ def compute_marks(
     """Compute market_mark_daily from Silver trades."""
     from datetime import date as date_cls, timedelta
 
+    from prediction_data.gold.clickhouse import get_client
     from prediction_data.gold.market_marks import compute_market_marks
 
     settings = get_settings()
@@ -264,6 +265,9 @@ def compute_marks(
         typer.echo("Error: provide --dt or both --start-date and --end-date.", err=True)
         raise typer.Exit(code=1)
 
+    # Get ClickHouse client for direct loading (skip if dry_run).
+    ch_client = None if dry_run else get_client()
+
     total_rows = 0
     failures: list[str] = []
     for d in dates:
@@ -272,6 +276,7 @@ def compute_marks(
                 platform=platform,
                 dt=d,
                 gold_bucket=settings.gold_bucket or None,
+                clickhouse_client=ch_client,
                 dry_run=dry_run,
             )
             total_rows += rows
@@ -805,10 +810,19 @@ def daily_run(
         "--streaming/--no-streaming",
         help="Use memory-efficient streaming for dimension loading (default: enabled).",
     ),
+    skip_trades: bool = typer.Option(
+        True,
+        "--skip-trades/--no-skip-trades",
+        help="Skip process-trades step (default: skip). Position accounting requires 16GB+ RAM.",
+    ),
 ) -> None:
     """Run all daily Gold processing steps in order.
 
-    Executes: 1) load-dims, 2) process-trades, 3) compute-marks, 4) compute-wallet-metrics.
+    Executes: 1) load-dims, 2) process-trades (optional), 3) compute-marks,
+    4) compute-wallet-metrics.
+
+    By default, process-trades is SKIPPED because it requires 16GB+ RAM due to
+    unbounded position state accumulation. Use --no-skip-trades to include it.
 
     By default, failures are logged and execution continues to the next step
     (fail-forward). Use --stop-on-error to halt on first failure.
@@ -835,16 +849,21 @@ def daily_run(
         mode_info.append("dry-run")
     if streaming:
         mode_info.append("streaming")
+    if skip_trades:
+        mode_info.append("skip-trades")
     mode_str = f"  [{', '.join(mode_info)}]" if mode_info else ""
     typer.echo(f"Gold daily-run for {target_date}{mode_str}")
 
     # Define steps in execution order.
     steps: list[tuple[str, str]] = [
         ("load-dims", "Loading dimension tables"),
-        ("process-trades", "Processing trades into position ledger"),
+    ]
+    if not skip_trades:
+        steps.append(("process-trades", "Processing trades into position ledger"))
+    steps.extend([
         ("compute-marks", "Computing market marks"),
         ("compute-wallet-metrics", "Computing wallet metrics (pnl, mtm, snapshots)"),
-    ]
+    ])
 
     results: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
